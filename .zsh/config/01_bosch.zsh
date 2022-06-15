@@ -48,12 +48,15 @@ export CONAN_LOGIN_USERNAME=dci2lr
 
 alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -h rb-gc-12.de.bosch.com:3268"
 
-ldap-groups () {
-  username=$1
-  ldapsearch-bosch -cn "$username" memberOf
+ldap-groups() {
+    username=$1
+    ldapsearch-bosch -cn "$username" memberOf
 }
 
-
+setup-machine() {
+    machine=$1
+    scp -r ~/dotfiles dci2lr@$machine:~/
+}
 # aliases
 alias zshbosch="nano $ZSH/config/01_bosch.zsh"
 alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BSC2OSD/Change+default+shell+from+bash+to+zsh \n \

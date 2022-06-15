@@ -1,20 +1,14 @@
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 # If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:/usr/local/bin:$PATH
+export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Use emacs keybindings even if our EDITOR is set to vi
 bindkey -e
 
-HISTFILE=~/.zsh_history
-HISTSIZE=50000
-SAVEHIST=$(( 1.2 * SAVEHIST ))  # Zsh recommended value
-setopt INC_APPEND_HISTORY_TIME histexpiredupsfirst histignorespace histignorealldups sharehistory histverify
+export HISTFILE=~/.zsh_history
+export HISTSIZE=50000
+export SAVEHIST=$(( 1.2 * SAVEHIST ))  # Zsh recommended value
+export HISTTIMEFORMAT="[%F %T] "
+setopt INC_APPEND_HISTORY EXTENDED_HISTORY HIST_FIND_NO_DUPS HIST_VERIFY
 ENABLE_CORRECTION="true"
 
 
@@ -47,14 +41,11 @@ zinit light-mode for \
 
 # load customisation
 [[ ! -f ~/.env ]] || source ~/.env
+
 export ZSH=~/.zsh
 # Requirements:
 #  sudo apt install zsh git wget autojump fzf fonts-powerline fonts-firacode
 source $ZSH/config/00_LOADER.zsh
-
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-
 
 # Local zshrc extension point
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local

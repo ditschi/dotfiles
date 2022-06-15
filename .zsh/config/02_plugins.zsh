@@ -19,6 +19,17 @@ zinit wait lucid light-mode for \
   arzzen/calc.plugin.zsh \
   zpm-zsh/undollar
 
+# disable sort when completing `git checkout`
+zstyle ':completion:*:git-checkout:*' sort false
+# set descriptions format to enable group support
+zstyle ':completion:*:descriptions' format '[%d]'
+# set list-colors to enable filename colorizing
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+# preview directory's content with exa when completing cd
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'exa -1 --color=always $realpath'
+# switch group using `,` and `.`
+zstyle ':fzf-tab:*' switch-group ',' '.'
+
 
 # marlonrichert/zsh-autocomplete \
 # as"program" pick"bin/git-fuzzy" \

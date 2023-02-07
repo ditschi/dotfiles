@@ -49,3 +49,9 @@ source $ZSH/config/00_LOADER.zsh
 
 # Local zshrc extension point
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local
+
+if [ -f /.dockerenv ]; then
+    echo "Running inside a container!";
+else
+    # echo "Runing in the host machine!";
+fi

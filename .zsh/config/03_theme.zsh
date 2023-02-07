@@ -1,3 +1,11 @@
+# custom prompt symbol when running in docker container
+# to use this add 'dockerenv' to POWERLEVEL9K_LEFT_PROMPT_ELEMENTS in ~/.p10k.zsh (e.g. before prompt_char)
+function prompt_dockerenv() {
+    if [ -f /.dockerenv ]; then
+        p10k segment -i '🐳'
+    fi
+}
+
 # load powerlevel10k config and plugin
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh

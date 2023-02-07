@@ -37,6 +37,7 @@
     vcs                     # git status
     # =========================[ Line #2 ]=========================
     newline                 # \n
+    dockerenv               # custom promt symbol when running in a docker container
     prompt_char             # prompt symbol
   )
 

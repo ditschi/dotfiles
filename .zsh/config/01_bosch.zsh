@@ -1,12 +1,13 @@
-if [[ ! $USER =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
-    echo "Not lodading Bosch config as user '$USER' is not matching pattern"
+user=$(whoami)
+if [[ ! $user =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
+    echo "Not lodading Bosch config as user '$user' is not matching pattern"
 
     # ensure the default user in .gitconfig
     git config --global user.name "Christian Ditscher"
     git config --global user.email "chris@ditscher.me"
     return
 fi
-echo "User '$USER' matches bosch username pattern -> lodading Bosch config"
+echo "User '$user' matches bosch username pattern -> lodading Bosch config"
 
 ### MODIFIED BY OSD-PROXY-PACKAGE BEGIN ###
 
@@ -66,7 +67,8 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
 
-alias sde='docker-compose build dev-env && docker-compose run --rm -v ${HOME}/.zshrc:${HOME}/.zshrc -v ${HOME}/.zsh/:${HOME}/.zsh/ -v ${HOME}/.zprofile:${HOME}/.zprofile -v ${HOME}/.zprofile:${HOME}/.zprofile dev-env'
+alias sde='docker-compose build dev-env && docker-compose run --rm dev-env'
+alias sdx='docker-compose build dev-env && docker-compose run --rm -v ${HOME}/.zshrc:${HOME}/.zshrc -v ${HOME}/.zsh/:${HOME}/.zsh/ -v ${HOME}/.zsh_history:${HOME}/.zsh_history dev-env'
 
 
 alias ldap-userdetails="ldapsearch-bosch -cn=" # <USER-ID>

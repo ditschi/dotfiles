@@ -6,9 +6,16 @@ bindkey -e
 
 export HISTFILE=~/.zsh_history
 export HISTSIZE=50000
-export SAVEHIST=$(( 1.2 * SAVEHIST ))  # Zsh recommended value
+export SAVEHIST=60000     # Zsh recommended value 1.2 * SAVEHIST
 export HISTTIMEFORMAT="[%F %T] "
-setopt INC_APPEND_HISTORY EXTENDED_HISTORY HIST_FIND_NO_DUPS HIST_VERIFY
+setopt extended_history       # record timestamp of command in HISTFILE
+setopt hist_verify            # show command with history expansion to user before running it
+setopt hist_expire_dups_first # delete duplicates first when HISTFILE size exceeds HISTSIZE
+setopt hist_ignore_space      # ignore commands that start with space
+setopt hist_find_no_dups
+setopt share_history          # share command history data
+# following should be turned off, if sharing history via setopt SHARE_HISTORY
+#setopt inc_append_history
 ENABLE_CORRECTION="true"
 
 
@@ -21,7 +28,7 @@ if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
         print -P "%F{160} The clone has failed.%f%b"
     print ""
     print -P "%F{220}${bold}Please ensure the default packages are installed:%f${normal}"
-    print -P "%F{33}  sudo apt install autojump fonts-powerline fonts-firacode%f"
+    print -P "%F{33}  sudo apt install autojump fonts-powerline fonts-firacode fzf%f"
 fi
 
 source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"

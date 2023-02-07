@@ -56,8 +56,18 @@ ldap-groups() {
 
 setup-machine() {
     machine=$1
+    scp -r ~/.ssh dci2lr@$machine:~/
     scp -r ~/dotfiles dci2lr@$machine:~/
 }
+
+groups_list() {
+# usage: 
+#   groups_list -> list groups for current user
+#   groups_list <user>  -> list groups for specific user
+    user=$1
+    for i in $(id -G $user);do echo "$(getent group $i | cut -d: -f1)" ;done
+}
+
 # aliases
 alias zshbosch="nano $ZSH/config/01_bosch.zsh"
 alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BSC2OSD/Change+default+shell+from+bash+to+zsh \n \
@@ -67,14 +77,35 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
 
-alias sde='docker-compose build dev-env && docker-compose run --rm dev-env'
-alias sdx='docker-compose build dev-env && docker-compose run --rm -v ${HOME}/.zshrc:${HOME}/.zshrc -v ${HOME}/.zsh/:${HOME}/.zsh/ -v ${HOME}/.zsh_history:${HOME}/.zsh_history dev-env'
 
+alias sde='.devcontainer/initialize-command.sh \
+        && docker compose build --pull dev-env \
+        && docker compose run --rm dev-env \
+            ".devcontainer/post-start-command.sh \
+            && \$0"'
 
-alias ldap-userdetails="ldapsearch-bosch -cn=" # <USER-ID>
+alias sdx='( .devcontainer/initialize-command.sh || true ) \
+        && docker-compose build dev-env \
+        && docker-compose run --rm -v ${HOME}/.zshrc:${HOME}/.zshrc \
+                        -v ${HOME}/.zsh/:${HOME}/.zsh/ \
+                        -v ${HOME}/.env:${HOME}/.env \
+                        -v ${HOME}/.p10k.zsh:${HOME}/.p10k.zsh \
+                        -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
+                        -v ${HOME}/.local/share/:${HOME}/.local/share/ \
+                        -v ${HOME}/.cache/:${HOME}/.cache/ \
+                        dev-env "( .devcontainer/post-start-command.sh || true ) && zsh"'
+
+alias fix-wifi='sudo systemctl restart NetworkManager.service'
+
+alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
 alias ldap-usergroups="ldap-groups" # <USER-ID>
+alias TCCEdit="~/tools/tccEdit/TCCEdit"
+alias tccedit="TCCEdit"
+alias branch='git branch --no-color --show-current'
+alias cruft_sync="cruft update -c $(branch) -y && git add -u ."
 
 ## ansible
 alias ap="ansible-playbook"
 alias ave="ansible-vault encrypt"
 alias avd="ansible-vault decrypt"
+alias dc="docker compose"

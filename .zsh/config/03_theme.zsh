@@ -1,3 +1,5 @@
+alias zshtheme="nano $ZSH/config/03_theme.zsh"
+
 # custom prompt symbol when running in docker container
 # to use this add 'dockerenv' to POWERLEVEL9K_LEFT_PROMPT_ELEMENTS in ~/.p10k.zsh (e.g. before prompt_char)
 function prompt_dockerenv() {

@@ -1,5 +1,6 @@
 # If you come from bash you might have to change your $PATH.
 export PATH=$HOME/bin:/usr/local/bin:$PATH
+alias zshconfig="nano ~/.zshrc"
 
 # Use emacs keybindings even if our EDITOR is set to vi
 bindkey -e

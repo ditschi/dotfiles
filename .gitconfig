@@ -1,6 +1,6 @@
 [user]
-	email = chris@ditschers.de
-	name = Christian Ditscher
+	email = Christian.Ditscher@de.bosch.com
+	name = Ditscher Christian (XC-DX/EAS3)
 
 [color]
     ui = true
@@ -91,6 +91,19 @@
     theirs = "!f() { git co --theirs $@ && git add $@; }; f"
     adda-mirror-update = "!f() { git fetch origin --prune --tags && git push --prune adda +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*; }; f"
     store =  config --global credential.helper store
+	root = rev-parse --show-toplevel
+	rc = rebase --continue
+	r3 = rebase -i HEAD~3
+	r2 = rebase -i HEAD~2
+	r4 = rebase -i HEAD~4
+	ra = rebase --abort
+	r5 = rebase -i HEAD~5
+	l1 = log -1
+	l = log -1
+	l2 = log -2
+	l3 = log -3
+	l4 = log -4
+	l5 = log -5
 
 [merge]
     tool = meld
@@ -152,3 +165,4 @@
 	helper = store
 [safe]
 	directory = /opt/osd/ansible/osd-ansible-custom
+	directory = /opt/osd/ansible/osd-ansible-client

@@ -1,13 +1,15 @@
+alias zshbosch="nano $ZSH/config/01_bosch.zsh"
+
 user=$(whoami)
 if [[ ! $user =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
     echo "Not lodading Bosch config as user '$user' is not matching pattern"
-
     # ensure the default user in .gitconfig
     git config --global user.name "Christian Ditscher"
     git config --global user.email "chris@ditscher.me"
     return
 fi
 echo "User '$user' matches bosch username pattern -> lodading Bosch config"
+SCRIPTDIR=$(dirname "$0")
 
 ### MODIFIED BY OSD-PROXY-PACKAGE BEGIN ###
 
@@ -28,25 +30,27 @@ PS1="${RED}\${KRB_STATUS_MSG}${RESET}${PS1}"
 
 ### MODIFIED BY OSD-PROXY-PACKAGE END ###
 
-
 # set the Bosch user in .gitconfig
 git config --global user.name "Ditscher Christian (XC-DX/EAS3)"
 git config --global user.email "Christian.Ditscher@de.bosch.com"
 
 # proxy setup
 export http_proxy=http://localhost:3128
-export https_proxy=http://localhost:3128
-export ftp_proxy=:http://localhost:3128
+export https_proxy=$http_proxy
+export ftp_proxy=$http_proxy
 export no_proxy=localhost,127.0.0.1,*.microsoftonline.com,*.bosch.com
+export HTTP_PROXY=$http_proxy
+export HTTPS_PROXY=$http_proxy
+export FTP_PROXY=$http_proxy
+export NO_PROXY=$no_proxy
 
 # dev-env setup
 export DOCKER_USER=$(whoami) && export DOCKER_UID=$(id -u) && export DOCKER_GID=$(id -g)
 export CONTAINER_USER=$(whoami) && export CONTAINER_UID=$(id -u) && export CONTAINER_GID=$(id -g)
-export ARTIFACTORY_API_KEY  # from ~/env file
+export ARTIFACTORY_API_KEY  # from ~/.env file
 export CONAN_LOGIN_USERNAME=dci2lr
 
 # functions
-
 alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -h rb-gc-12.de.bosch.com:3268"
 
 ldap-groups() {
@@ -61,22 +65,28 @@ setup-machine() {
 }
 
 groups_list() {
-# usage: 
-#   groups_list -> list groups for current user
-#   groups_list <user>  -> list groups for specific user
+# usage:
+#   groups_list -> list groups for current user
+#   groups_list <user> -> list groups for specific user
     user=$1
     for i in $(id -G $user);do echo "$(getent group $i | cut -d: -f1)" ;done
 }
 
+alias dfs="$SCRIPTDIR/../dfs.sh"
+cdfs() {
+    dir=$(dfs "${@:--clip}")
+    ret=$?
+    [[ -n $dir ]] && cd $dir
+    return $ret
+}
+
 # aliases
-alias zshbosch="nano $ZSH/config/01_bosch.zsh"
 alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BSC2OSD/Change+default+shell+from+bash+to+zsh \n \
     1. sudo nano /etc/sssd/sssd.conf \n \
         default_shell = /bin/bash \n \
         override_shell = /bin/zsh # <- add this \n \
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
-
 
 alias sde='.devcontainer/initialize-command.sh \
         && docker compose build --pull dev-env \
@@ -101,11 +111,9 @@ alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
 alias ldap-usergroups="ldap-groups" # <USER-ID>
 alias TCCEdit="~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
-alias branch='git branch --no-color --show-current'
 alias cruft_sync="cruft update -c $(branch) -y && git add -u ."
 
-## ansible
+# ansible
 alias ap="ansible-playbook"
 alias ave="ansible-vault encrypt"
 alias avd="ansible-vault decrypt"
-alias dc="docker compose"

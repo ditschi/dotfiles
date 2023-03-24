@@ -14,7 +14,7 @@ HOME_DIR = os.path.expanduser("~")
 BACKUP_DIR = os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}")
 
 FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh/", ".zshrc"]
-APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode"
+APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf"
 
 def _source_path(rel_path):
     return os.path.abspath(os.path.join(SCRIPT_DIR, rel_path))

@@ -1,0 +1,14 @@
+
+default_stages: [commit]
+
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks.git
+  rev: v2.5.0
+  hooks:
+  - id: check-added-large-files
+    args: [--maxkb=500]
+  - id: check-case-conflict
+  - id: check-merge-conflict
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
+    args: [--markdown-linebreak-ext=md]

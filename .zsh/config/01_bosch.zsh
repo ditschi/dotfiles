@@ -47,7 +47,6 @@ export NO_PROXY=$no_proxy
 # dev-env setup
 export DOCKER_USER=$(whoami) && export DOCKER_UID=$(id -u) && export DOCKER_GID=$(id -g)
 export CONTAINER_USER=$(whoami) && export CONTAINER_UID=$(id -u) && export CONTAINER_GID=$(id -g)
-export ARTIFACTORY_API_KEY  # from ~/.env file
 export CONAN_LOGIN_USERNAME=dci2lr
 
 # functions
@@ -111,7 +110,8 @@ alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
 alias ldap-usergroups="ldap-groups" # <USER-ID>
 alias TCCEdit="~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
-alias cruft_sync="cruft update -c $(branch) -y && git add -u ."
+alias branch='git branch --no-color --show-current'
+alias cruft_sync='cruft update -c $(branch) -y && git add -u .'
 
 # ansible
 alias ap="ansible-playbook"

@@ -116,6 +116,23 @@ if ! shopt -oq posix; then
   fi
 fi
 
+export EDITOR='nano'
+
+if [ -f ~/.env ]; then
+    . ~/.env
+fi
+
+
+if [ -f ~/dotfiles/.zsh/config/01_bosch.zsh ]; then
+    . ~/dotfiles/.zsh/config/01_bosch.zsh
+fi
+
+if [ -f ~/dotfiles/.zsh/config/01_env.zsh ]; then
+    . ~/dotfiles/.zsh/config/01_env.zsh
+fi
+if [ -f ~/dotfiles/.zsh/config/99_alias.zsh ]; then
+    . ~/dotfiles/.zsh/config/99_alias.zsh
+fi
 echo ""
 echo -e "\033[0;33m\e[1mPlease ensure the required packages are installed to use zsh ;)\033[0m\e[21m"
 echo -e "\033[0;32m\e[1m  sudo apt install zsh git wget autojump fonts-powerline fonts-firacode\033[0m\e[21m"

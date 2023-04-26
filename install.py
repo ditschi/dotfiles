@@ -2,7 +2,14 @@
 import os
 import logging
 import subprocess
+import requests
+import zipfile
 import sys
+import io
+import shutil
+import tempfile
+from urllib.parse import urlparse, unquote
+
 from datetime import datetime
 
 
@@ -33,7 +40,6 @@ def _check_files_to_install():
         logging.error("Paths were specified to be copied but to not exist in this repository: %s", ", ".join(missing_files))
         sys.exit(1)
     logging.info("All required input files were found")
-
 
 
 def _create_backup():
@@ -88,10 +94,76 @@ def _install_software():
     logging.debug(result.stdout)
     # git clone https://github.com/clvv/fasd.git ~/fasd && cd ~/fasd && sudo make install
 
+def _setup_fonts():
+    zips_to_download = [
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/SourceCodePro.zip",
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Hack.zip",
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Meslo.zip"
+
+        ]
+    font_files_to_download = [
+        "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf",
+        "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf",
+        "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf",
+        "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf"
+        ]
+    logging.info(f"Installing fronts by downloading '{len(zips_to_download)}' zip files")
+    for zip in zips_to_download:
+        request = requests.get(zip, allow_redirects=True)
+        zip_file = zipfile.ZipFile(io.BytesIO(request.content))
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            zip_file.extractall(tmp_dirname)
+            _copy_to_font_dir(tmp_dirname)
+
+    logging.info(f"Installing '{len(font_files_to_download)}' fronts by downloading font files")
+    for file_url in font_files_to_download:
+        request = requests.get(file_url, allow_redirects=True)
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            filename = os.path.basename(unquote(file_url))
+            filename = os.path.join(tmp_dirname, filename)
+            with open(filename, "wb") as file:
+                file.write(request.content)
+            _copy_to_font_dir(filename)
+    command = "fc-cache -f -v"
+    logging.info(f"Rebuilding font cache using '{command}'")
+    subprocess.check_call(command, shell=True)
+    logging.info(f"Hint: Remember to configure font 'MesloLGS NF' as default (see https://github.com/romkatv/powerlevel10k/blob/master/font.md)")
+
+
+
+def _copy_to_font_dir(source):
+    font_dir = os.path.expanduser("~/.local/share/fonts")
+    os.makedirs(font_dir, exist_ok=True)
+
+    if os.path.isfile(source):
+        destination = os.path.join(font_dir, os.path.basename(source))
+        logging.debug(f"moving single font file '{source}' to '{font_dir}'")
+        shutil.move(source, destination)
+        return
+
+    logging.debug(f"moving all font files from directory '{source}' to '{font_dir}'")
+    for file in os.listdir(source):
+        file = os.path.join(source, file)
+        destination = os.path.join(font_dir, file)
+        if file.endswith('.ttf') or file.endswith('.otf') or file.endswith('.ttc'):
+            logging.debug(f"moving file '{file}'")
+            shutil.move(file, destination)
+        else:
+            logging.debug(f"skipping file '{file}' without font filetype")
+
+
+
+
+
+
+
 def main():
     _check_files_to_install()
     _create_backup()
     _setup_symlinks()
+    _setup_fonts()
     _install_software()
     logging.info("Finished setup successfully :)")
 

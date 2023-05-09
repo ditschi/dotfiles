@@ -72,6 +72,18 @@ xterm*|rxvt*)
     ;;
 esac
 
+export GIT_PS1_SHOWCONFLICTSTATE=yes
+source /usr/lib/git-core/git-sh-prompt
+source /usr/share/bash-completion/completions/git
+
+
+# Add git branch to commandline
+parse_git_branch() {
+    git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
+}
+export PS1="\u@\h \[\e[32m\]\w \[\e[91m\]\$(parse_git_branch)\[\e[00m\]$ "
+
+
 # enable color support of ls and also add handy aliases
 if [ -x /usr/bin/dircolors ]; then
     test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"

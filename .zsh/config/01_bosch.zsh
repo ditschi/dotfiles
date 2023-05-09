@@ -90,8 +90,12 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
 alias sde='.devcontainer/initialize-command.sh \
         && docker compose build --pull dev-env \
         && docker compose run --rm dev-env \
-            ".devcontainer/post-start-command.sh \
-            && \$0"'
+            ".devcontainer/post-start-command.sh && ( \$0 || bash ) \${@}"'
+
+alias sdb='.devcontainer/initialize-command.sh \
+        && docker compose build --pull dev-env \
+        && docker compose run --rm dev-env \
+            ".devcontainer/post-start-command.sh && bash \${@}"'
 
 alias sdx='( .devcontainer/initialize-command.sh || true ) \
         && docker-compose build dev-env \
@@ -102,9 +106,13 @@ alias sdx='( .devcontainer/initialize-command.sh || true ) \
                         -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
                         -v ${HOME}/.local/share/:${HOME}/.local/share/ \
                         -v ${HOME}/.cache/:${HOME}/.cache/ \
-                        dev-env "( .devcontainer/post-start-command.sh || true ) && zsh"'
+                        dev-env "( .devcontainer/post-start-command.sh || true ) && zsh \${@}"'
 
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
+
+alias kinit-pw='echo $PASSWORD | kinit'
+alias vpn-pw='echo $PASSWORD | osd-vpn-connect -k'
+alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
 alias ldap-usergroups="ldap-groups" # <USER-ID>

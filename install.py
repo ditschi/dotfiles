@@ -74,9 +74,9 @@ def _setup_symlinks():
 
 def _install_software():
     logging.info("Installing default apt packages (%s)", APT_PACKAGES_TO_INSTALL)
-    update_command = f"sudo apt-get update && sudo apt-get install {APT_PACKAGES_TO_INSTALL}"
+    update_command = f"sudo apt-get update"
 
-    setup_command = f"sudo apt-get update && sudo apt-get install {APT_PACKAGES_TO_INSTALL}"
+    setup_command = f"sudo apt-get install -y {APT_PACKAGES_TO_INSTALL}"
 
     try:
         subprocess.run(update_command, check=True, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, encoding='utf-8')

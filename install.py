@@ -18,7 +18,7 @@ timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 HOME_DIR = os.path.expanduser("~")
 BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}"))
 
-FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh", ".zshrc"]
+FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh", ".zshrc", "setup_links_in_container.sh"]
 APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf"
 
 def _source_path(rel_path):

@@ -87,26 +87,42 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
 
-alias sde='.devcontainer/initialize-command.sh \
+alias sde='( .devcontainer/initialize-command.sh || true ) \
         && docker compose build --pull dev-env \
-        && docker compose run --rm dev-env \
-            ".devcontainer/post-start-command.sh && ( \$0 || bash ) \${@}"'
-
-alias sdb='.devcontainer/initialize-command.sh \
-        && docker compose build --pull dev-env \
-        && docker compose run --rm dev-env \
-            ".devcontainer/post-start-command.sh && bash \${@}"'
+        && docker compose run --rm -v ${HOME}/:${HOME}/mnt/home/ dev-env  \
+            " \
+                ( ./.devcontainer/post-start-command.sh || true ) \
+                && bash \${@}  \
+            "'
 
 alias sdx='( .devcontainer/initialize-command.sh || true ) \
+        && docker compose build --pull dev-env \
+        && docker compose run --rm \
+            -v ${HOME}/:/mnt/host_home/ \
+            -v /usr/share/autojump/:/usr/share/autojump/ \
+            dev-env  \
+            " \
+                ( /mnt/host_home/setup_links_in_container.sh  || false ) \
+                && ( ./.devcontainer/post-start-command.sh || true ) \
+                && (  zsh \${@} || bash \${@} ) \
+            "'
+
+alias sdz='( .devcontainer/initialize-command.sh || true ) \
         && docker-compose build dev-env \
-        && docker-compose run --rm -v ${HOME}/.zshrc:${HOME}/.zshrc \
-                        -v ${HOME}/.zsh/:${HOME}/.zsh/ \
-                        -v ${HOME}/.env:${HOME}/.env \
-                        -v ${HOME}/.p10k.zsh:${HOME}/.p10k.zsh \
-                        -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
-                        -v ${HOME}/.local/share/:${HOME}/.local/share/ \
-                        -v ${HOME}/.cache/:${HOME}/.cache/ \
-                        dev-env "( .devcontainer/post-start-command.sh || true ) && zsh \${@}"'
+        && docker-compose run --rm \
+            -v ${HOME}/.zshrc:${HOME}/.zshrc \
+            -v ${HOME}/.zsh/:${HOME}/.zsh/ \
+            -v ${HOME}/.env:${HOME}/.env \
+            -v ${HOME}/.p10k.zsh:${HOME}/.p10k.zsh \
+            -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
+            -v ${HOME}/.local/share/:${HOME}/.local/share/ \
+            -v /usr/share/autojump/:/usr/share/autojump/ \
+            -v ${HOME}/.cache/:${HOME}/.cache/ \
+            dev-env \
+            " \
+                ( ./.devcontainer/post-start-command.sh || true ) \
+                && zsh \${@} \
+            "'
 
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 

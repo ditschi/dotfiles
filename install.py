@@ -8,29 +8,28 @@ import sys
 import io
 import shutil
 import tempfile
-from urllib.parse import urlparse, unquote
-
+from urllib.parse import unquote
 from datetime import datetime
-
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 HOME_DIR = os.path.expanduser("~")
-BACKUP_DIR = os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}")
+BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}"))
 
-FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh/", ".zshrc"]
+FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh", ".zshrc"]
 APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf"
 
 def _source_path(rel_path):
-    return os.path.abspath(os.path.join(SCRIPT_DIR, rel_path))
+    return os.path.realpath(os.path.join(SCRIPT_DIR, rel_path))
 
 def _home_path(rel_path):
-    return os.path.abspath(os.path.join(HOME_DIR, rel_path))
+    return os.path.join(os.path.realpath(HOME_DIR), rel_path)
+
 
 def _backup_path(rel_path):
-    return os.path.abspath(os.path.join(BACKUP_DIR, rel_path))
+    return os.path.join(BACKUP_DIR, rel_path)
 
 
 def _check_files_to_install():
@@ -69,13 +68,16 @@ def _setup_symlinks():
     for to_symlink in FILES_TO_INSTALL:
         source_path = _source_path(to_symlink)
         symlink_path = _home_path(to_symlink)
+        logging.debug("      source_path '%s'", source_path)
+        logging.debug("      symlink_path '%s'", symlink_path)
+
+        relative_link = os.path.relpath(source_path, os.path.dirname(symlink_path))
         if os.path.islink(symlink_path):
             logging.debug("removing existing symlink '%s'", symlink_path)
             os.remove(symlink_path)
-        logging.debug("creating symlink '%s' -> '%s'", source_path, symlink_path)
-        os.symlink(source_path, symlink_path, target_is_directory=os.path.isdir(source_path))
+        logging.debug("creating symlink '%s' -> '%s'", symlink_path, relative_link)
+        os.symlink(relative_link, symlink_path, target_is_directory=os.path.isdir(source_path))
     logging.info("Successfully set up symlinks for dotfiles in %s", HOME_DIR)
-
 
 
 def _install_software():
@@ -93,6 +95,7 @@ def _install_software():
     logging.info("Successfully installed apt packages")
     logging.debug(result.stdout)
     # git clone https://github.com/clvv/fasd.git ~/fasd && cd ~/fasd && sudo make install
+
 
 def _setup_fonts():
     zips_to_download = [
@@ -132,7 +135,6 @@ def _setup_fonts():
     logging.info(f"Hint: Remember to configure font 'MesloLGS NF' as default (see https://github.com/romkatv/powerlevel10k/blob/master/font.md)")
 
 
-
 def _copy_to_font_dir(source):
     font_dir = os.path.expanduser("~/.local/share/fonts")
     os.makedirs(font_dir, exist_ok=True)
@@ -154,11 +156,6 @@ def _copy_to_font_dir(source):
             logging.debug(f"skipping file '{file}' without font filetype")
 
 
-
-
-
-
-
 def main():
     _check_files_to_install()
     _create_backup()
@@ -173,6 +170,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logging.error("Installation was aborted by user")
-
-
-#

@@ -1,5 +1,7 @@
 alias zshalias="nano $ZSH/config/99_alias.zsh"
 
+alias update-dotfiles="cd ~/dotfiles/ && git pull && cd -"
+
 alias python='python3'
 alias docker-compose='docker compose'
 alias dc='docker compose'
@@ -19,4 +21,3 @@ alias g='git'
 
 alias ipv6-disable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1'
 alias ipv6-enable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
-

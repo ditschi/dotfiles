@@ -59,6 +59,7 @@ ldap-groups() {
 
 setup-machine() {
     machine=$1
+    ssh-copy-id $machine
     scp -r ~/.ssh dci2lr@$machine:~/
     scp -r ~/dotfiles dci2lr@$machine:~/
 }
@@ -102,7 +103,7 @@ alias sdx='( .devcontainer/initialize-command.sh || true ) \
             -v /usr/share/autojump/:/usr/share/autojump/ \
             dev-env  \
             " \
-                ( /mnt/host_home/setup_links_in_container.sh  || false ) \
+                ( /mnt/host_home/setup_links_in_container.sh  || true ) \
                 && ( ./.devcontainer/post-start-command.sh || true ) \
                 && (  zsh \${@} || bash \${@} ) \
             "'

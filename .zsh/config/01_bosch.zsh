@@ -124,6 +124,27 @@ alias sdz='( .devcontainer/initialize-command.sh || true ) \
                 && zsh \${@} \
             "'
 
+function ra6-setup-variant() {
+    variant=${1:-$variant}
+    ./tools/jenkins/shared/scripts/conan-install.sh . $variant $variant $(basename -s .git `git config --get remote.origin.url`)
+    ./tools/jenkins/shared/scripts/setup_and_configure.sh . $variant
+}
+function ra6-build-variant() {
+    variant=${1:-$variant}
+    command="./tools/jenkins/shared/scripts/build-cmake.sh . $variant $variant"
+    eval $command || ra6-setup-variant $variant && eval $command $variant
+}
+function ra6-clean-variant() {
+    variant=${1:-$variant}
+    rm -rf ./build/$variant
+}
+function ra6-helix-gui() {
+    variant=${1:-$variant}
+    command="cmake --build  --preset=$variant --target qac_daad_gui -- -dkeepdepfile"
+    eval $command || echo "\n\n\n\n\n[WARNING] Retrying with setup" && ra6-setup-variant $variant && eval $command
+}
+
+
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 
 alias kinit-pw='echo $PASSWORD | kinit'

@@ -21,3 +21,24 @@ alias g='git'
 
 alias ipv6-disable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1'
 alias ipv6-enable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
+
+
+store-password() {
+    if [ -n "$1" ]; then
+        user="$1"
+    else
+        user="$(whoami)"
+    fi
+
+    secret-tool store --label "User Credentials" password "$user"
+}
+
+get-password() {
+    if [ -n "$1" ]; then
+        user="$1"
+    else
+        user="$(whoami)"
+    fi
+
+    secret-tool lookup password "$user"
+}

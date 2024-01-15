@@ -16,14 +16,14 @@ alias xla='ls -A'
 alias xl='ls -CF'
 
 alias branch='git branch --no-color --show-current'
-
+alias issue='git rev-parse --abbrev-ref HEAD | grep -Eo "[A-Z]+-[0-9]+"'
 alias g='git'
 
 alias ipv6-disable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1'
 alias ipv6-enable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
 
 
-store-password() {
+set-password() {
     if [ -n "$1" ]; then
         user="$1"
     else

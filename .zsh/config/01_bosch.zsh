@@ -31,14 +31,14 @@ PS1="${RED}\${KRB_STATUS_MSG}${RESET}${PS1}"
 ### MODIFIED BY OSD-PROXY-PACKAGE END ###
 
 # set the Bosch user in .gitconfig
-git config --global user.name "Ditscher Christian (XC-DX/EAS3)"
+git config --global user.name "Ditscher Christian (XC-AS/EDE3)"
 git config --global user.email "Christian.Ditscher@de.bosch.com"
 
 # proxy setup
 export http_proxy=http://localhost:3128
 export https_proxy=$http_proxy
 export ftp_proxy=$http_proxy
-export no_proxy=localhost,127.0.0.1,*.microsoftonline.com,*.bosch.com
+export no_proxy=localhost,127.0.0.1,127.*,172.*,10.*,de.bosch.com,apac.bosch.com,emea.bosch.com,us.bosch.com,bosch.cloud,rb-artifactory.bosch.com,sourcecode01.de.bosch.com,sourcecode.socialcoding.bosch.com,sourcecode06.dev.bosch.com
 export HTTP_PROXY=$http_proxy
 export HTTPS_PROXY=$http_proxy
 export FTP_PROXY=$http_proxy

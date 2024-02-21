@@ -18,11 +18,21 @@ timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 HOME_DIR = os.path.expanduser("~")
 BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}"))
 
-FILES_TO_INSTALL = [".bashrc", ".gitconfig", ".p10k.zsh", ".zprofile", ".zsh", ".zshrc", "setup_links_in_container.sh"]
+FILES_TO_INSTALL = [
+    ".bashrc",
+    ".gitconfig",
+    ".p10k.zsh",
+    ".zprofile",
+    ".zsh",
+    ".zshrc",
+    "setup_links_in_container.sh"
+                    ]
 APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf"
+
 
 def _source_path(rel_path):
     return os.path.realpath(os.path.join(SCRIPT_DIR, rel_path))
+
 
 def _home_path(rel_path):
     return os.path.join(os.path.realpath(HOME_DIR), rel_path)
@@ -34,7 +44,7 @@ def _backup_path(rel_path):
 
 def _check_files_to_install():
     logging.debug("Checking to be installed files")
-    missing_files = [ to_install for to_install in FILES_TO_INSTALL if not os.path.exists(_source_path(to_install)) ]
+    missing_files = [to_install for to_install in FILES_TO_INSTALL if not os.path.exists(_source_path(to_install))]
     if missing_files:
         logging.error("Paths were specified to be copied but to not exist in this repository: %s", ", ".join(missing_files))
         sys.exit(1)
@@ -82,7 +92,7 @@ def _setup_symlinks():
 
 def _install_software():
     logging.info("Installing default apt packages (%s)", APT_PACKAGES_TO_INSTALL)
-    update_command = f"sudo apt-get update"
+    update_command = "sudo apt-get update"
 
     setup_command = f"sudo apt-get install -y {APT_PACKAGES_TO_INSTALL}"
 
@@ -157,11 +167,21 @@ def _copy_to_font_dir(source):
 
 
 def main():
-    _check_files_to_install()
-    _create_backup()
-    _setup_symlinks()
-    _setup_fonts()
-    _install_software()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--container", action="store_true", help="Run setup inside container")
+    args = parser.parse_args()
+
+    if args.container:
+        _check_files_to_install()
+        _create_backup()
+        _setup_symlinks()
+    else:
+        _check_files_to_install()
+        _create_backup()
+        _setup_symlinks()
+        _setup_fonts()
+        _install_software()
     logging.info("Finished setup successfully :)")
 
 

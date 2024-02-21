@@ -32,7 +32,7 @@ PS1="${RED}\${KRB_STATUS_MSG}${RESET}${PS1}"
 
 # set the Bosch user in .gitconfig
 git config --global user.name "Ditscher Christian (XC-AS/EDE3)"
-git config --global user.email "Christian.Ditscher@de.bosch.com"
+git config --global user.email "dci2lr@bosch.com"
 
 # proxy setup
 export http_proxy=http://localhost:3128
@@ -114,6 +114,7 @@ alias sdz='( .devcontainer/initialize-command.sh || true ) \
             -v ${HOME}/.zshrc:${HOME}/.zshrc \
             -v ${HOME}/.zsh/:${HOME}/.zsh/ \
             -v ${HOME}/.env:${HOME}/.env \
+            -v ${HOME}/.netrc:${HOME}/.netrc \
             -v ${HOME}/.p10k.zsh:${HOME}/.p10k.zsh \
             -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
             -v ${HOME}/.local/share/:${HOME}/.local/share/ \
@@ -154,7 +155,7 @@ alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
 alias ldap-usergroups="ldap-groups" # <USER-ID>
-alias TCCEdit="~/tools/tccEdit/TCCEdit"
+alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
 alias branch='git branch --no-color --show-current'
 alias cruft_sync='cruft update -c $(branch) -y && git add -u .'

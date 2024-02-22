@@ -1,36 +1,43 @@
 alias zshplugins="nano $ZSH/config/02_plugins.zsh"
 
-ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=5'
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#ff00ff,bg=cyan,bold,underline"
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8,bg=0,bold,underline'
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
-. /usr/share/autojump/autojump.sh
+zinit light hcgraf/zsh-sudo
+zinit light zdharma/fast-syntax-highlighting
+zinit light zpm-zsh/undollar
+zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-completions
+zinit light zsh-users/zsh-history-substring-search
+zinit light agkozak/zsh-z
+zinit light paulirish/git-open
 
-# zinit pack"binary" for fzf
+zinit as"program" for paulirish/git-recent
+zinit as"program" from"gh-r" for eza-community/eza
 
-zinit wait lucid light-mode for \
-  blockf atpull'zinit creinstall -q .' \
-    zsh-users/zsh-completions \
-  atinit'zicompinit' \
-    Aloxaf/fzf-tab \
-  atinit'zicompinit; zicdreplay' \
-    zdharma-continuum/fast-syntax-highlighting \
-  atload'_zsh_autosuggest_start; bindkey "$key[Up]" history-beginning-search-backward; bindkey "$key[Down]" history-beginning-search-forward' \
-    zsh-users/zsh-autosuggestions \
-  hcgraf/zsh-sudo \
-  arzzen/calc.plugin.zsh \
-  zpm-zsh/undollar
+zinit as"command" pick"git-recall" for Fakerr/git-recall
 
+zinit ice as"command" from"gh-r" mv"fd* -> fd" pick"fd/fd"
+zinit light sharkdp/fd
+
+zinit as"program" from"gh-r" for junegunn/fzf-bin
+zinit light Aloxaf/fzf-tab
 # disable sort when completing `git checkout`
 zstyle ':completion:*:git-checkout:*' sort false
 # set descriptions format to enable group support
 zstyle ':completion:*:descriptions' format '[%d]'
 # set list-colors to enable filename colorizing
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-# preview directory's content with exa when completing cd
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'exa -1 --color=always $realpath'
+# preview directory's content with eza when completing cd
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
 # switch group using `,` and `.`
 zstyle ':fzf-tab:*' switch-group ',' '.'
+zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
 
+# https://github.com/zdharma-continuum/zsh-diff-so-fancy
+# zplugin ice as"program" pick"bin/git-dsf"
+# zplugin light zdharma-continuum/zsh-diff-so-fancy
 
 # marlonrichert/zsh-autocomplete \
 # as"program" pick"bin/git-fuzzy" \

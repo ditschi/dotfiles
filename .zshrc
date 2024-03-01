@@ -44,6 +44,17 @@ autoload -Uz _zinit
 # load customisation
 [[ ! -f ~/.env ]] || source ~/.env
 
+# cheheck for dofile update
+if [ -d ~/dotfiles ]; then
+    pushd ~/dotfiles
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    git fetch
+    if [ $(git rev-list --count HEAD..origin/$current_branch) -gt 0 ]; then
+        echo "Hint: There are updates for dotfiles available."
+    fi
+    popd
+fi
+
 export ZSH=~/.zsh
 # Requirements:
 #  sudo apt install zsh git wget autojump fzf fonts-powerline fonts-firacode

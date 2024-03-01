@@ -22,6 +22,7 @@ FILES_TO_INSTALL = [
     ".bashrc",
     ".gitconfig",
     ".p10k.zsh",
+    ".tmux.conf",
     ".zprofile",
     ".zsh",
     ".zshrc",

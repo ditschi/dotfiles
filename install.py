@@ -28,7 +28,7 @@ FILES_TO_INSTALL = [
     ".zshrc",
     "setup_links_in_container.sh"
                     ]
-APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf"
+APT_PACKAGES_TO_INSTALL = "zsh git wget autojump fonts-powerline fonts-firacode fzf libsecret-tools"
 
 
 def _source_path(rel_path):

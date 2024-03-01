@@ -149,8 +149,8 @@ function ra6-helix-gui() {
 
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 
-alias kinit-pw='echo $(get-password) | kinit'
-alias vpn-pw='echo $(get-password) | osd-vpn-connect -k'
+alias kinit-pw='echo $(get-password || echo $PASSWORD) | kinit'
+alias vpn-pw='echo $(get-password || echo $PASSWORD) | osd-vpn-connect -k'
 alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>

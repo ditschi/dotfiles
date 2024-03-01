@@ -46,13 +46,13 @@ autoload -Uz _zinit
 
 # cheheck for dofile update
 if [ -d ~/dotfiles ]; then
-    pushd ~/dotfiles
+    pushd ~/dotfiles > /dev/null
     current_branch=$(git rev-parse --abbrev-ref HEAD)
     git fetch
     if [ $(git rev-list --count HEAD..origin/$current_branch) -gt 0 ]; then
         echo "Hint: There are updates for dotfiles available."
     fi
-    popd
+    popd > /dev/null
 fi
 
 export ZSH=~/.zsh

@@ -1,4 +1,4 @@
-alias zshalias="nano $ZSH/config/99_alias.zsh"
+alias zshalias="nano $ZSH/config/00_alias.zsh"
 
 alias update-dotfiles="cd ~/dotfiles/ && git pull && cd -"
 

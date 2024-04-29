@@ -3,7 +3,7 @@
 DEBUG=false
 
 log() {
-    if [ "$DEBUG" = true ]
+    if [ "$DEBUG" = "true" ]
     then
         echo $1
     fi

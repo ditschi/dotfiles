@@ -149,8 +149,8 @@ function ra6-helix-gui() {
 
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 
-alias kinit-pw='echo $(get-password &>/dev/null || echo $PASSWORD) | kinit'
-alias vpn-pw='echo $(get-password &>/dev/null || echo $PASSWORD) | osd-vpn-connect -k'
+alias kinit-pw='echo $(get-password 3>/dev/null || echo $PASSWORD) | kinit'
+alias vpn-pw='echo $(get-password 3>/dev/null || echo $PASSWORD) | osd-vpn-connect -k'
 alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
@@ -164,6 +164,5 @@ alias cruft_sync='cruft update -c $(branch) -y && git add -u .'
 alias ap="ansible-playbook"
 alias ave="ansible-vault encrypt"
 alias avd="ansible-vault decrypt"
-
 
 kinit-pw

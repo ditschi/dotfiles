@@ -88,43 +88,96 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
 
-alias sde='( .devcontainer/initialize-command.sh || true ) \
-        && docker compose build --pull dev-env \
-        && docker compose run --rm -v ${HOME}/:${HOME}/mnt/home/ dev-env  \
-            " \
-                ( ./.devcontainer/post-start-command.sh || true ) \
-                && bash \${@}  \
-            "'
 
-alias sdx='( .devcontainer/initialize-command.sh || true ) \
-        && docker compose build --pull dev-env \
-        && docker compose run --rm \
-            -v ${HOME}/:/mnt/host_home/ \
-            -v /usr/share/autojump/:/usr/share/autojump/ \
-            dev-env  \
-            " \
-                ( /mnt/host_home/setup_links_in_container.sh  || true ) \
-                && ( ./.devcontainer/post-start-command.sh || true ) \
-                && (  zsh \${@} || bash \${@} ) \
-            "'
+sde() {
+    COMMAND="$@"
+    if [ -f .devcontainer/initialize-command.sh ]; then
+        ./.devcontainer/initialize-command.sh
+    else
+        echo '.devcontainer/initialize-command.sh not found, skipping execution'
+    fi
 
-alias sdz='( .devcontainer/initialize-command.sh || true ) \
-        && docker-compose build dev-env \
-        && docker-compose run --rm \
-            -v ${HOME}/.zshrc:${HOME}/.zshrc \
-            -v ${HOME}/.zsh/:${HOME}/.zsh/ \
-            -v ${HOME}/.env:${HOME}/.env \
-            -v ${HOME}/.netrc:${HOME}/.netrc \
-            -v ${HOME}/.p10k.zsh:${HOME}/.p10k.zsh \
-            -v ${HOME}/.zsh_history:${HOME}/.zsh_history \
-            -v ${HOME}/.local/share/:${HOME}/.local/share/ \
-            -v /usr/share/autojump/:/usr/share/autojump/ \
-            -v ${HOME}/.cache/:${HOME}/.cache/ \
-            dev-env \
-            " \
-                ( ./.devcontainer/post-start-command.sh || true ) \
-                && zsh \${@} \
-            "'
+    docker compose build --pull dev-env
+    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" dev-env \
+        "
+            if [ -f ./.devcontainer/post-start-command.sh ]; then
+                ./.devcontainer/post-start-command.sh
+            else
+                echo '.devcontainer/post-start-command.sh not found, skipping execution'
+            fi \
+            && if [ -z \"$COMMAND\" ]; then
+                exec bash
+            else
+                bash -c \"$COMMAND\"
+            fi
+        "
+}
+
+sdx() {
+    COMMAND="$@"
+    if [ -f .devcontainer/initialize-command.sh ]; then
+        ./.devcontainer/initialize-command.sh
+    else
+        echo '.devcontainer/initialize-command.sh not found, skipping execution'
+    fi
+
+    docker compose build --pull dev-env
+    docker compose run --rm \
+        -v "${HOME}/:/mnt/host_home/" \
+        -v "/usr/share/autojump/:/usr/share/autojump/" \
+        dev-env \
+        "
+            if [ -f /mnt/host_home/setup_links_in_container.sh ]; then
+                /mnt/host_home/setup_links_in_container.sh
+            else
+                echo '/mnt/host_home/setup_links_in_container.sh not found, skipping execution'
+            fi \
+            && if [ -f ./.devcontainer/post-start-command.sh ]; then
+                ./.devcontainer/post-start-command.sh
+            else
+                echo '.devcontainer/post-start-command.sh not found, skipping execution'
+            fi \
+            && if [ -z \"$COMMAND\" ]; then
+                exec zsh || exec bash
+            else
+                zsh -c \"$COMMAND\" || bash -c \"$COMMAND\"
+            fi
+        "
+}
+
+sdz() {
+    COMMAND="$@"
+    if [ -f .devcontainer/initialize-command.sh ]; then
+        ./.devcontainer/initialize-command.sh
+    else
+        echo '.devcontainer/initialize-command.sh not found, skipping execution'
+    fi
+
+    docker-compose build dev-env
+    docker-compose run --rm \
+        -v "${HOME}/.zshrc:${HOME}/.zshrc" \
+        -v "${HOME}/.zsh/:${HOME}/.zsh/" \
+        -v "${HOME}/.env:${HOME}/.env" \
+        -v "${HOME}/.netrc:${HOME}/.netrc" \
+        -v "${HOME}/.p10k.zsh:${HOME}/.p10k.zsh" \
+        -v "${HOME}/.zsh_history:${HOME}/.zsh_history" \
+        -v "${HOME}/.local/share/:${HOME}/.local/share/" \
+        -v "/usr/share/autojump/:/usr/share/autojump/" \
+        -v "${HOME}/.cache/:${HOME}/.cache/" \
+        dev-env \
+        "
+            if [ -f ./.devcontainer/post-start-command.sh ]; then
+                ./.devcontainer/post-start-command.sh
+            else
+                echo '.devcontainer/post-start-command.sh not found, skipping execution'
+            fi \
+            && if [ -z \"$COMMAND\" ]; then
+                exec zsh || exec bash
+            else
+                zsh -c \"$COMMAND\" || bash -c \"$COMMAND\"
+            fi
+        "
+}
 
 function ra6-setup-variant() {
     variant=${1:-$variant}

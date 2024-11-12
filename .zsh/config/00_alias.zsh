@@ -42,3 +42,10 @@ get-password() {
 
     secret-tool lookup password "$user"
 }
+
+clone_org_repos() {
+  local OWNER=$1
+  for repo in $(gh repo list $OWNER --limit 1000 --json name --jq '.[].name'); do
+    gh repo clone $OWNER/$repo
+  done
+}

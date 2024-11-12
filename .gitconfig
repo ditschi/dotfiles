@@ -134,6 +134,7 @@
     auto = 256
 [init]
 	templateDir = /home/dci2lr/.git-template
+	defaultBranch = main
 [help]
     autocorrect = 1
 [status]

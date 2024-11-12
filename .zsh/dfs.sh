@@ -1,16 +1,16 @@
 #!/bin/bash
- 
+
 set -e
- 
+
 BOSCH_BASE_SERVER='\\bosch.com\dfsrb'
- 
+
 VERSION='1.0'
 USER="$USER"
 WORKGROUP='DE'
- 
+
 MNTDIR="/tmp/mnt"
 MNTBASEDIR="${MNTDIR}/bosch.com/dfsrb"
- 
+
 function usage(){
     >&2 echo "Usage: dfs.sh [OPTIONS] [LINK]"
     >&2 echo "OPTIONS:"
@@ -18,11 +18,11 @@ function usage(){
     >&2 echo "    -u            Unmount all mounted directories"
     >&2 echo "    --help        Print this help"
 }
- 
+
 function isBaseMounted(){
     mount | grep -q "${BOSCH_BASE_SERVER//\\/\\\\}"
 }
- 
+
 function umountBase(){
     if isBaseMounted; then
         sudo umount "$BOSCH_BASE_SERVER"
@@ -34,7 +34,7 @@ function umountBase(){
         >&2 echo "Already unmounted!"
     fi
 }
- 
+
 function mountLink() {
     link=$1
     [[ -z $link ]] && usage && exit 1
@@ -47,7 +47,7 @@ function mountLink() {
     fi
     echo "$MNTBASEDIR/$path"
 }
- 
+
 while [ $# -gt 0 ]; do
     case $1 in
         "-clip")

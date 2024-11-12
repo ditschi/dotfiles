@@ -1,14 +1,13 @@
-alias zshbosch="nano $ZSH/config/01_bosch.zsh"
+alias zshwork="nano $0"
 
-user=$(whoami)
-if [[ ! $user =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
-    echo "Not lodading Bosch config as user '$user' is not matching pattern"
+if [[ "$WORK_SETUP" != "true" ]]; then # WORK_SETUP is set by LOADER
+    echo "Not loading work config as username is not matching pattern"
     # ensure the default user in .gitconfig
     git config --global user.name "Christian Ditscher"
     git config --global user.email "chris@ditscher.me"
     return
 fi
-echo "User '$user' matches bosch username pattern -> lodading Bosch config"
+
 SCRIPTDIR=$(dirname "$0")
 
 ### MODIFIED BY OSD-PROXY-PACKAGE BEGIN ###
@@ -17,7 +16,7 @@ SCRIPTDIR=$(dirname "$0")
 PROMPT_COMMAND=__prompt_command
 
 __prompt_command() {
-    if klist -s ; then
+    if klist -s; then
         export KRB_STATUS_MSG=""
     else
         export KRB_STATUS_MSG="(No Kerberos token, run kinit) "
@@ -65,11 +64,11 @@ setup-machine() {
 }
 
 groups_list() {
-# usage:
-#   groups_list -> list groups for current user
-#   groups_list <user> -> list groups for specific user
+    # usage:
+    #   groups_list -> list groups for current user
+    #   groups_list <user> -> list groups for specific user
     user=$1
-    for i in $(id -G $user);do echo "$(getent group $i | cut -d: -f1)" ;done
+    for i in $(id -G $user); do echo "$(getent group $i | cut -d: -f1)"; done
 }
 
 alias dfs="$SCRIPTDIR/../dfs.sh"
@@ -87,7 +86,6 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
         override_shell = /bin/zsh # <- add this \n \
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
-
 
 sde() {
     COMMAND="$@"
@@ -181,7 +179,7 @@ sdz() {
 
 function ra6-setup-variant() {
     variant=${1:-$variant}
-    ./tools/jenkins/shared/scripts/conan-install.sh . $variant $variant $(basename -s .git `git config --get remote.origin.url`)
+    ./tools/jenkins/shared/scripts/conan-install.sh . $variant $variant $(basename -s .git $(git config --get remote.origin.url))
     ./tools/jenkins/shared/scripts/setup_and_configure.sh . $variant
 }
 function ra6-build-variant() {
@@ -199,7 +197,6 @@ function ra6-helix-gui() {
     eval $command || echo "\n\n\n\n\n[WARNING] Retrying with setup" && ra6-setup-variant $variant && eval $command
 }
 
-
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 
 alias kinit-pw='echo $(get-password 3>/dev/null || echo $PASSWORD) | kinit'
@@ -207,7 +204,7 @@ alias vpn-pw='echo $(get-password 3>/dev/null || echo $PASSWORD) | osd-vpn-conne
 alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
-alias ldap-usergroups="ldap-groups" # <USER-ID>
+alias ldap-usergroups="ldap-groups"           # <USER-ID>
 alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
 alias branch='git branch --no-color --show-current'

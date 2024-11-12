@@ -1,4 +1,4 @@
-alias zshtheme="nano $ZSH/config/03_theme.zsh"
+alias zshtheme="nano $0"
 
 # custom prompt symbol when running in docker container
 # to use this add 'dockerenv' to POWERLEVEL9K_LEFT_PROMPT_ELEMENTS in ~/.p10k.zsh (e.g. before prompt_char)
@@ -13,7 +13,6 @@ function prompt_dockerenv() {
 zinit ice depth="1"
 zinit light romkatv/powerlevel10k
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-
 
 zinit ice atclone"dircolors -b LS_COLORS > clrs.zsh" \
     atpull'%atclone' pick"clrs.zsh" nocompile'!' \

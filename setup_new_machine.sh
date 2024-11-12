@@ -18,7 +18,6 @@ sudo apt install \
     wget \
     zsh
 
-
 pip install \
     pre-commit \
     pipenv \

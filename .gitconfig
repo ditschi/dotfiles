@@ -1,6 +1,6 @@
 [user]
-	email = dci2lr@bosch.com
-	name = Ditscher Christian (XC-AS/EDE3)
+	email = chris@ditscher.me
+	name = Christian Ditscher
 
 [color]
     ui = true
@@ -41,7 +41,6 @@
     smb = "!f() { pushd "./$1/" ; git fetch ; git branch -r --contains $2; popd; } ; f"
     # revoves a submodule and makes the files native in the repo
     rmsm = "!f() { mv $1 $1_tmp ; git submodule deinit $1 ; git rm --cached $1 ; mv $1_tmp $1 ; git add $1; } ; f"
-
 
     ca = commit --amend -C HEAD
     caa =  "!git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -t git add ; git commit --amend  "$@" -C HEAD"

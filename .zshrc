@@ -12,20 +12,7 @@ alias zshconfig="nano ~/.zshrc"
 # Use emacs keybindings even if our EDITOR is set to vi
 bindkey -e
 
-export HISTFILE=~/.zsh_history
-export HISTSIZE=50000
-export SAVEHIST=60000     # Zsh recommended value 1.2 * SAVEHIST
-export HISTTIMEFORMAT="[%F %T] "
-setopt extended_history       # record timestamp of command in HISTFILE
-setopt hist_verify            # show command with history expansion to user before running it
-setopt hist_expire_dups_first # delete duplicates first when HISTFILE size exceeds HISTSIZE
-setopt hist_ignore_space      # ignore commands that start with space
-setopt hist_find_no_dups
-setopt share_history          # share command history data
-# following should be turned off, if sharing history via setopt SHARE_HISTORY
-#setopt inc_append_history
 ENABLE_CORRECTION="true"
-
 
 ### Added by Zinit's installer
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
@@ -40,9 +27,6 @@ autoload -Uz _zinit
 (( ${+_comps} )) && _comps[zinit]=_zinit
 ### End of Zinit's installer chunk
 
-
-# load customisation
-[[ ! -f ~/.env ]] || source ~/.env
 
 # cheheck for dofile update
 if [ -d ~/dotfiles ]; then

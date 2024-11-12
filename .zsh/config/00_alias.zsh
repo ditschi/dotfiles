@@ -1,4 +1,4 @@
-alias zshalias="nano $ZSH/config/00_alias.zsh"
+alias zshalias="nano $0"
 
 alias update-dotfiles="cd ~/dotfiles/ && git pull && cd -"
 
@@ -6,14 +6,14 @@ alias python='python3'
 alias docker-compose='docker compose'
 alias dc='docker compose'
 
+# enable color support of ls and other tools
 alias ls='ls --color=auto'
-alias ll='ls -l --color=auto'
+alias ll='ls -alF --color=auto'
 alias la='ls -a --color=auto'
-alias lla='ls -la --color=auto'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
 
-alias xll='ls -alF'
-alias xla='ls -A'
-alias xl='ls -CF'
 
 alias branch='git branch --no-color --show-current'
 alias issue='git rev-parse --abbrev-ref HEAD | grep -Eo "[A-Z]+-[0-9]+"'

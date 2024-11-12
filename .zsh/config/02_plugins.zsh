@@ -1,4 +1,4 @@
-alias zshplugins="nano $ZSH/config/02_plugins.zsh"
+alias zshplugins="nano $0"
 
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#ff00ff,bg=cyan,bold,underline"
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8,bg=0,bold,underline'

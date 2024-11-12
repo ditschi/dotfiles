@@ -1,4 +1,4 @@
-alias zshheys="nano $ZSH/config/04_keybindings.zsh"
+alias zshheys="nano $0"
 
 bindkey "^[[3~" delete-char
 bindkey "^[[H" beginning-of-line

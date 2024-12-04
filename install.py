@@ -186,7 +186,8 @@ def _setup_fonts():
     logging.info(f"Rebuilding font cache using '{command}'")
     subprocess.check_call(command, shell=True)
     logging.info(
-        f"Hint: Remember to configure font 'MesloLGS NF' as default (see https://github.com/romkatv/powerlevel10k/blob/master/font.md)"
+        "Hint: Remember to configure font 'MesloLGS NF' as default "
+        + "(see https://github.com/romkatv/powerlevel10k/blob/master/font.md)"
     )
 
 

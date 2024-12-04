@@ -50,21 +50,21 @@ function mountLink() {
 
 while [ $# -gt 0 ]; do
     case $1 in
-    "-clip")
-        link=$(xclip -out)
-        echo >&2 "Using link from clipboard: $link"
-        ;;
-    "--help")
-        usage
-        exit 0
-        ;;
-    "-u")
-        CMD="umountBase"
-        ;;
-    *)
-        [[ -n $link ]] && echo >&2 "Error: Multiple links given!" && usage && exit 1
-        link="$1"
-        ;;
+        "-clip")
+            link=$(xclip -out)
+            echo >&2 "Using link from clipboard: $link"
+            ;;
+        "--help")
+            usage
+            exit 0
+            ;;
+        "-u")
+            CMD="umountBase"
+            ;;
+        *)
+            [[ -n $link ]] && echo >&2 "Error: Multiple links given!" && usage && exit 1
+            link="$1"
+            ;;
     esac
     shift
 done

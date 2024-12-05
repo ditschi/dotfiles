@@ -1,6 +1,6 @@
 alias zshalias="nano $0"
 
-alias update-dotfiles="cd ~/dotfiles/ && git pull && cd -"
+alias update-dotfiles="cd ~/dotfiles/ && git co -- .gitconfig && git pull && cd -"
 
 alias python='python3'
 alias docker-compose='docker compose'

@@ -6,8 +6,12 @@ log() {
     fi
 }
 
-if [[ ! $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
+if [[ $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
     export WORK_SETUP="true"
+    echo "Loading work config as username '$(whoami)' is matching pattern"
+else
+    echo "Not loading work config as username '$(whoami)' is not matching pattern"
+
 fi
 
 for __file__ in $ZSH/config/*.zsh; do

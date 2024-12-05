@@ -1,7 +1,6 @@
 alias zshwork="nano $0"
 
 if [[ "$WORK_SETUP" != "true" ]]; then # WORK_SETUP is set by LOADER
-    echo "Not loading work config as username is not matching pattern"
     # ensure the default user in .gitconfig
     git config --global user.name "Christian Ditscher"
     git config --global user.email "chris@ditscher.me"

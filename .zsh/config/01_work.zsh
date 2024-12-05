@@ -125,10 +125,10 @@ sdx() {
         -v "/usr/share/autojump/:/usr/share/autojump/" \
         dev-env \
         "
-            if [ -f /mnt/host_home/setup_links_in_container.sh ]; then
-                /mnt/host_home/setup_links_in_container.sh
+            if [ -f /mnt/host_home/dotfiles/install.py ]; then
+                python3 /mnt/host_home/dotfiles/install.py
             else
-                echo '/mnt/host_home/setup_links_in_container.sh not found, skipping execution'
+                echo '/mnt/host_home/dotfiles/install.py not found, skipping execution'
             fi \
             && if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh
@@ -158,7 +158,7 @@ sdz() {
         -v "${HOME}/.env:${HOME}/.env" \
         -v "${HOME}/.netrc:${HOME}/.netrc" \
         -v "${HOME}/.p10k.zsh:${HOME}/.p10k.zsh" \
-        -v "${HOME}/.zsh_history:${HOME}/.zsh_history" \
+        -v "${HOME}/.shared_history:${HOME}/.shared_history" \
         -v "${HOME}/.local/share/:${HOME}/.local/share/" \
         -v "/usr/share/autojump/:/usr/share/autojump/" \
         -v "${HOME}/.cache/:${HOME}/.cache/" \

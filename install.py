@@ -31,17 +31,33 @@ FILES_TO_INSTALL = [
     ".zshrc",
     "setup_links_in_container.sh",
 ]
+
 APT_PACKAGES_TO_INSTALL = [
     "autojump",
+    "curl",
+    "flameshot",
     "fonts-firacode",
     "fonts-powerline",
     "fzf",
-    "git-lfs",
     "git",
+    "git-lfs",
+    "gnome-shell-extension-gpaste",
+    "gnome-shell-extension-manager",
+    "gnome-shell-extension-prefs",
+    "gnome-shell-extensions-gpaste",
+    "guake",
+    "guake-indicator",
+    "python-is-python3",
     "libsecret-tools",
     "tmux",
     "wget",
     "zsh",
+]
+
+PIP_MODULES_TO_INSTALL = [
+    "pre-commit",
+    "pipenv",
+    "pipx",
 ]
 
 
@@ -122,8 +138,6 @@ def _install_software():
     )
     update_command = ["sudo", "apt-get", "update"]
 
-    setup_command = ["sudo", "apt-get", "install", "-y"] + APT_PACKAGES_TO_INSTALL
-
     try:
         subprocess.run(
             update_command,
@@ -132,6 +146,15 @@ def _install_software():
             stdout=subprocess.PIPE,
             encoding="utf-8",
         )
+
+        packages_to_install = _get_available_apt_packages()
+        if packages_to_install != APT_PACKAGES_TO_INSTALL:
+            logging.warning(
+                "The following packages were not found and will be skipped during installation"
+                + f" \n{', '.join(set(APT_PACKAGES_TO_INSTALL) - set(packages_to_install))}"
+            )
+
+        setup_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
         result = subprocess.run(
             setup_command,
             check=True,
@@ -142,9 +165,67 @@ def _install_software():
     except subprocess.CalledProcessError as cpe:
         logging.error("Installing software failed with message:\n %s", cpe.stderr)
         sys.exit(1)
-    logging.info("Successfully installed apt packages")
     logging.debug(result.stdout)
+    logging.info("Successfully installed apt packages")
     # git clone https://github.com/clvv/fasd.git ~/fasd && cd ~/fasd && sudo make install
+
+
+def _get_available_apt_packages():
+    return [
+        package
+        for package in APT_PACKAGES_TO_INSTALL
+        if subprocess.run(
+            ["dpkg", "-s", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ).returncode
+        != 0
+    ]
+
+
+def _install_pip_modules():
+    logging.info(
+        "Installing default pip modules (%s)", ", ".join(PIP_MODULES_TO_INSTALL)
+    )
+    try:
+        modules_to_install = _get_available_pip_modules()
+        if modules_to_install != PIP_MODULES_TO_INSTALL:
+            logging.warning(
+                "The following modules were not found and will be skipped during installation"
+                + f" \n{', '.join(set(APT_PACKAGES_TO_INSTALL) - set(modules_to_install))}"
+            )
+
+        setup_command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            " ".join(modules_to_install),
+        ]
+        result = subprocess.run(
+            setup_command,
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.debug(result.stdout)
+
+    except subprocess.CalledProcessError as cpe:
+        logging.error("Installing software failed with message:\n %s", cpe.stderr)
+        sys.exit(1)
+    logging.info("Successfully installed pip modules")
+
+
+def _get_available_pip_modules():
+    return [
+        module
+        for module in PIP_MODULES_TO_INSTALL
+        if subprocess.run(
+            [sys.executable, "-m", "pip", "show", module],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).returncode
+        != 0
+    ]
 
 
 def _setup_fonts():
@@ -212,25 +293,48 @@ def _copy_to_font_dir(source):
             logging.debug(f"skipping file '{file}' without font filetype")
 
 
+def _run_additional_setup_in_container():
+    extension_script_paths = [
+        _source_path("setup_in_container.sh"),
+        os.path.join("~", "setup_in_container.sh"),
+    ]
+
+    for script in extension_script_paths:
+        if os.path.isfile(script):
+            logging.info(f"Running additional setup script: {script}")
+            result = subprocess.run(
+                [script],
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            logging.debug(result.stdout)
+        else:
+            logging.info(
+                f"Extension point for creating links not used. If needed you can create it at {script}"
+            )
+
+
+def is_running_in_docker():
+    if os.path.isfile("/.dockerenv"):
+        return True
+
+
 def main():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--container", action="store_true", help="Run setup inside container"
-    )
-    args = parser.parse_args()
-
-    if args.container:
+    if is_running_in_docker():
         _check_files_to_install()
         _create_backup()
         _setup_symlinks()
+        _run_additional_setup_in_container()
     else:
         _check_files_to_install()
         _create_backup()
         _setup_symlinks()
         _setup_fonts()
         _install_software()
+        _install_pip_modules()
+
     logging.info("Finished setup successfully :)")
 
 

@@ -71,6 +71,7 @@
     # deletes all local tags an re-fetches from origin
     clean-tags = "!git tag -l | xargs git tag -d ; git fetch --tags"
     clt = "!git tag -l | xargs git tag -d ; git fetch --tags"
+    reset-to-origin = "!git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
 
     slmog = log --full-diff -p
     smlog = log --full-diff -p

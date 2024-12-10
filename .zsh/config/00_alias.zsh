@@ -15,7 +15,7 @@ alias fgrep='fgrep --color=auto'
 alias egrep='egrep --color=auto'
 
 
-alias branch='git branch --no-color --show-current'
+alias branch='git rev-parse --abbrev-ref HEAD'
 alias issue='git rev-parse --abbrev-ref HEAD | grep -Eo "[A-Z]+-[0-9]+"'
 alias g='git'
 

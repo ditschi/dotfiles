@@ -29,7 +29,6 @@ FILES_TO_INSTALL = [
     ".zprofile",
     ".zsh",
     ".zshrc",
-    "setup_links_in_container.sh",
 ]
 
 APT_PACKAGES_TO_INSTALL = [

@@ -40,7 +40,12 @@ get-password() {
         user="$(whoami)"
     fi
 
-    secret-tool lookup password "$user"
+    result=$(secret-tool lookup password "$user")
+    if [ -z "$result" ]; then
+        echo "$PASSWORD"
+    else
+        echo "$result"
+    fi
 }
 
 clone_org_repos() {

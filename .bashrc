@@ -91,7 +91,7 @@ if ! shopt -oq posix; then
     fi
 fi
 
-DOTFILES_DIR="~/dotfiles/.zsh/config"
+DOTFILES_DIR="/home/$(whoami)/dotfiles/.zsh/config"
 if [ -d "$DOTFILES_DIR" ]; then
 
     if [[ ! $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
@@ -100,10 +100,12 @@ if [ -d "$DOTFILES_DIR" ]; then
         . "$DOTFILES_DIR/01_work.zsh"
     fi
 
+    . "$DOTFILES_DIR/00_alias.zsh"
     . "$DOTFILES_DIR/01_env.zsh"
     . "$DOTFILES_DIR/05_pyenv.zsh"
     . "$DOTFILES_DIR/06_history.zsh"
-    . "$DOTFILES_DIR/99_alias.zsh"
+else
+    echo "Could not find dotfiles directory: $DOTFILES_DIR"
 fi
 
 echo ""
@@ -112,8 +114,9 @@ echo -e "\033[0;32m\e[1m  python3 \"$SCRIPTDIR/install.py\" && zsh \033[0m\e[21m
 
 ## <!-- BEGIN ANSIBLE MANAGED BLOCK - update colors -->
 if [ "$color_prompt" = yes ]; then
-  PS1='${debian_chroot:+($debian_chroot)}[\033[01;32m]\u@\h[\033[00m]:[\033[0;32m]\w[\033[00m]\$'
+    PS1='${debian_chroot:+($debian_chroot)}[\033[01;32m]\u@\h[\033[00m]:[\033[0;32m]\w[\033[00m]\$'
 fi
-LS_COLORS=$LS_COLORS:'di=0;32' ; export LS_COLORS
+LS_COLORS=$LS_COLORS:'di=0;32'
+export LS_COLORS
 export PROMPT_COMMAND='history -a;history -r'
 ## <!-- END ANSIBLE MANAGED BLOCK - update colors -->

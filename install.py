@@ -112,7 +112,7 @@ def _create_backup():
         os.removedirs(BACKUP_DIR)
 
 
-def _setup_symlinks():
+def _setup_symlinks(force=False):
     logging.debug("Setting up symlinks for dotfiles in %s/", HOME_DIR)
     for to_symlink in FILES_TO_INSTALL:
         source_path = _source_path(to_symlink)
@@ -123,6 +123,9 @@ def _setup_symlinks():
         relative_link = os.path.relpath(source_path, os.path.dirname(symlink_path))
         if os.path.islink(symlink_path):
             logging.debug("removing existing symlink '%s'", symlink_path)
+            os.remove(symlink_path)
+        if force and os.path.isfile(symlink_path):
+            logging.debug("removing existing file '%s'", symlink_path)
             os.remove(symlink_path)
         logging.debug("creating symlink '%s' -> '%s'", symlink_path, relative_link)
         os.symlink(
@@ -323,8 +326,7 @@ def is_running_in_docker():
 def main():
     if is_running_in_docker():
         _check_files_to_install()
-        _create_backup()
-        _setup_symlinks()
+        _setup_symlinks(force=True)
         _run_additional_setup_in_container()
     else:
         _check_files_to_install()

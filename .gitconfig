@@ -72,6 +72,8 @@
     clean-tags = "!git tag -l | xargs git tag -d ; git fetch --tags"
     clt = "!git tag -l | xargs git tag -d ; git fetch --tags"
     reset-to-origin = "!git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
+    rework-commit-messages = "!f() { BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE '[A-Z]{2,}-[0-9]+'); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E 's/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/'); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" $BASE_BRANCH; }; f"
+    branch-change-issue-id = "!f() { NEW_ISSUE_ID=$1; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E \"s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/\"); git checkout -b $NEW_BRANCH_NAME; }; f"
 
     slmog = log --full-diff -p
     smlog = log --full-diff -p

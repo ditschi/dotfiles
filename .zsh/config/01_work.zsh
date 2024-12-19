@@ -207,7 +207,8 @@ alias ldap-usergroups="ldap-groups"           # <USER-ID>
 alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
 alias branch='git branch --no-color --show-current'
-alias cruft_sync='cruft update -c $(branch) -y && git add -u .'
+alias cruft-sync='cruft update -c $(branch) -y && git add -u .'
+alias cruft-fix-diff="cruft diff > patch.diff && git apply patch.diff && rm patch.diff"
 
 # ansible
 alias ap="ansible-playbook"

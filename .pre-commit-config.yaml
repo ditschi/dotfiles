@@ -26,6 +26,7 @@ repos:
           - --case-indent
           - --simplify
           - --write
+        exclude: '\.bashrc'
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
@@ -49,3 +50,10 @@ repos:
       - id: flake8
         args:
           - --max-line-length=120
+  - repo: https://github.com/ditschi/pre-commit-hooks
+    rev: v0.1.0
+    hooks:
+      - id: protect-files
+        # Note: pre-commit appends the fileanmes of staged files to the command.
+        #       To seperate the globs from the list of filenames add a '--'
+        args: ['--protected-files-globs', '.gitconfig', '--']

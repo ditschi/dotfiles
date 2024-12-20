@@ -10,6 +10,7 @@ import shutil
 import tempfile
 from urllib.parse import unquote
 from datetime import datetime
+from typing import List
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s %(levelname)s: %(message)s"
@@ -23,6 +24,7 @@ BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestam
 FILES_TO_INSTALL = [
     ".bashrc",
     ".gitconfig",
+    ".gitconfig.shared",
     ".p10k.zsh",
     ".profile",
     ".tmux.conf",
@@ -60,19 +62,19 @@ PIP_MODULES_TO_INSTALL = [
 ]
 
 
-def _source_path(rel_path):
+def _source_path(rel_path: str) -> str:
     return os.path.realpath(os.path.join(SCRIPT_DIR, rel_path))
 
 
-def _home_path(rel_path):
-    return os.path.join(os.path.realpath(HOME_DIR), rel_path)
+def _home_path(rel_path: str) -> str:
+    return os.path.join(HOME_DIR, rel_path)
 
 
-def _backup_path(rel_path):
+def _backup_path(rel_path: str) -> str:
     return os.path.join(BACKUP_DIR, rel_path)
 
 
-def _check_files_to_install():
+def _check_files_to_install() -> None:
     logging.debug("Checking to be installed files")
     missing_files = [
         to_install
@@ -81,14 +83,14 @@ def _check_files_to_install():
     ]
     if missing_files:
         logging.error(
-            "Paths were specified to be copied but to not exist in this repository: %s",
+            "Paths were specified to be copied but do not exist in this repository: %s",
             ", ".join(missing_files),
         )
         sys.exit(1)
     logging.info("All required input files were found")
 
 
-def _create_backup():
+def _create_backup() -> None:
     logging.debug("Creating backup of existing files")
     did_backup = False
     os.makedirs(BACKUP_DIR)
@@ -112,29 +114,46 @@ def _create_backup():
         os.removedirs(BACKUP_DIR)
 
 
-def _setup_symlinks(force=False):
-    logging.debug("Setting up symlinks for dotfiles in %s/", HOME_DIR)
-    for to_symlink in FILES_TO_INSTALL:
-        source_path = _source_path(to_symlink)
-        symlink_path = _home_path(to_symlink)
+def _setup_links(force: bool = False, symlink: bool = False) -> None:
+    logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
+    links_created = {}
+    for to_link in FILES_TO_INSTALL:
+        source_path = _source_path(to_link)
+        link_path = _home_path(to_link)
         logging.debug("      source_path '%s'", source_path)
-        logging.debug("      symlink_path '%s'", symlink_path)
+        logging.debug("      link_path '%s'", link_path)
 
-        relative_link = os.path.relpath(source_path, os.path.dirname(symlink_path))
-        if os.path.islink(symlink_path):
-            logging.debug("removing existing symlink '%s'", symlink_path)
-            os.remove(symlink_path)
-        if force and os.path.isfile(symlink_path):
-            logging.debug("removing existing file '%s'", symlink_path)
-            os.remove(symlink_path)
-        logging.debug("creating symlink '%s' -> '%s'", symlink_path, relative_link)
-        os.symlink(
-            relative_link, symlink_path, target_is_directory=os.path.isdir(source_path)
-        )
-    logging.info("Successfully set up symlinks for dotfiles in %s", HOME_DIR)
+        if os.path.exists(link_path) or os.path.islink(link_path):
+            if force and os.path.isfile(link_path):
+                logging.debug("removing existing file '%s'", link_path)
+                os.remove(link_path)
+            elif os.path.islink(link_path):
+                logging.debug("removing existing symlink '%s'", link_path)
+                os.remove(link_path)
+            elif os.path.samefile(source_path, link_path):
+                logging.debug(
+                    "'%s' is already a hard link to '%s'", link_path, source_path
+                )
+                continue
+
+        if symlink:
+            relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
+            logging.debug("creating symlink '%s' -> '%s'", link_path, relative_link)
+            os.symlink(
+                relative_link, link_path, target_is_directory=os.path.isdir(source_path)
+            )
+            links_created[link_path] = relative_link
+        else:
+            logging.debug("creating hard link '%s' -> '%s'", link_path, source_path)
+            os.link(source_path, link_path)
+            links_created[link_path] = source_path
+
+    logging.info(
+        f"Successfully set up {len(links_created)} links for dotfiles in {HOME_DIR}"
+    )
 
 
-def _install_software():
+def _install_software() -> None:
     logging.info(
         "Installing default apt packages (%s)", ", ".join(APT_PACKAGES_TO_INSTALL)
     )
@@ -150,10 +169,11 @@ def _install_software():
         )
 
         packages_to_install = _get_available_apt_packages()
-        if packages_to_install != APT_PACKAGES_TO_INSTALL:
+        missing_packages = set(APT_PACKAGES_TO_INSTALL) - set(packages_to_install)
+        if missing_packages:
             logging.warning(
-                "The following packages were not found and will be skipped during installation"
-                + f" \n{', '.join(set(APT_PACKAGES_TO_INSTALL) - set(packages_to_install))}"
+                "The following packages were not found and will be skipped during installation: %s",
+                ", ".join(missing_packages),
             )
 
         setup_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
@@ -169,10 +189,9 @@ def _install_software():
         sys.exit(1)
     logging.debug(result.stdout)
     logging.info("Successfully installed apt packages")
-    # git clone https://github.com/clvv/fasd.git ~/fasd && cd ~/fasd && sudo make install
 
 
-def _get_available_apt_packages():
+def _get_available_apt_packages() -> List[str]:
     return [
         package
         for package in APT_PACKAGES_TO_INSTALL
@@ -183,16 +202,17 @@ def _get_available_apt_packages():
     ]
 
 
-def _install_pip_modules():
+def _install_pip_modules() -> None:
     logging.info(
         "Installing default pip modules (%s)", ", ".join(PIP_MODULES_TO_INSTALL)
     )
     try:
         modules_to_install = _get_available_pip_modules()
-        if modules_to_install != PIP_MODULES_TO_INSTALL:
+        missing_modules = set(PIP_MODULES_TO_INSTALL) - set(modules_to_install)
+        if missing_modules:
             logging.warning(
-                "The following modules were not found and will be skipped during installation"
-                + f" \n{', '.join(set(APT_PACKAGES_TO_INSTALL) - set(modules_to_install))}"
+                "The following modules were not found and will be skipped during installation: %s",
+                ", ".join(missing_modules),
             )
 
         setup_command = [
@@ -200,7 +220,7 @@ def _install_pip_modules():
             "-m",
             "pip",
             "install",
-            " ".join(modules_to_install),
+            *modules_to_install,
         ]
         result = subprocess.run(
             setup_command,
@@ -217,7 +237,7 @@ def _install_pip_modules():
     logging.info("Successfully installed pip modules")
 
 
-def _get_available_pip_modules():
+def _get_available_pip_modules() -> List[str]:
     return [
         module
         for module in PIP_MODULES_TO_INSTALL
@@ -230,7 +250,7 @@ def _get_available_pip_modules():
     ]
 
 
-def _setup_fonts():
+def _setup_fonts() -> None:
     zips_to_download = [
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
@@ -244,27 +264,25 @@ def _setup_fonts():
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf",
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf",
     ]
-    logging.info(
-        f"Installing fronts by downloading '{len(zips_to_download)}' zip files"
-    )
-    for zip in zips_to_download:
-        request = requests.get(zip, allow_redirects=True)
+    logging.info(f"Installing fonts by downloading '{len(zips_to_download)}' zip files")
+    for zip_url in zips_to_download:
+        request = requests.get(zip_url, allow_redirects=True)
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
         with tempfile.TemporaryDirectory() as tmp_dirname:
             zip_file.extractall(tmp_dirname)
             _copy_to_font_dir(tmp_dirname)
 
     logging.info(
-        f"Installing '{len(font_files_to_download)}' fronts by downloading font files"
+        f"Installing '{len(font_files_to_download)}' fonts by downloading font files"
     )
     for file_url in font_files_to_download:
         request = requests.get(file_url, allow_redirects=True)
         with tempfile.TemporaryDirectory() as tmp_dirname:
             filename = os.path.basename(unquote(file_url))
-            filename = os.path.join(tmp_dirname, filename)
-            with open(filename, "wb") as file:
+            filepath = os.path.join(tmp_dirname, filename)
+            with open(filepath, "wb") as file:
                 file.write(request.content)
-            _copy_to_font_dir(filename)
+            _copy_to_font_dir(filepath)
     command = "fc-cache -f -v"
     logging.info(f"Rebuilding font cache using '{command}'")
     subprocess.check_call(command, shell=True)
@@ -274,7 +292,7 @@ def _setup_fonts():
     )
 
 
-def _copy_to_font_dir(source):
+def _copy_to_font_dir(source: str) -> None:
     font_dir = os.path.expanduser("~/.local/share/fonts")
     os.makedirs(font_dir, exist_ok=True)
 
@@ -286,19 +304,19 @@ def _copy_to_font_dir(source):
 
     logging.debug(f"moving all font files from directory '{source}' to '{font_dir}'")
     for file in os.listdir(source):
-        file = os.path.join(source, file)
-        destination = os.path.join(font_dir, file)
-        if file.endswith(".ttf") or file.endswith(".otf") or file.endswith(".ttc"):
-            logging.debug(f"moving file '{file}'")
-            shutil.move(file, destination)
+        file_path = os.path.join(source, file)
+        if file.endswith((".ttf", ".otf", ".ttc")):
+            destination = os.path.join(font_dir, file)
+            logging.debug(f"moving file '{file_path}' to '{destination}'")
+            shutil.move(file_path, destination)
         else:
-            logging.debug(f"skipping file '{file}' without font filetype")
+            logging.debug(f"skipping file '{file_path}' without font filetype")
 
 
-def _run_additional_setup_in_container():
+def _run_additional_setup_in_container() -> None:
     extension_script_paths = [
         _source_path("setup_in_container.sh"),
-        os.path.join("~", "setup_in_container.sh"),
+        os.path.expanduser("~/setup_in_container.sh"),
     ]
 
     for script in extension_script_paths:
@@ -318,20 +336,19 @@ def _run_additional_setup_in_container():
             )
 
 
-def is_running_in_docker():
-    if os.path.isfile("/.dockerenv"):
-        return True
+def is_running_in_docker() -> bool:
+    return os.path.isfile("/.dockerenv")
 
 
-def main():
+def main() -> None:
     if is_running_in_docker():
         _check_files_to_install()
-        _setup_symlinks(force=True)
+        _setup_links(force=True)
         _run_additional_setup_in_container()
     else:
         _check_files_to_install()
         _create_backup()
-        _setup_symlinks()
+        _setup_links()
         _setup_fonts()
         _install_software()
         _install_pip_modules()

@@ -1,0 +1,160 @@
+
+[color]
+    ui = true
+    branch = auto
+    diff = auto
+    status = auto
+[color "branch"]
+    current = red reverse
+    local = blue
+    remote = green
+[color "diff"]
+    meta = yellow
+    frag = magenta
+    old = red bold
+    new = green
+    plain = white
+[color "status"]
+    added = green
+    changed = yellow
+    untracked = cyan
+
+[push]
+    default = current
+[pull]
+    default = current
+[alias]
+    st = status
+    cl = clone
+    sm = submodule
+    co = checkout
+    cm = commit -m
+    ci = commit
+    br = branch
+    su = submodule update --recursive
+    sui = submodule update --init --recursive
+    ssr = submodule status --recursive
+    #show branches that contain a submodule commit
+    smb = "!f() { pushd "./$1/" ; git fetch ; git branch -r --contains $2; popd; } ; f"
+    # revoves a submodule and makes the files native in the repo
+    rmsm = "!f() { mv $1 $1_tmp ; git submodule deinit $1 ; git rm --cached $1 ; mv $1_tmp $1 ; git add $1; } ; f"
+
+    ca = commit --amend -C HEAD
+    caa =  "!git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -t git add ; git commit --amend  "$@" -C HEAD"
+    caaa = commit -a --amend -C HEAD
+    cap = "!git commit --amend -C HEAD ;  git push -f"
+    caap =  "!git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -t git add ; git commit --amend "$@" -C HEAD;  git push -f"
+    caaap = "!git commit -a --amend -C HEAD ;  git push -f"
+    redo = "!git commit -a --amend -C HEAD ;  git push -f"
+
+    # shows all chages which will be included in next commit (staged changes)
+    curr-diff = diff --cached
+    cdiff = diff --cached
+    undo = "!git stash save --keep-index ; git stash drop"
+    commit-all = "!git add -A ; git commit -a"
+    unstage = "reset HEAD"
+    lol = "log --graph --decorate --pretty=oneline --abbrev-commit --all"
+    cob = "!f() { git fetch -q ; git checkout -b $1 origin/$1; } ; f"
+    coc = "!f() { git checkout -f $1 ; git pull origin ; git submodule update --init --recursive ; git clean -df -f ; git submodule foreach 'git clean -df -f' --recursive ; git status; } ; f" # CheckOut Clean
+    tidy = "!git checkout -f ; git clean -dff ; git submodule foreach 'git checkout -f && git clean -dff' ; git submodule update --init --recursive ; git clean -dff ; git status"
+    fresh = "!git reset --hard ; git clean -dff ; git submodule foreach 'git reset --hard && git clean -dff' ; git submodule update --init --recursive ; "
+    # update branch from origin -- no need to ckeck out
+    u2d = "!f() { git fetch origin -u $1:$1; } ; f"
+    # updates all branches from remote
+    uab = "!f() { git fetch origin -u $1:$1; } ; git branch -l | xargs  f"
+    # deletes all local branches not on server
+    clean-brances = "!git checkout -q develop ; git fetch -q --prune ; git branch -vv | grep ': gone]' | cut -d' ' -f3 | xargs git branch -d"
+    clb = "!git checkout -q develop ; git fetch -q --prune ; git branch -vv | grep ': gone]' | cut -d' ' -f3 | xargs git branch -d"
+    # deletes all local tags an re-fetches from origin
+    clean-tags = "!git tag -l | xargs git tag -d ; git fetch --tags"
+    clt = "!git tag -l | xargs git tag -d ; git fetch --tags"
+    reset-to-origin = "!git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
+    rework-commit-messages = "!f() { BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE '[A-Z]{2,}-[0-9]+'); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E 's/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/'); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" $BASE_BRANCH; }; f"
+    branch-change-issue-id = "!f() { NEW_ISSUE_ID=$1; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E \"s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/\"); git checkout -b $NEW_BRANCH_NAME; }; f"
+
+    slmog = log --full-diff -p
+    smlog = log --full-diff -p
+    ldiff = diff HEAD^ HEAD
+
+    ls = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate
+    ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+    lf = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+    le = log --oneline --decorate
+    filelog = log -u
+    fl = log -u
+    bclean = "!f() { git branch --merged ${1-master} | grep -v " ${1-master}$" | xargs -r git branch -d; }; f"
+
+    la = "!git config -l | grep alias | cut -c 7-"
+    # conflict/merges
+    ours = "!f() { git co --ours $@ && git add $@; }; f"
+    theirs = "!f() { git co --theirs $@ && git add $@; }; f"
+    adda-mirror-update = "!f() { git fetch origin --prune --tags && git push --prune adda +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*; }; f"
+    store =  config --global credential.helper store
+	root = rev-parse --show-toplevel
+	rc = rebase --continue
+	r3 = rebase -i HEAD~3
+	r2 = rebase -i HEAD~2
+	r4 = rebase -i HEAD~4
+	ra = rebase --abort
+	r5 = rebase -i HEAD~5
+	l1 = log -1
+	l = log -1
+	l2 = log -2
+	l3 = log -3
+	l4 = log -4
+	l5 = log -5
+
+[merge]
+    tool = meld
+    #ff = false
+[diff]
+    tool = meld
+    algorithm = patience
+[diff]
+    tool = meld
+[difftool]
+    prompt = false
+[difftool "meld"]
+    cmd = meld "$LOCAL" "$REMOTE"
+[mergetool "meld"]
+    # cmd = meld "$LOCAL" "$MERGED" "$REMOTE" --output "$MERGED"
+    cmd = meld "$LOCAL" "$BASE" "$REMOTE" --output "$MERGED"
+[mergetool "bc4"]
+    path = C:/Program Files/Beyond Compare 4/BCompare.exe
+[difftool "bc4"]
+    path = C:/Program Files/Beyond Compare 4/BCompare.exe
+
+[core]
+    preloadindex = true
+    fscache = true
+    autocrlf = input
+[gc]
+    auto = 256
+[init]
+	defaultBranch = main
+[help]
+    autocorrect = 1
+[status]
+    submoduleSummary = false
+[push]
+    recurseSubmodules = on-demand
+    default = current
+[fetch]
+    recurseSubmodules = no
+    prune = true
+[rerere]
+    enabled = true
+    autoupdate = true
+[lfs]
+    defaulttokenttl = true
+    contenttype = false
+[filter "lfs"]
+    clean = git-lfs clean -- %f
+    smudge = git-lfs smudge -- %f
+    process = git-lfs filter-process
+    required = true
+[pull]
+    rebase = true
+
+[credential]
+	helper = store

@@ -44,6 +44,7 @@ APT_PACKAGES = [
     "gnome-shell-extension-manager",
     "gnome-shell-extension-prefs",
     "gnome-shell-extensions-gpaste",
+    "gnupg",
     "guake",
     "guake-indicator",
     "python-is-python3",
@@ -375,6 +376,38 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def set_git_user_config() -> None:
+    logging.info("Setting git user configuration for dotfiles repository")
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "Christian Ditscher"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+            cwd=SCRIPT_DIR,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "chris@ditscher.me"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+            cwd=SCRIPT_DIR,
+        )
+        subprocess.run(
+            ["git", "config", "commit.gpgsign", "false"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.info("Git user configuration set successfully")
+    except subprocess.CalledProcessError as cpe:
+        logging.error("Failed to set git user configuration: %s", cpe.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     args = parse_arguments()
     log_format = "%(asctime)s %(levelname)s: %(message)s"
@@ -397,6 +430,7 @@ def main() -> None:
         setup_fonts()
         install_apt_packages()
         install_pip_modules()
+        set_git_user_config()
 
     logging.info("Setup completed successfully")
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import logging
 import subprocess
@@ -55,11 +56,7 @@ APT_PACKAGES_TO_INSTALL = [
     "zsh",
 ]
 
-PIP_MODULES_TO_INSTALL = [
-    "pre-commit",
-    "pipenv",
-    "pipx",
-]
+PIP_MODULES_TO_INSTALL = ["pre-commit", "pipenv", "pipx", "typer"]
 
 
 def _source_path(rel_path: str) -> str:
@@ -120,6 +117,15 @@ def _setup_links(force: bool = False, symlink: bool = False) -> None:
     for to_link in FILES_TO_INSTALL:
         source_path = _source_path(to_link)
         link_path = _home_path(to_link)
+        if os.path.isdir(source_path):
+            result = create_links_for_directory(source_path, link_path, force, symlink)
+            if result:
+                links_created.update(result)
+            else:
+                logging.warning(
+                    "No links created for source directory '%s'", source_path
+                )
+            continue
         logging.debug("      source_path '%s'", source_path)
         logging.debug("      link_path '%s'", link_path)
 
@@ -135,22 +141,40 @@ def _setup_links(force: bool = False, symlink: bool = False) -> None:
                     "'%s' is already a hard link to '%s'", link_path, source_path
                 )
                 continue
-
-        if symlink:
-            relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
-            logging.debug("creating symlink '%s' -> '%s'", link_path, relative_link)
-            os.symlink(
-                relative_link, link_path, target_is_directory=os.path.isdir(source_path)
-            )
-            links_created[link_path] = relative_link
-        else:
-            logging.debug("creating hard link '%s' -> '%s'", link_path, source_path)
-            os.link(source_path, link_path)
-            links_created[link_path] = source_path
-
+        links_created.update(create_link_for_file(source_path, link_path, symlink))
     logging.info(
         f"Successfully set up {len(links_created)} links for dotfiles in {HOME_DIR}"
     )
+
+
+def create_link_for_file(source_path: str, link_path: str, symlink: bool) -> dict:
+    links_created = {}
+    if symlink:
+        relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
+        logging.debug("creating symlink '%s' -> '%s'", link_path, relative_link)
+        os.symlink(
+            relative_link, link_path, target_is_directory=os.path.isdir(source_path)
+        )
+        links_created[link_path] = relative_link
+    else:
+        logging.debug("creating hard link '%s' -> '%s'", link_path, source_path)
+        os.makedirs(os.path.dirname(link_path), exist_ok=True)
+        os.link(source_path, link_path)
+        links_created[link_path] = source_path
+    return links_created
+
+
+def create_links_for_directory(
+    source_path: str, link_path: str, force: bool, symlink: bool
+) -> dict:
+    links_created = {}
+    for root, _, files in os.walk(source_path):
+        for name in files:
+            source_file = os.path.join(root, name)
+            link_file = os.path.join(
+                link_path, os.path.relpath(source_file, source_path)
+            )
+            links_created.update(create_link_for_file(source_file, link_file, symlink))
 
 
 def _install_software() -> None:
@@ -168,7 +192,7 @@ def _install_software() -> None:
             encoding="utf-8",
         )
 
-        packages_to_install = _get_available_apt_packages()
+        packages_to_install = _get_installed_apt_packages()
         missing_packages = set(APT_PACKAGES_TO_INSTALL) - set(packages_to_install)
         if missing_packages:
             logging.warning(
@@ -191,7 +215,7 @@ def _install_software() -> None:
     logging.info("Successfully installed apt packages")
 
 
-def _get_available_apt_packages() -> List[str]:
+def _get_installed_apt_packages() -> List[str]:
     return [
         package
         for package in APT_PACKAGES_TO_INSTALL
@@ -207,7 +231,7 @@ def _install_pip_modules() -> None:
         "Installing default pip modules (%s)", ", ".join(PIP_MODULES_TO_INSTALL)
     )
     try:
-        modules_to_install = _get_available_pip_modules()
+        modules_to_install = _get_installed_pip_modules()
         missing_modules = set(PIP_MODULES_TO_INSTALL) - set(modules_to_install)
         if missing_modules:
             logging.warning(
@@ -237,7 +261,7 @@ def _install_pip_modules() -> None:
     logging.info("Successfully installed pip modules")
 
 
-def _get_available_pip_modules() -> List[str]:
+def _get_installed_pip_modules() -> List[str]:
     return [
         module
         for module in PIP_MODULES_TO_INSTALL
@@ -340,7 +364,19 @@ def is_running_in_docker() -> bool:
     return os.path.isfile("/.dockerenv")
 
 
+def parse_args():
+
+    parser = argparse.ArgumentParser(description="Setup dotfiles")
+    parser.add_argument(
+        "--new-host",
+        action="store_true",
+        help="Also install apt + pip packages and fonts",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     if is_running_in_docker():
         _check_files_to_install()
         _setup_links(force=True)
@@ -349,6 +385,8 @@ def main() -> None:
         _check_files_to_install()
         _create_backup()
         _setup_links()
+
+    if args.new_host:
         _setup_fonts()
         _install_software()
         _install_pip_modules()

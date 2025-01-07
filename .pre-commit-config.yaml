@@ -54,6 +54,6 @@ repos:
     rev: v0.1.0
     hooks:
       - id: protect-files
-        # Note: pre-commit appends the fileanmes of staged files to the command.
+        # Note: pre-commit appends the filenames of staged files to the command.
         #       To seperate the globs from the list of filenames add a '--'
         args: ['--protected-files-globs', '.gitconfig', '--']

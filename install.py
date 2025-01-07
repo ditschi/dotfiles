@@ -156,7 +156,11 @@ def create_link_for_file(source_path: str, link_path: str, use_symlink: bool) ->
                     "'%s' is already a symlink to '%s'", link_path, source_path
                 )
                 return None
-        elif not use_symlink and os.path.samefile(source_path, link_path):
+        elif (
+            not use_symlink
+            and not os.path.islink(link_path)
+            and os.path.samefile(source_path, link_path)
+        ):
             logging.debug("'%s' is already a hard link to '%s'", link_path, source_path)
             return None
         else:

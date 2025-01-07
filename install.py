@@ -13,9 +13,6 @@ from urllib.parse import unquote
 from datetime import datetime
 from typing import List
 
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s %(levelname)s: %(message)s"
-)
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -120,10 +117,8 @@ def setup_dotfile_links(use_symlink: bool = False) -> None:
             if result:
                 links_created.update(result)
             else:
-                logging.warning("No links created for directory '%s'", source_path)
+                logging.debug("No links created for directory '%s'", source_path)
             continue
-        logging.debug("      source_path '%s'", source_path)
-        logging.debug("      link_path '%s'", link_path)
         result = create_link_for_file(source_path, link_path, use_symlink)
         if result:
             links_created.update(result)
@@ -364,11 +359,22 @@ def parse_arguments():
         action="store_true",
         help="Create a backup before setting up dotfiles",
     )
+    parser.add_argument(
+        "--debug",
+        "-d",
+        action="store_true",
+        help="Create a backup before setting up dotfiles",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_arguments()
+    log_format = "%(asctime)s %(levelname)s: %(message)s"
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
+    else:
+        logging.basicConfig(level=logging.INFO, format=log_format)
 
     verify_dotfiles_exist()
 

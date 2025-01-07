@@ -22,7 +22,7 @@ timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 HOME_DIR = os.path.expanduser("~")
 BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}"))
 
-FILES_TO_INSTALL = [
+DOTFILES = [
     ".bashrc",
     ".gitconfig",
     ".gitconfig.shared",
@@ -34,7 +34,7 @@ FILES_TO_INSTALL = [
     ".zshrc",
 ]
 
-APT_PACKAGES_TO_INSTALL = [
+APT_PACKAGES = [
     "autojump",
     "curl",
     "flameshot",
@@ -56,116 +56,84 @@ APT_PACKAGES_TO_INSTALL = [
     "zsh",
 ]
 
-PIP_MODULES_TO_INSTALL = ["pre-commit", "pipenv", "pipx", "typer"]
+PIP_MODULES = ["pre-commit", "pipenv", "pipx", "typer"]
 
 
-def _source_path(rel_path: str) -> str:
-    return os.path.realpath(os.path.join(SCRIPT_DIR, rel_path))
+def get_absolute_path(relative_path: str) -> str:
+    return os.path.realpath(os.path.join(SCRIPT_DIR, relative_path))
 
 
-def _home_path(rel_path: str) -> str:
-    return os.path.join(HOME_DIR, rel_path)
+def get_home_path(relative_path: str) -> str:
+    return os.path.join(HOME_DIR, relative_path)
 
 
-def _backup_path(rel_path: str) -> str:
-    return os.path.join(BACKUP_DIR, rel_path)
+def get_backup_path(relative_path: str) -> str:
+    return os.path.join(BACKUP_DIR, relative_path)
 
 
-def _check_files_to_install() -> None:
-    logging.debug("Checking to be installed files")
+def verify_dotfiles_exist() -> None:
+    logging.debug("Verifying dotfiles to be installed")
     missing_files = [
-        to_install
-        for to_install in FILES_TO_INSTALL
-        if not os.path.exists(_source_path(to_install))
+        dotfile
+        for dotfile in DOTFILES
+        if not os.path.exists(get_absolute_path(dotfile))
     ]
     if missing_files:
         logging.error(
-            "Paths were specified to be copied but do not exist in this repository: %s",
+            "The following dotfiles are missing in the repository: %s",
             ", ".join(missing_files),
         )
         sys.exit(1)
-    logging.info("All required input files were found")
+    logging.info("All required dotfiles are present")
 
 
-def _create_backup() -> None:
-    logging.debug("Creating backup of existing files")
+def create_backup() -> None:
+    logging.debug("Creating backup of existing dotfiles")
     did_backup = False
     os.makedirs(BACKUP_DIR)
-    for to_copy in FILES_TO_INSTALL:
-        source_path = _home_path(to_copy)
-        backup_path = _backup_path(to_copy)
+    for dotfile in DOTFILES:
+        source_path = get_home_path(dotfile)
+        backup_path = get_backup_path(dotfile)
         if os.path.exists(source_path):
             if os.path.islink(source_path):
-                logging.debug(
-                    "'%s' is already a symlink -> not backing up", source_path
-                )
+                logging.debug("'%s' is a symlink, skipping backup", source_path)
                 continue
             logging.debug("Backing up '%s' to '%s'", source_path, backup_path)
-            os.rename(source_path, backup_path)
+            shutil.copy2(source_path, backup_path)
             did_backup = True
         else:
-            logging.debug("'%s' does not exist -> not backing up", source_path)
+            logging.debug("'%s' does not exist, skipping backup", source_path)
     if did_backup:
-        logging.info("Existing files moved to backup at '%s'", BACKUP_DIR)
+        logging.info("Existing dotfiles backed up to '%s'", BACKUP_DIR)
     else:
         os.removedirs(BACKUP_DIR)
 
 
-def _setup_links(force: bool = False, symlink: bool = False) -> None:
+def setup_dotfile_links(use_symlink: bool = False) -> None:
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
-    for to_link in FILES_TO_INSTALL:
-        source_path = _source_path(to_link)
-        link_path = _home_path(to_link)
+    for dotfile in DOTFILES:
+        source_path = get_absolute_path(dotfile)
+        link_path = get_home_path(dotfile)
         if os.path.isdir(source_path):
-            result = create_links_for_directory(source_path, link_path, force, symlink)
+            result = create_links_for_directory(source_path, link_path, use_symlink)
             if result:
                 links_created.update(result)
             else:
-                logging.warning(
-                    "No links created for source directory '%s'", source_path
-                )
+                logging.warning("No links created for directory '%s'", source_path)
             continue
         logging.debug("      source_path '%s'", source_path)
         logging.debug("      link_path '%s'", link_path)
-
-        if os.path.exists(link_path) or os.path.islink(link_path):
-            if force and os.path.isfile(link_path):
-                logging.debug("removing existing file '%s'", link_path)
-                os.remove(link_path)
-            elif os.path.islink(link_path):
-                logging.debug("removing existing symlink '%s'", link_path)
-                os.remove(link_path)
-            elif os.path.samefile(source_path, link_path):
-                logging.debug(
-                    "'%s' is already a hard link to '%s'", link_path, source_path
-                )
-                continue
-        links_created.update(create_link_for_file(source_path, link_path, symlink))
+        result = create_link_for_file(source_path, link_path, use_symlink)
+        if result:
+            links_created.update(result)
     logging.info(
-        f"Successfully set up {len(links_created)} links for dotfiles in {HOME_DIR}"
+        "Successfully set up %d links for dotfiles in %s", len(links_created), HOME_DIR
     )
 
 
-def create_link_for_file(source_path: str, link_path: str, symlink: bool) -> dict:
-    links_created = {}
-    if symlink:
-        relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
-        logging.debug("creating symlink '%s' -> '%s'", link_path, relative_link)
-        os.symlink(
-            relative_link, link_path, target_is_directory=os.path.isdir(source_path)
-        )
-        links_created[link_path] = relative_link
-    else:
-        logging.debug("creating hard link '%s' -> '%s'", link_path, source_path)
-        os.makedirs(os.path.dirname(link_path), exist_ok=True)
-        os.link(source_path, link_path)
-        links_created[link_path] = source_path
-    return links_created
-
-
 def create_links_for_directory(
-    source_path: str, link_path: str, force: bool, symlink: bool
+    source_path: str, link_path: str, use_symlink: bool
 ) -> dict:
     links_created = {}
     for root, _, files in os.walk(source_path):
@@ -174,13 +142,47 @@ def create_links_for_directory(
             link_file = os.path.join(
                 link_path, os.path.relpath(source_file, source_path)
             )
-            links_created.update(create_link_for_file(source_file, link_file, symlink))
+            result = create_link_for_file(source_file, link_file, use_symlink)
+            if result:
+                links_created.update(result)
+    return links_created
 
 
-def _install_software() -> None:
-    logging.info(
-        "Installing default apt packages (%s)", ", ".join(APT_PACKAGES_TO_INSTALL)
-    )
+def create_link_for_file(source_path: str, link_path: str, use_symlink: bool) -> dict:
+    if os.path.exists(link_path):
+        if use_symlink and os.path.islink(link_path):
+            if os.readlink(link_path) == os.path.relpath(
+                source_path, os.path.dirname(link_path)
+            ):
+                logging.debug(
+                    "'%s' is already a symlink to '%s'", link_path, source_path
+                )
+                return None
+        elif not use_symlink and os.path.samefile(source_path, link_path):
+            logging.debug("'%s' is already a hard link to '%s'", link_path, source_path)
+            return None
+        else:
+            logging.debug("Removing existing file '%s'", link_path)
+            os.remove(link_path)
+
+    # Ensure the parent directory of the link path exists
+    os.makedirs(os.path.dirname(link_path), exist_ok=True)
+
+    if use_symlink:
+        relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
+        logging.debug("Creating symlink '%s' -> '%s'", link_path, relative_link)
+        os.symlink(
+            relative_link, link_path, target_is_directory=os.path.isdir(source_path)
+        )
+        return {link_path: source_path}
+    else:
+        logging.debug("Creating hard link '%s' -> '%s'", link_path, source_path)
+        os.link(source_path, link_path)
+        return {link_path: source_path}
+
+
+def install_apt_packages() -> None:
+    logging.info("Installing apt packages: %s", ", ".join(APT_PACKAGES))
     update_command = ["sudo", "apt-get", "update"]
 
     try:
@@ -192,33 +194,32 @@ def _install_software() -> None:
             encoding="utf-8",
         )
 
-        packages_to_install = _get_installed_apt_packages()
-        missing_packages = set(APT_PACKAGES_TO_INSTALL) - set(packages_to_install)
-        if missing_packages:
+        packages_to_install = get_missing_apt_packages()
+        if packages_to_install:
             logging.warning(
-                "The following packages were not found and will be skipped during installation: %s",
-                ", ".join(missing_packages),
+                "The following packages will be skipped during installation: %s",
+                ", ".join(packages_to_install),
             )
 
-        setup_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
+        install_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
         result = subprocess.run(
-            setup_command,
+            install_command,
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
             encoding="utf-8",
         )
     except subprocess.CalledProcessError as cpe:
-        logging.error("Installing software failed with message:\n %s", cpe.stderr)
+        logging.error("Failed to install apt packages: %s", cpe.stderr)
         sys.exit(1)
     logging.debug(result.stdout)
     logging.info("Successfully installed apt packages")
 
 
-def _get_installed_apt_packages() -> List[str]:
+def get_missing_apt_packages() -> List[str]:
     return [
         package
-        for package in APT_PACKAGES_TO_INSTALL
+        for package in APT_PACKAGES
         if subprocess.run(
             ["dpkg", "-s", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         ).returncode
@@ -226,45 +227,35 @@ def _get_installed_apt_packages() -> List[str]:
     ]
 
 
-def _install_pip_modules() -> None:
-    logging.info(
-        "Installing default pip modules (%s)", ", ".join(PIP_MODULES_TO_INSTALL)
-    )
+def install_pip_modules() -> None:
+    logging.info("Installing pip modules: %s", ", ".join(PIP_MODULES))
     try:
-        modules_to_install = _get_installed_pip_modules()
-        missing_modules = set(PIP_MODULES_TO_INSTALL) - set(modules_to_install)
-        if missing_modules:
+        modules_to_install = get_missing_pip_modules()
+        if modules_to_install:
             logging.warning(
-                "The following modules were not found and will be skipped during installation: %s",
-                ", ".join(missing_modules),
+                "The following modules will be skipped during installation: %s",
+                ", ".join(modules_to_install),
             )
 
-        setup_command = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            *modules_to_install,
-        ]
+        install_command = [sys.executable, "-m", "pip", "install", *modules_to_install]
         result = subprocess.run(
-            setup_command,
+            install_command,
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
             encoding="utf-8",
         )
         logging.debug(result.stdout)
-
     except subprocess.CalledProcessError as cpe:
-        logging.error("Installing software failed with message:\n %s", cpe.stderr)
+        logging.error("Failed to install pip modules: %s", cpe.stderr)
         sys.exit(1)
     logging.info("Successfully installed pip modules")
 
 
-def _get_installed_pip_modules() -> List[str]:
+def get_missing_pip_modules() -> List[str]:
     return [
         module
-        for module in PIP_MODULES_TO_INSTALL
+        for module in PIP_MODULES
         if subprocess.run(
             [sys.executable, "-m", "pip", "show", module],
             stdout=subprocess.PIPE,
@@ -274,78 +265,77 @@ def _get_installed_pip_modules() -> List[str]:
     ]
 
 
-def _setup_fonts() -> None:
-    zips_to_download = [
+def setup_fonts() -> None:
+    font_zips = [
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/SourceCodePro.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Hack.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Meslo.zip",
     ]
-    font_files_to_download = [
+    font_files = [
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf",
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf",
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf",
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf",
     ]
-    logging.info(f"Installing fonts by downloading '{len(zips_to_download)}' zip files")
-    for zip_url in zips_to_download:
+    logging.info("Downloading and installing fonts from zip files")
+    for zip_url in font_zips:
         request = requests.get(zip_url, allow_redirects=True)
+        request.raise_for_status()
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
-        with tempfile.TemporaryDirectory() as tmp_dirname:
-            zip_file.extractall(tmp_dirname)
-            _copy_to_font_dir(tmp_dirname)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            zip_file.extractall(tmp_dir)
+            copy_fonts_to_directory(tmp_dir)
 
-    logging.info(
-        f"Installing '{len(font_files_to_download)}' fonts by downloading font files"
-    )
-    for file_url in font_files_to_download:
+    logging.info("Downloading and installing individual font files")
+    for file_url in font_files:
         request = requests.get(file_url, allow_redirects=True)
-        with tempfile.TemporaryDirectory() as tmp_dirname:
+        with tempfile.TemporaryDirectory() as tmp_dir:
             filename = os.path.basename(unquote(file_url))
-            filepath = os.path.join(tmp_dirname, filename)
+            filepath = os.path.join(tmp_dir, filename)
             with open(filepath, "wb") as file:
                 file.write(request.content)
-            _copy_to_font_dir(filepath)
+            copy_fonts_to_directory(filepath)
     command = "fc-cache -f -v"
-    logging.info(f"Rebuilding font cache using '{command}'")
+    logging.info("Rebuilding font cache with command: '%s'", command)
     subprocess.check_call(command, shell=True)
     logging.info(
-        "Hint: Remember to configure font 'MesloLGS NF' as default "
+        "Remember to configure 'MesloLGS NF' as the default font "
         + "(see https://github.com/romkatv/powerlevel10k/blob/master/font.md)"
     )
 
 
-def _copy_to_font_dir(source: str) -> None:
+def copy_fonts_to_directory(source: str) -> None:
     font_dir = os.path.expanduser("~/.local/share/fonts")
     os.makedirs(font_dir, exist_ok=True)
 
     if os.path.isfile(source):
         destination = os.path.join(font_dir, os.path.basename(source))
-        logging.debug(f"moving single font file '{source}' to '{font_dir}'")
+        logging.debug("Moving font file '%s' to '%s'", source, font_dir)
         shutil.move(source, destination)
         return
 
-    logging.debug(f"moving all font files from directory '{source}' to '{font_dir}'")
+    logging.debug("Moving all font files from directory '%s' to '%s'", source, font_dir)
     for file in os.listdir(source):
         file_path = os.path.join(source, file)
         if file.endswith((".ttf", ".otf", ".ttc")):
             destination = os.path.join(font_dir, file)
-            logging.debug(f"moving file '{file_path}' to '{destination}'")
+            logging.debug("Moving file '%s' to '%s'", file_path, destination)
             shutil.move(file_path, destination)
         else:
-            logging.debug(f"skipping file '{file_path}' without font filetype")
+            logging.debug("Skipping non-font file '%s'", file_path)
 
 
-def _run_additional_setup_in_container() -> None:
-    extension_script_paths = [
-        _source_path("setup_in_container.sh"),
+def run_additional_setup_in_container() -> None:
+    extension_scripts = [
+        get_absolute_path("setup_in_container.sh"),
         os.path.expanduser("~/setup_in_container.sh"),
     ]
 
-    for script in extension_script_paths:
+    for script in extension_scripts:
         if os.path.isfile(script):
-            logging.info(f"Running additional setup script: {script}")
+            logging.info("Running additional setup script: %s", script)
             result = subprocess.run(
                 [script],
                 check=True,
@@ -355,43 +345,47 @@ def _run_additional_setup_in_container() -> None:
             )
             logging.debug(result.stdout)
         else:
-            logging.info(
-                f"Extension point for creating links not used. If needed you can create it at {script}"
-            )
+            logging.info("No additional setup script found at %s", script)
 
 
 def is_running_in_docker() -> bool:
     return os.path.isfile("/.dockerenv")
 
 
-def parse_args():
-
+def parse_arguments():
     parser = argparse.ArgumentParser(description="Setup dotfiles")
     parser.add_argument(
         "--new-host",
         action="store_true",
-        help="Also install apt + pip packages and fonts",
+        help="Install apt packages, pip modules, and fonts",
+    )
+    parser.add_argument(
+        "--backup",
+        action="store_true",
+        help="Create a backup before setting up dotfiles",
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    args = parse_args()
+    args = parse_arguments()
+
+    verify_dotfiles_exist()
+
+    if args.backup:
+        create_backup()
+
+    setup_dotfile_links()
+
     if is_running_in_docker():
-        _check_files_to_install()
-        _setup_links(force=True)
-        _run_additional_setup_in_container()
-    else:
-        _check_files_to_install()
-        _create_backup()
-        _setup_links()
+        run_additional_setup_in_container()
 
     if args.new_host:
-        _setup_fonts()
-        _install_software()
-        _install_pip_modules()
+        setup_fonts()
+        install_apt_packages()
+        install_pip_modules()
 
-    logging.info("Finished setup successfully :)")
+    logging.info("Setup completed successfully")
 
 
 if __name__ == "__main__":

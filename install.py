@@ -123,7 +123,10 @@ def setup_dotfile_links(use_symlink: bool = False) -> None:
         if result:
             links_created.update(result)
     logging.info(
-        "Successfully set up %d links for dotfiles in %s", len(links_created), HOME_DIR
+        "Successfully set up %d %s-links for dotfiles in %s",
+        len(links_created),
+        "sym" if use_symlink else "hard",
+        HOME_DIR,
     )
 
 

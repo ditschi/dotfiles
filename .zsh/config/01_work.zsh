@@ -1,9 +1,6 @@
 alias zshwork="nano $0"
 
-if [[ "$WORK_SETUP" != "true" ]]; then # WORK_SETUP is set by LOADER
-    # ensure the default user in .gitconfig
-    git config --global user.name "Christian Ditscher"
-    git config --global user.email "chris@ditscher.me"
+if [[ "${WORK_SETUP}" != "true" ]]; then # set in 00_LOADER.zsh
     return
 fi
 

@@ -94,6 +94,7 @@ fi
 DOTFILES_DIR="/home/$(whoami)/dotfiles/.zsh/config"
 if [ -d "$DOTFILES_DIR" ]; then
     echo "Loading customization from $DOTFILES_DIR"
+    unset WORK_SETUP
     if [[ ! $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
         export WORK_SETUP="true"
         . "$DOTFILES_DIR/01_work_tools.zsh"

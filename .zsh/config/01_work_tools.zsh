@@ -1,7 +1,7 @@
 alias zshwork-tools="nano $0"
 # Check and install tools
 
-if [[ "$WORK_SETUP" != "true" ]]; then # WORK_SETUP is set by LOADER
+if [[ "${WORK_SETUP}" != "true" ]]; then # set in 00_LOADER.zsh
     return
 fi
 

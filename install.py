@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 import argparse
-import os
-import logging
-import subprocess
-import requests
-import zipfile
-import sys
 import io
+import logging
+import os
+import requests
 import shutil
+import subprocess
+import sys
 import tempfile
-from urllib.parse import unquote
+import time
+import zipfile
 from datetime import datetime
 from typing import List
+from urllib.parse import unquote
 
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -166,7 +167,31 @@ def create_link_for_file(source_path: str, link_path: str, use_symlink: bool) ->
             return None
         else:
             logging.debug("Removing existing file '%s'", link_path)
-            os.remove(link_path)
+
+            max_retries = 5
+            delay_seconds = 1
+
+            for attempt in range(max_retries):
+                try:
+                    os.remove(link_path)
+                    break
+                except OSError as e:
+                    if e.errno == 16:  # Device or resource busy
+                        logging.debug(
+                            "Attempt %d: Failed to remove '%s' due to resource busy. Retrying in %d seconds...",
+                            attempt + 1,
+                            link_path,
+                            delay_seconds,
+                        )
+                        time.sleep(delay_seconds)
+                    else:
+                        logging.warning("Failed to remove '%s': %s", link_path, e)
+                        raise
+            else:
+                logging.error(
+                    "Failed to remove '%s' after %d attempts", link_path, max_retries
+                )
+                sys.exit(1)
 
     # Ensure the parent directory of the link path exists
     os.makedirs(os.path.dirname(link_path), exist_ok=True)

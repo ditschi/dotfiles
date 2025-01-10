@@ -421,7 +421,7 @@ def main() -> None:
     if args.backup:
         create_backup()
 
-    setup_dotfile_links()
+    setup_dotfile_links(use_symlink=is_running_in_docker())
 
     if is_running_in_docker():
         run_additional_setup_in_container()

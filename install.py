@@ -108,20 +108,24 @@ def create_backup() -> None:
         os.removedirs(BACKUP_DIR)
 
 
-def setup_dotfile_links(use_symlink: bool = False) -> None:
+def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) -> None:
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
     for dotfile in DOTFILES:
         source_path = get_absolute_path(dotfile)
         link_path = get_home_path(dotfile)
         if os.path.isdir(source_path):
-            result = create_links_for_directory(source_path, link_path, use_symlink)
+            result = create_links_for_directory(
+                source_path, link_path, use_symlink, skip_existing
+            )
             if result:
                 links_created.update(result)
             else:
                 logging.debug("No links created for directory '%s'", source_path)
             continue
-        result = create_link_for_file(source_path, link_path, use_symlink)
+        result = create_link_for_file(
+            source_path, link_path, use_symlink, skip_existing
+        )
         if result:
             links_created.update(result)
     logging.info(
@@ -133,7 +137,7 @@ def setup_dotfile_links(use_symlink: bool = False) -> None:
 
 
 def create_links_for_directory(
-    source_path: str, link_path: str, use_symlink: bool
+    source_path: str, link_path: str, use_symlink: bool, skip_existing: bool
 ) -> dict:
     links_created = {}
     for root, _, files in os.walk(source_path):
@@ -142,14 +146,20 @@ def create_links_for_directory(
             link_file = os.path.join(
                 link_path, os.path.relpath(source_file, source_path)
             )
-            result = create_link_for_file(source_file, link_file, use_symlink)
+            result = create_link_for_file(
+                source_file, link_file, use_symlink, skip_existing
+            )
             if result:
                 links_created.update(result)
     return links_created
 
 
-def create_link_for_file(source_path: str, link_path: str, use_symlink: bool) -> dict:
+def create_link_for_file(
+    source_path: str, link_path: str, use_symlink: bool, skip_existing: bool
+) -> dict:
     if os.path.exists(link_path):
+        if skip_existing:
+            return
         if use_symlink and os.path.islink(link_path):
             if os.readlink(link_path) == os.path.relpath(
                 source_path, os.path.dirname(link_path)
@@ -446,7 +456,9 @@ def main() -> None:
     if args.backup:
         create_backup()
 
-    setup_dotfile_links(use_symlink=is_running_in_docker())
+    setup_dotfile_links(
+        use_symlink=is_running_in_docker(), skip_existing=is_running_in_docker()
+    )
 
     if is_running_in_docker():
         run_additional_setup_in_container()

@@ -371,6 +371,23 @@ def run_additional_setup_in_container() -> None:
         os.path.expanduser("~/setup_in_container.sh"),
     ]
 
+    host_zsh_cache = "/mnt/host_home/.zsh"
+    container_zsh_cache = os.path.expanduser("~/.zsh")
+
+    if os.path.exists(host_zsh_cache) and not os.path.exists(container_zsh_cache):
+        logging.info(
+            "Linking host zsh cache environment from '%s' to '%s'",
+            host_zsh_cache,
+            container_zsh_cache,
+        )
+        os.symlink(host_zsh_cache, container_zsh_cache)
+    else:
+        logging.debug(
+            "Cached zsh environment not linked: source exists: %s, destination exists: %s",
+            os.path.exists(host_zsh_cache),
+            os.path.exists(container_zsh_cache),
+        )
+
     for script in extension_scripts:
         if os.path.isfile(script):
             logging.info("Running additional setup script: %s", script)

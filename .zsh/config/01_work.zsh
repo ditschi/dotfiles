@@ -115,10 +115,13 @@ sdx() {
         echo '.devcontainer/initialize-command.sh not found, skipping execution'
     fi
 
+    mkdir -p "${HOME}/.docker-cache/.zsh"
+
     docker compose build --pull dev-env
     docker compose run --rm \
         -v "${HOME}/:/mnt/host_home/" \
         -v "/usr/share/autojump/:/usr/share/autojump/" \
+        -v "${HOME}/.docker-cache/.zsh:${HOME}/.zsh/" \
         dev-env \
         "
             if [ -f /mnt/host_home/dotfiles/install.py ]; then

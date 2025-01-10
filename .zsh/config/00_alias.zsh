@@ -1,6 +1,6 @@
 alias zshalias="nano $0"
 
-alias update-dotfiles="pushd ~/dotfiles/ > /dev/null && git stash push .gitconfig -m \"Current .gitconfig\" && git pull && git stash pop && popd > /dev/null"
+alias update-dotfiles="pushd ~/dotfiles/ > /dev/null && ( git stash push .gitconfig -m \"Current .gitconfig\" > /dev/null || true ) && git pull && ( git stash pop > /dev/null || true )  && popd > /dev/null"
 
 alias python='python3'
 alias docker-compose='docker compose'

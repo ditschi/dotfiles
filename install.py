@@ -3,6 +3,7 @@ import argparse
 import io
 import logging
 import os
+from pathlib import Path
 import requests
 import shutil
 import subprocess
@@ -15,10 +16,10 @@ from typing import List
 from urllib.parse import unquote
 
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+SCRIPT_DIR = Path(__file__).resolve().parent
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-HOME_DIR = os.path.expanduser("~")
-BACKUP_DIR = os.path.realpath(os.path.join(HOME_DIR, f"dotfiles-backup-{timestamp}"))
+HOME_DIR = Path.home()
+BACKUP_DIR = HOME_DIR / f"dotfiles-backup-{timestamp}"
 
 DOTFILES = [
     ".bashrc",
@@ -58,16 +59,16 @@ APT_PACKAGES = [
 PIP_MODULES = ["pre-commit", "pipenv", "pipx", "typer"]
 
 
-def get_absolute_path(relative_path: str) -> str:
-    return os.path.realpath(os.path.join(SCRIPT_DIR, relative_path))
+def get_absolute_path(relative_path: str) -> Path:
+    return SCRIPT_DIR / relative_path
 
 
-def get_home_path(relative_path: str) -> str:
-    return os.path.join(HOME_DIR, relative_path)
+def get_home_path(relative_path: str) -> Path:
+    return HOME_DIR / relative_path
 
 
-def get_backup_path(relative_path: str) -> str:
-    return os.path.join(BACKUP_DIR, relative_path)
+def get_backup_path(relative_path: str) -> Path:
+    return BACKUP_DIR / relative_path
 
 
 def verify_dotfiles_exist() -> None:
@@ -75,7 +76,7 @@ def verify_dotfiles_exist() -> None:
     missing_files = [
         dotfile
         for dotfile in DOTFILES
-        if not os.path.exists(get_absolute_path(dotfile))
+        if not get_absolute_path(dotfile).exists()
     ]
     if missing_files:
         logging.error(
@@ -89,12 +90,12 @@ def verify_dotfiles_exist() -> None:
 def create_backup() -> None:
     logging.debug("Creating backup of existing dotfiles")
     did_backup = False
-    os.makedirs(BACKUP_DIR)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     for dotfile in DOTFILES:
         source_path = get_home_path(dotfile)
         backup_path = get_backup_path(dotfile)
-        if os.path.exists(source_path):
-            if os.path.islink(source_path):
+        if source_path.exists():
+            if source_path.is_symlink():
                 logging.debug("'%s' is a symlink, skipping backup", source_path)
                 continue
             logging.debug("Backing up '%s' to '%s'", source_path, backup_path)
@@ -105,7 +106,7 @@ def create_backup() -> None:
     if did_backup:
         logging.info("Existing dotfiles backed up to '%s'", BACKUP_DIR)
     else:
-        os.removedirs(BACKUP_DIR)
+        BACKUP_DIR.rmdir()
 
 
 def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) -> None:
@@ -114,7 +115,7 @@ def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) 
     for dotfile in DOTFILES:
         source_path = get_absolute_path(dotfile)
         link_path = get_home_path(dotfile)
-        if os.path.isdir(source_path):
+        if source_path.is_dir():
             result = create_links_for_directory(
                 source_path, link_path, use_symlink, skip_existing
             )
@@ -137,15 +138,13 @@ def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) 
 
 
 def create_links_for_directory(
-    source_path: str, link_path: str, use_symlink: bool, skip_existing: bool
+    source_path: Path, link_path: Path, use_symlink: bool, skip_existing: bool
 ) -> dict:
     links_created = {}
     for root, _, files in os.walk(source_path):
         for name in files:
-            source_file = os.path.join(root, name)
-            link_file = os.path.join(
-                link_path, os.path.relpath(source_file, source_path)
-            )
+            source_file = Path(root) / name
+            link_file = link_path / source_file.relative_to(source_path)
             result = create_link_for_file(
                 source_file, link_file, use_symlink, skip_existing
             )
@@ -155,23 +154,21 @@ def create_links_for_directory(
 
 
 def create_link_for_file(
-    source_path: str, link_path: str, use_symlink: bool, skip_existing: bool
+    source_path: Path, link_path: Path, use_symlink: bool, skip_existing: bool
 ) -> dict:
-    if os.path.exists(link_path):
+    if link_path.exists():
         if skip_existing:
             return
-        if use_symlink and os.path.islink(link_path):
-            if os.readlink(link_path) == os.path.relpath(
-                source_path, os.path.dirname(link_path)
-            ):
+        if use_symlink and link_path.is_symlink():
+            if link_path.resolve() == source_path:
                 logging.debug(
                     "'%s' is already a symlink to '%s'", link_path, source_path
                 )
                 return None
         elif (
             not use_symlink
-            and not os.path.islink(link_path)
-            and os.path.samefile(source_path, link_path)
+            and not link_path.is_symlink()
+            and link_path.samefile(source_path)
         ):
             logging.debug("'%s' is already a hard link to '%s'", link_path, source_path)
             return None
@@ -183,7 +180,7 @@ def create_link_for_file(
 
             for attempt in range(max_retries):
                 try:
-                    os.remove(link_path)
+                    link_path.unlink()
                     break
                 except OSError as e:
                     if e.errno == 16:  # Device or resource busy
@@ -204,19 +201,17 @@ def create_link_for_file(
                 sys.exit(1)
 
     # Ensure the parent directory of the link path exists
-    os.makedirs(os.path.dirname(link_path), exist_ok=True)
+    link_path.parent.mkdir(parents=True, exist_ok=True)
 
     if use_symlink:
-        relative_link = os.path.relpath(source_path, os.path.dirname(link_path))
+        relative_link = os.path.relpath(source_path, link_path.parent)
         logging.debug("Creating symlink '%s' -> '%s'", link_path, relative_link)
-        os.symlink(
-            relative_link, link_path, target_is_directory=os.path.isdir(source_path)
-        )
-        return {link_path: source_path}
+        link_path.symlink_to(relative_link, target_is_directory=source_path.is_dir())
+        return {str(link_path): str(source_path)}
     else:
         logging.debug("Creating hard link '%s' -> '%s'", link_path, source_path)
-        os.link(source_path, link_path)
-        return {link_path: source_path}
+        link_path.link_to(source_path)
+        return {str(link_path): str(source_path)}
 
 
 def install_apt_packages() -> None:
@@ -324,14 +319,14 @@ def setup_fonts() -> None:
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_file.extractall(tmp_dir)
-            copy_fonts_to_directory(tmp_dir)
+            copy_fonts_to_directory(Path(tmp_dir))
 
     logging.info("Downloading and installing individual font files")
     for file_url in font_files:
         request = requests.get(file_url, allow_redirects=True)
         with tempfile.TemporaryDirectory() as tmp_dir:
             filename = os.path.basename(unquote(file_url))
-            filepath = os.path.join(tmp_dir, filename)
+            filepath = Path(tmp_dir) / filename
             with open(filepath, "wb") as file:
                 file.write(request.content)
             copy_fonts_to_directory(filepath)
@@ -344,55 +339,57 @@ def setup_fonts() -> None:
     )
 
 
-def copy_fonts_to_directory(source: str) -> None:
-    font_dir = os.path.expanduser("~/.local/share/fonts")
-    os.makedirs(font_dir, exist_ok=True)
+def copy_fonts_to_directory(source: Path) -> None:
+    font_dir = HOME_DIR / ".local" / "share" / "fonts"
+    font_dir.mkdir(parents=True, exist_ok=True)
 
-    if os.path.isfile(source):
-        destination = os.path.join(font_dir, os.path.basename(source))
+    if source.is_file():
+        destination = font_dir / source.name
         logging.debug("Moving font file '%s' to '%s'", source, font_dir)
-        shutil.move(source, destination)
+        shutil.move(str(source), str(destination))
         return
 
     logging.debug("Moving all font files from directory '%s' to '%s'", source, font_dir)
-    for file in os.listdir(source):
-        file_path = os.path.join(source, file)
-        if file.endswith((".ttf", ".otf", ".ttc")):
-            destination = os.path.join(font_dir, file)
-            logging.debug("Moving file '%s' to '%s'", file_path, destination)
-            shutil.move(file_path, destination)
+    for file in source.iterdir():
+        if file.suffix in (".ttf", ".otf", ".ttc"):
+            destination = font_dir / file.name
+            logging.debug("Moving file '%s' to '%s'", file, destination)
+            shutil.move(str(file), str(destination))
         else:
-            logging.debug("Skipping non-font file '%s'", file_path)
+            logging.debug("Skipping non-font file '%s'", file)
 
 
 def run_additional_setup_in_container() -> None:
     extension_scripts = [
-        get_absolute_path("setup_in_container.sh"),
-        os.path.expanduser("~/setup_in_container.sh"),
+        SCRIPT_DIR / "setup_in_container.sh",
+        HOME_DIR / "setup_in_container.sh",
     ]
 
-    host_zsh_cache = "/mnt/host_home/.zsh"
-    container_zsh_cache = os.path.expanduser("~/.zsh")
+    zinit_cache_path = Path(".local") / "share" / "zinit"
+    host_home_mount_path =  Path("/mnt/host_home")
+    host_zinit_cache = host_home_mount_path / zinit_cache_path
+    container_zinit_cache = HOME_DIR / zinit_cache_path
 
-    if os.path.exists(host_zsh_cache) and not os.path.exists(container_zsh_cache):
+    if host_zinit_cache.exists() and not container_zinit_cache.exists():
         logging.info(
             "Linking host zsh cache environment from '%s' to '%s'",
-            host_zsh_cache,
-            container_zsh_cache,
+            host_zinit_cache,
+            container_zinit_cache,
         )
-        os.symlink(host_zsh_cache, container_zsh_cache)
+        container_zinit_cache.parent.mkdir(parents=True, exist_ok=True)
+        container_zinit_cache.symlink_to(host_zinit_cache)
     else:
         logging.debug(
             "Cached zsh environment not linked: source exists: %s, destination exists: %s",
-            os.path.exists(host_zsh_cache),
-            os.path.exists(container_zsh_cache),
+            host_zinit_cache.exists(),
+            container_zinit_cache.exists(),
         )
 
     for script in extension_scripts:
-        if os.path.isfile(script):
+        if script.is_file():
             logging.info("Running additional setup script: %s", script)
             result = subprocess.run(
-                [script],
+                [str(script)],
                 check=True,
                 stderr=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -404,7 +401,7 @@ def run_additional_setup_in_container() -> None:
 
 
 def is_running_in_docker() -> bool:
-    return os.path.isfile("/.dockerenv")
+    return Path("/.dockerenv").is_file()
 
 
 def parse_arguments():

@@ -122,6 +122,7 @@ sdx() {
         -v "${HOME}/:/mnt/host_home/" \
         -v "/usr/share/autojump/:/usr/share/autojump/" \
         -v "${HOME}/.docker-cache/.zsh:${HOME}/.zsh/" \
+        #-v "${HOME}/.docker-cache/.local_share_zinit:${HOME}/.local/share/zinit/" \
         dev-env \
         "
             if [ -f /mnt/host_home/dotfiles/install.py ]; then

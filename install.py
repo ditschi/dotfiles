@@ -18,8 +18,8 @@ from urllib.parse import unquote
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-HOME_DIR = Path.home()
-BACKUP_DIR = HOME_DIR / f"dotfiles-backup-{timestamp}"
+HOME_DIR = Path.home().resolve()
+BACKUP_DIR = HOME_DIR / ".dotfiles-backup" / timestamp
 
 DOTFILES = [
     ".bashrc",
@@ -59,15 +59,15 @@ APT_PACKAGES = [
 PIP_MODULES = ["pre-commit", "pipenv", "pipx", "typer"]
 
 
-def get_absolute_path(relative_path: str) -> Path:
+def get_dotfiles_path(relative_path: str | Path) -> Path:
     return SCRIPT_DIR / relative_path
 
 
-def get_home_path(relative_path: str) -> Path:
+def get_home_path(relative_path: str| Path) -> Path:
     return HOME_DIR / relative_path
 
 
-def get_backup_path(relative_path: str) -> Path:
+def get_backup_path(relative_path: str| Path) -> Path:
     return BACKUP_DIR / relative_path
 
 
@@ -76,9 +76,9 @@ def verify_dotfiles_exist() -> None:
     missing_files = [
         dotfile
         for dotfile in DOTFILES
-        if not get_absolute_path(dotfile).exists()
+        if not get_dotfiles_path(dotfile).exists()
     ]
-    if missing_files:
+    if (missing_files):
         logging.error(
             "The following dotfiles are missing in the repository: %s",
             ", ".join(missing_files),
@@ -87,10 +87,11 @@ def verify_dotfiles_exist() -> None:
     logging.info("All required dotfiles are present")
 
 
-def create_backup() -> None:
+def create_backup(dry_run: bool = False) -> None:
     logging.debug("Creating backup of existing dotfiles")
     did_backup = False
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     for dotfile in DOTFILES:
         source_path = get_home_path(dotfile)
         backup_path = get_backup_path(dotfile)
@@ -98,34 +99,45 @@ def create_backup() -> None:
             if source_path.is_symlink():
                 logging.debug("'%s' is a symlink, skipping backup", source_path)
                 continue
-            logging.debug("Backing up '%s' to '%s'", source_path, backup_path)
-            shutil.copy2(source_path, backup_path)
+
+            message = "Backing up '%s' to '%s'", source_path, backup_path
+            if dry_run:
+                logging.debug("Dry-run:: " + message)
+            else:
+                logging.debug(message)
+                shutil.copy2(source_path, backup_path)
             did_backup = True
         else:
             logging.debug("'%s' does not exist, skipping backup", source_path)
     if did_backup:
         logging.info("Existing dotfiles backed up to '%s'", BACKUP_DIR)
     else:
-        BACKUP_DIR.rmdir()
+        if not dry_run:
+            BACKUP_DIR.rmdir()
 
 
-def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) -> None:
+def setup_dotfile_links(use_symlink: bool = True, skip_existing: bool = False, dry_run: bool = False, force: bool = False) -> None:
+    if skip_existing and force:
+        logging.warning("Both 'skip_existing' and 'force' are set, Docker usecase 'skip_existing' will be")
+        skip_existing = False
+
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
     for dotfile in DOTFILES:
-        source_path = get_absolute_path(dotfile)
-        link_path = get_home_path(dotfile)
-        if source_path.is_dir():
+        dotfile_path = get_dotfiles_path(dotfile)
+        if dotfile_path.is_dir():
             result = create_links_for_directory(
-                source_path, link_path, use_symlink, skip_existing
+                dotfile, use_symlink, skip_existing, dry_run, force
             )
             if result:
                 links_created.update(result)
             else:
-                logging.debug("No links created for directory '%s'", source_path)
+                logging.debug("No links created for directory '%s'", dotfile_path)
             continue
+
+        target_path = get_home_path(dotfile)
         result = create_link_for_file(
-            source_path, link_path, use_symlink, skip_existing
+            target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
         )
         if result:
             links_created.update(result)
@@ -138,94 +150,106 @@ def setup_dotfile_links(use_symlink: bool = False, skip_existing: bool = False) 
 
 
 def create_links_for_directory(
-    source_path: Path, link_path: Path, use_symlink: bool, skip_existing: bool
+    dotfile_dir: Path, use_symlink: bool, skip_existing: bool, dry_run: bool, force: bool
 ) -> dict:
     links_created = {}
-    for root, _, files in os.walk(source_path):
+    for root, _, files in os.walk(dotfile_dir):
+        logging.debug("Setting up link for files in folder '%s'", root)
         for name in files:
-            source_file = Path(root) / name
-            link_file = link_path / source_file.relative_to(source_path)
+            relative_path = Path(root) / name
+
+            dotfile_path = get_dotfiles_path(relative_path)
+            target_path = get_home_path(relative_path)
+            logging.debug("Setting up link for file in folder:  Target '%s' -> Link '%s'", target_path, dotfile_path)
             result = create_link_for_file(
-                source_file, link_file, use_symlink, skip_existing
+                target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
             )
             if result:
                 links_created.update(result)
     return links_created
 
 
+def _existing_link_correct(target_path: Path, dotfile_path: Path, use_symlink: bool) -> bool:
+    if use_symlink:
+        if target_path.is_symlink() and target_path.resolve() == dotfile_path.resolve():
+            logging.debug("'%s' is already a symlink to '%s'", target_path, dotfile_path)
+            return True
+    else:
+        if target_path.is_file() and not target_path.is_symlink() and target_path.samefile(dotfile_path):
+            logging.debug("'%s' is already a hard link to '%s'", target_path, dotfile_path)
+            return True
+    return False
+
+
+
 def create_link_for_file(
-    source_path: Path, link_path: Path, use_symlink: bool, skip_existing: bool
+    target_path: Path, dotfile_path: Path, use_symlink: bool, skip_existing: bool, dry_run: bool, force: bool
 ) -> dict:
-    if link_path.exists():
-        if skip_existing:
-            return
-        if use_symlink and link_path.is_symlink():
-            if link_path.resolve() == source_path:
-                logging.debug(
-                    "'%s' is already a symlink to '%s'", link_path, source_path
-                )
+    if not dry_run:
+        if  dotfile_path.absolute() == target_path.absolute():
+            # dry run will not remove existing links, so check if the paths are the same will follow links and fail
+            logging.error("Dotfile path and target path are the same: '%s'", dotfile_path)
+            sys.exit(1)
+
+    target_abs_path = target_path.absolute()
+    if target_abs_path.exists() or target_abs_path.is_symlink():
+        if not force:
+            if skip_existing:
+                logging.debug("Skipping existing file '%s'", target_abs_path)
                 return None
-        elif (
-            not use_symlink
-            and not link_path.is_symlink()
-            and link_path.samefile(source_path)
-        ):
-            logging.debug("'%s' is already a hard link to '%s'", link_path, source_path)
-            return None
+
+            if _existing_link_correct(target_path, dotfile_path, use_symlink):
+                logging.info("Correct link already exists: '%s'", target_abs_path)
+                return None
+
+        message = "Removing incorrect link '%s'" % target_abs_path
+        if dry_run:
+            logging.debug("Dry-run:: " + message)
         else:
-            logging.debug("Removing existing file '%s'", link_path)
+            logging.debug(message)
+            os.remove(target_abs_path)  # warning: target_path.unlink() for some reason will delete the linked destination
+            if target_abs_path.exists():
+                raise FileExistsError(f"Failed to remove incorrect link '{target_abs_path}'")
+    else:
+        logging.debug("Link '%s' does not exist yet", target_abs_path )
 
-            max_retries = 5
-            delay_seconds = 1
-
-            for attempt in range(max_retries):
-                try:
-                    link_path.unlink()
-                    break
-                except OSError as e:
-                    if e.errno == 16:  # Device or resource busy
-                        logging.debug(
-                            "Attempt %d: Failed to remove '%s' due to resource busy. Retrying in %d seconds...",
-                            attempt + 1,
-                            link_path,
-                            delay_seconds,
-                        )
-                        time.sleep(delay_seconds)
-                    else:
-                        logging.warning("Failed to remove '%s': %s", link_path, e)
-                        raise
-            else:
-                logging.error(
-                    "Failed to remove '%s' after %d attempts", link_path, max_retries
-                )
-                sys.exit(1)
-
-    # Ensure the parent directory of the link path exists
-    link_path.parent.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
 
     if use_symlink:
-        relative_link = os.path.relpath(source_path, link_path.parent)
-        logging.debug("Creating symlink '%s' -> '%s'", link_path, relative_link)
-        link_path.symlink_to(relative_link, target_is_directory=source_path.is_dir())
-        return {str(link_path): str(source_path)}
+        # Note: failed trying to get relative path using pathlib
+        relative_link = Path(os.path.relpath(dotfile_path, target_abs_path.parent))
+        message = f"Creating symlink: Target '{target_path}' -> Link '{relative_link}'"
+        if dry_run:
+            logging.debug("Dry-run:: " + message)
+        else:
+            logging.debug(message)
+            target_path.absolute().symlink_to(relative_link)
     else:
-        logging.debug("Creating hard link '%s' -> '%s'", link_path, source_path)
-        link_path.hardlink_to(source_path)
-        return {str(link_path): str(source_path)}
+        message = f"Creating hard link: Target '{target_path}' -> Link '{dotfile_path}'"
+        if dry_run:
+            logging.debug("Dry-run:: " + message)
+        else:
+            logging.debug(message)
+            target_path.absolute().hardlink_to(dotfile_path)
+
+    return {str(target_path): str(dotfile_path)}
 
 
-def install_apt_packages() -> None:
+
+def install_apt_packages(dry_run: bool = False) -> None:
     logging.info("Installing apt packages: %s", ", ".join(APT_PACKAGES))
     update_command = ["sudo", "apt-get", "update"]
 
     try:
-        subprocess.run(
-            update_command,
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
+        if not dry_run:
+            subprocess.run(
+                update_command,
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
 
         packages_to_install = get_missing_apt_packages()
         if packages_to_install:
@@ -235,17 +259,18 @@ def install_apt_packages() -> None:
             )
 
         install_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
-        result = subprocess.run(
-            install_command,
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
+        if not dry_run:
+            result = subprocess.run(
+                install_command,
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            logging.debug(result.stdout)
     except subprocess.CalledProcessError as cpe:
         logging.error("Failed to install apt packages: %s", cpe.stderr)
         sys.exit(1)
-    logging.debug(result.stdout)
     logging.info("Successfully installed apt packages")
 
 
@@ -260,7 +285,7 @@ def get_missing_apt_packages() -> List[str]:
     ]
 
 
-def install_pip_modules() -> None:
+def install_pip_modules(dry_run: bool = False) -> None:
     logging.info("Installing pip modules: %s", ", ".join(PIP_MODULES))
     try:
         modules_to_install = get_missing_pip_modules()
@@ -271,14 +296,15 @@ def install_pip_modules() -> None:
             )
 
         install_command = [sys.executable, "-m", "pip", "install", *modules_to_install]
-        result = subprocess.run(
-            install_command,
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
-        logging.debug(result.stdout)
+        if not dry_run:
+            result = subprocess.run(
+                install_command,
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            logging.debug(result.stdout)
     except subprocess.CalledProcessError as cpe:
         logging.error("Failed to install pip modules: %s", cpe.stderr)
         sys.exit(1)
@@ -298,7 +324,7 @@ def get_missing_pip_modules() -> List[str]:
     ]
 
 
-def setup_fonts() -> None:
+def setup_fonts(dry_run: bool = False) -> None:
     font_zips = [
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
@@ -319,7 +345,8 @@ def setup_fonts() -> None:
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_file.extractall(tmp_dir)
-            copy_fonts_to_directory(Path(tmp_dir))
+            if not dry_run:
+                copy_fonts_to_directory(Path(tmp_dir))
 
     logging.info("Downloading and installing individual font files")
     for file_url in font_files:
@@ -329,10 +356,12 @@ def setup_fonts() -> None:
             filepath = Path(tmp_dir) / filename
             with open(filepath, "wb") as file:
                 file.write(request.content)
-            copy_fonts_to_directory(filepath)
+            if not dry_run:
+                copy_fonts_to_directory(filepath)
     command = "fc-cache -f -v"
     logging.info("Rebuilding font cache with command: '%s'", command)
-    subprocess.check_call(command, shell=True)
+    if not dry_run:
+        subprocess.check_call(command, shell=True)
     logging.info(
         "Remember to configure 'MesloLGS NF' as the default font "
         + "(see https://github.com/romkatv/powerlevel10k/blob/master/font.md)"
@@ -360,6 +389,7 @@ def copy_fonts_to_directory(source: Path) -> None:
 
 
 def run_additional_setup_in_container() -> None:
+    logging.info("Running additional setup in container")
     extension_scripts = [
         SCRIPT_DIR / "setup_in_container.sh",
         HOME_DIR / "setup_in_container.sh",
@@ -377,7 +407,7 @@ def run_additional_setup_in_container() -> None:
             container_zinit_cache,
         )
         container_zinit_cache.parent.mkdir(parents=True, exist_ok=True)
-        container_zinit_cache.symlink_to(host_zinit_cache)
+        shutil.copytree(host_zinit_cache, container_zinit_cache)
     else:
         logging.debug(
             "Cached zsh environment not linked: source exists: %s, destination exists: %s",
@@ -421,6 +451,16 @@ def parse_arguments():
         "-d",
         action="store_true",
         help="Create a backup before setting up dotfiles",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform a dry run without making any changes",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Delete all target files and create correct links",
     )
     return parser.parse_args()
 
@@ -468,19 +508,19 @@ def main() -> None:
     verify_dotfiles_exist()
 
     if args.backup:
-        create_backup()
+        create_backup(dry_run=args.dry_run)
 
     setup_dotfile_links(
-        use_symlink=is_running_in_docker(), skip_existing=is_running_in_docker()
+        use_symlink=True, skip_existing=is_running_in_docker(), dry_run=args.dry_run, force=args.force
     )
 
     if is_running_in_docker():
         run_additional_setup_in_container()
 
     if args.new_host:
-        setup_fonts()
-        install_apt_packages()
-        install_pip_modules()
+        setup_fonts(dry_run=args.dry_run)
+        install_apt_packages(dry_run=args.dry_run)
+        install_pip_modules(dry_run=args.dry_run)
         set_git_user_config()
 
     logging.info("Setup completed successfully")

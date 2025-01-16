@@ -1,10 +1,12 @@
 alias zshalias="nano $0"
 
-alias update-dotfiles="pushd ~/dotfiles/ > /dev/null && ( git stash push .gitconfig -m \"Current .gitconfig\" > /dev/null 2>&1 || true ) && git pull > /dev/null 2>&1 && python3 install.py && ( git stash pop > /dev/null 2>&1 || true )  && popd > /dev/null"
+alias update-dotfiles="pushd ~/dotfiles/ > /dev/null && ( git stash push .gitconfig -m \"Current .gitconfig\" || true ) && git pull && ( git stash pop || true )  && popd > /dev/null"
 
-alias python='python3'
 alias docker-compose='docker compose'
 alias dc='docker compose'
+
+alias cursor='~/Applications/cursor.AppImage --no-sandbox;'
+alias setup-cursor'mkdir -p ~/Applications/ && curl -L -o ~/Applications/cursor.AppImage https://downloader.cursor.sh/linux/appImage/x64 && chmod +x ~/Applications/cursor.AppImage && command -v fusermount >/dev/null || echo "Warning: requires libfuse which is not installed. Please install it using your package manager."'
 
 # enable color support of ls and other tools
 alias ls='ls --color=auto'

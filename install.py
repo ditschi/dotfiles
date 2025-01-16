@@ -210,7 +210,7 @@ def create_link_for_file(
         return {str(link_path): str(source_path)}
     else:
         logging.debug("Creating hard link '%s' -> '%s'", link_path, source_path)
-        link_path.link_to(source_path)
+        link_path.hardlink_to(source_path)
         return {str(link_path): str(source_path)}
 
 

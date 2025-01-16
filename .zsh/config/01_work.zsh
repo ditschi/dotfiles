@@ -83,6 +83,7 @@ alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BS
     2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
     3. restart session'"
 
+export DOCKER_SERVICE="dev-env"
 sde() {
     COMMAND="$@"
     if [ -f .devcontainer/initialize-command.sh ]; then
@@ -91,8 +92,8 @@ sde() {
         echo '.devcontainer/initialize-command.sh not found, skipping execution'
     fi
 
-    docker compose build --pull dev-env
-    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" dev-env \
+    docker compose build --pull $DOCKER_SERVICE
+    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" $DOCKER_SERVICE \
         "
             if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh
@@ -116,14 +117,15 @@ sdx() {
     fi
 
     mkdir -p "${HOME}/.docker-cache/.zsh"
+    mkdir -p "${HOME}/.docker-cache/.local_share_zinit"
 
-    docker compose build --pull dev-env
+    docker compose build --pull $DOCKER_SERVICE
     docker compose run --rm \
         -v "${HOME}/:/mnt/host_home/" \
         -v "/usr/share/autojump/:/usr/share/autojump/" \
         -v "${HOME}/.docker-cache/.zsh:${HOME}/.zsh/" \
-        #-v "${HOME}/.docker-cache/.local_share_zinit:${HOME}/.local/share/zinit/" \
-        dev-env \
+        -v "${HOME}/.docker-cache/.local_share_zinit:${HOME}/.local/share/zinit/" \
+        $DOCKER_SERVICE \
         "
             if [ -f /mnt/host_home/dotfiles/install.py ]; then
                 python3 /mnt/host_home/dotfiles/install.py
@@ -151,7 +153,7 @@ sdz() {
         echo '.devcontainer/initialize-command.sh not found, skipping execution'
     fi
 
-    docker-compose build dev-env
+    docker-compose build $DOCKER_SERVICE
     docker-compose run --rm \
         -v "${HOME}/.zshrc:${HOME}/.zshrc" \
         -v "${HOME}/.zsh/:${HOME}/.zsh/" \
@@ -162,7 +164,7 @@ sdz() {
         -v "${HOME}/.local/share/:${HOME}/.local/share/" \
         -v "/usr/share/autojump/:/usr/share/autojump/" \
         -v "${HOME}/.cache/:${HOME}/.cache/" \
-        dev-env \
+        $DOCKER_SERVICE \
         "
             if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh

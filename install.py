@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import zipfile
 from datetime import datetime
 from typing import List
@@ -63,22 +62,20 @@ def get_dotfiles_path(relative_path: str | Path) -> Path:
     return SCRIPT_DIR / relative_path
 
 
-def get_home_path(relative_path: str| Path) -> Path:
+def get_home_path(relative_path: str | Path) -> Path:
     return HOME_DIR / relative_path
 
 
-def get_backup_path(relative_path: str| Path) -> Path:
+def get_backup_path(relative_path: str | Path) -> Path:
     return BACKUP_DIR / relative_path
 
 
 def verify_dotfiles_exist() -> None:
     logging.debug("Verifying dotfiles to be installed")
     missing_files = [
-        dotfile
-        for dotfile in DOTFILES
-        if not get_dotfiles_path(dotfile).exists()
+        dotfile for dotfile in DOTFILES if not get_dotfiles_path(dotfile).exists()
     ]
-    if (missing_files):
+    if missing_files:
         logging.error(
             "The following dotfiles are missing in the repository: %s",
             ", ".join(missing_files),
@@ -116,9 +113,16 @@ def create_backup(dry_run: bool = False) -> None:
             BACKUP_DIR.rmdir()
 
 
-def setup_dotfile_links(use_symlink: bool = True, skip_existing: bool = False, dry_run: bool = False, force: bool = False) -> None:
+def setup_dotfile_links(
+    use_symlink: bool = True,
+    skip_existing: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+) -> None:
     if skip_existing and force:
-        logging.warning("Both 'skip_existing' and 'force' are set, Docker usecase 'skip_existing' will be")
+        logging.warning(
+            "Both 'skip_existing' and 'force' are set, Docker usecase 'skip_existing' will be"
+        )
         skip_existing = False
 
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
@@ -150,7 +154,11 @@ def setup_dotfile_links(use_symlink: bool = True, skip_existing: bool = False, d
 
 
 def create_links_for_directory(
-    dotfile_dir: Path, use_symlink: bool, skip_existing: bool, dry_run: bool, force: bool
+    dotfile_dir: Path,
+    use_symlink: bool,
+    skip_existing: bool,
+    dry_run: bool,
+    force: bool,
 ) -> dict:
     links_created = {}
     for root, _, files in os.walk(dotfile_dir):
@@ -160,7 +168,11 @@ def create_links_for_directory(
 
             dotfile_path = get_dotfiles_path(relative_path)
             target_path = get_home_path(relative_path)
-            logging.debug("Setting up link for file in folder:  Target '%s' -> Link '%s'", target_path, dotfile_path)
+            logging.debug(
+                "Setting up link for file in folder:  Target '%s' -> Link '%s'",
+                target_path,
+                dotfile_path,
+            )
             result = create_link_for_file(
                 target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
             )
@@ -169,26 +181,42 @@ def create_links_for_directory(
     return links_created
 
 
-def _existing_link_correct(target_path: Path, dotfile_path: Path, use_symlink: bool) -> bool:
+def _existing_link_correct(
+    target_path: Path, dotfile_path: Path, use_symlink: bool
+) -> bool:
     if use_symlink:
         if target_path.is_symlink() and target_path.resolve() == dotfile_path.resolve():
-            logging.debug("'%s' is already a symlink to '%s'", target_path, dotfile_path)
+            logging.debug(
+                "'%s' is already a symlink to '%s'", target_path, dotfile_path
+            )
             return True
     else:
-        if target_path.is_file() and not target_path.is_symlink() and target_path.samefile(dotfile_path):
-            logging.debug("'%s' is already a hard link to '%s'", target_path, dotfile_path)
+        if (
+            target_path.is_file()
+            and not target_path.is_symlink()
+            and target_path.samefile(dotfile_path)
+        ):
+            logging.debug(
+                "'%s' is already a hard link to '%s'", target_path, dotfile_path
+            )
             return True
     return False
 
 
-
 def create_link_for_file(
-    target_path: Path, dotfile_path: Path, use_symlink: bool, skip_existing: bool, dry_run: bool, force: bool
+    target_path: Path,
+    dotfile_path: Path,
+    use_symlink: bool,
+    skip_existing: bool,
+    dry_run: bool,
+    force: bool,
 ) -> dict:
     if not dry_run:
-        if  dotfile_path.absolute() == target_path.absolute():
+        if dotfile_path.absolute() == target_path.absolute():
             # dry run will not remove existing links, so check if the paths are the same will follow links and fail
-            logging.error("Dotfile path and target path are the same: '%s'", dotfile_path)
+            logging.error(
+                "Dotfile path and target path are the same: '%s'", dotfile_path
+            )
             sys.exit(1)
 
     target_abs_path = target_path.absolute()
@@ -207,11 +235,15 @@ def create_link_for_file(
             logging.debug("Dry-run:: " + message)
         else:
             logging.debug(message)
-            os.remove(target_abs_path)  # warning: target_path.unlink() for some reason will delete the linked destination
+            os.remove(
+                target_abs_path
+            )  # warning: target_path.unlink() for some reason will delete the linked destination
             if target_abs_path.exists():
-                raise FileExistsError(f"Failed to remove incorrect link '{target_abs_path}'")
+                raise FileExistsError(
+                    f"Failed to remove incorrect link '{target_abs_path}'"
+                )
     else:
-        logging.debug("Link '%s' does not exist yet", target_abs_path )
+        logging.debug("Link '%s' does not exist yet", target_abs_path)
 
     if not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +266,6 @@ def create_link_for_file(
             target_path.absolute().hardlink_to(dotfile_path)
 
     return {str(target_path): str(dotfile_path)}
-
 
 
 def install_apt_packages(dry_run: bool = False) -> None:
@@ -396,7 +427,7 @@ def run_additional_setup_in_container() -> None:
     ]
 
     zinit_cache_path = Path(".local") / "share" / "zinit"
-    host_home_mount_path =  Path("/mnt/host_home")
+    host_home_mount_path = Path("/mnt/host_home")
     host_zinit_cache = host_home_mount_path / zinit_cache_path
     container_zinit_cache = HOME_DIR / zinit_cache_path
 
@@ -511,7 +542,10 @@ def main() -> None:
         create_backup(dry_run=args.dry_run)
 
     setup_dotfile_links(
-        use_symlink=True, skip_existing=is_running_in_docker(), dry_run=args.dry_run, force=args.force
+        use_symlink=True,
+        skip_existing=is_running_in_docker(),
+        dry_run=args.dry_run,
+        force=args.force,
     )
 
     if is_running_in_docker():

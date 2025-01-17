@@ -3,24 +3,38 @@ alias zshhistory="nano $0"
 export HISTFILE=~/.shared_history
 export HISTSIZE=50000
 export SAVEHIST=60000 # recommended value 1.2 * SAVEHIST
-export HISTTIMEFORMAT="[%F %T] "
 
-if [ -n "$ZSH_VERSION" ]; then
-    # running in Zsh
-    setopt extended_history       # record timestamp of command in HISTFILE
-    setopt hist_verify            # show command with history expansion to user before running it
-    setopt hist_expire_dups_first # delete duplicates first when HISTFILE size exceeds HISTSIZE
-    setopt hist_ignore_space      # ignore commands that start with space
-    setopt hist_find_no_dups
-    setopt share_history # share command history data
-    # following should be turned off, if sharing history via setopt SHARE_HISTORY
-    unsetopt inc_append_history
-elif [ -n "$BASH_VERSION" ]; then
-    # running in bash
-    # append to the history file, don't overwrite it
-    shopt -s histappend
-    # don't put duplicate lines or lines starting with space in the history.
-    # See bash(1) for more options
-    export HISTCONTROL=ignoredups:ignorespace
-    PROMPT_COMMAND="history -a; history -r; $PROMPT_COMMAND"
+if [ -n "$BASH_VERSION" ]; then
+    # bash-specific settings
+    shopt -s histappend                 # Append to the history file, don't overwrite
+    export HISTIGNORE="&:[ ]*:#*"  # Ignore duplicates (&), space-only commands, and comments (#)
+    HISTCONTROL=ignoredups:ignorespace  # Ignorespace and ignoredups
+    PROMPT_COMMAND="history -a; history -c; history -n; history -r; $PROMPT_COMMAND" # Sync history between sessions
+    export HISTTIMEFORMAT='(%Y-%m-%d) (%H:%M:%S) '
+elif [ -n "$ZSH_VERSION" ]; then
+    # zsh-specific settings
+    unsetopt extended_history          # Disable extended history for Bash-like behavior
+    setopt hist_verify                 # Show expanded command before execution
+    setopt hist_ignore_space           # Ignore commands starting with space
+    setopt hist_reduce_blanks          # Remove extra blanks in commands
+    setopt hist_save_no_dups           # Avoid saving duplicate entries
+    setopt share_history               # Share history across sessions
+    setopt append_history              # Append to the history file, don't overwrite
+    setopt inc_append_history          # Write to the history file immediately
+    setopt hist_ignore_all_dups        # Ignore duplicate commands
+
+    # bash like zsh history with #<timestamp>\n<command>
+    zshaddhistory() {
+        # Extract the plain command
+        local cmd="${1%%$'\n'}"
+
+        # Add a timestamped entry manually to the HISTFILE
+        echo "#$(date +%s)" >> $HISTFILE
+        echo "$cmd" >> $HISTFILE
+
+        return 1  # Prevent zsh from adding its default formatted entry
+    }
+
+else
+    echo "Unsupported shell. Shared history setup may not work."
 fi

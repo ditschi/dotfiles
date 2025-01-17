@@ -14,7 +14,8 @@ zinit ice depth="1"
 zinit light romkatv/powerlevel10k
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-zinit ice atclone"dircolors -b LS_COLORS > clrs.zsh" \
-    atpull'%atclone' pick"clrs.zsh" nocompile'!' \
-    atload'zstyle ":completion:*" list-colors "${(s.:.)LS_COLORS}"'
-zinit light trapd00r/LS_COLORS
+# Load LS_COLORS plugin
+zinit pack for ls_colors
+
+# Ensure zsh-syntax-highlighting is loaded last
+zinit light zsh-users/zsh-syntax-highlighting

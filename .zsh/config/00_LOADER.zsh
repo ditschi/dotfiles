@@ -2,9 +2,12 @@ DEBUG=false
 
 log() {
     if [ "$DEBUG" = "true" ]; then
-        echo $1
+        echo "$1"
     fi
 }
+
+# Ensure ZSH variable is set
+ZSH=${ZSH:-$HOME/.zsh}
 
 if [[ $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
     export WORK_SETUP="true"
@@ -18,7 +21,7 @@ else
 fi
 
 for __file__ in $ZSH/config/*.zsh; do
-    log "Running for  $__file__"
+    log "Running for $__file__"
     if [ "$__file__" = "$0" ]; then # THIS file
         log "Skipping '$__file__'"
         continue

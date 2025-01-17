@@ -128,6 +128,7 @@
     preloadindex = true
     fscache = true
     autocrlf = input
+    pager = diff-so-fancy | less -FXRi
 [gc]
     auto = 256
 [init]

@@ -4,14 +4,30 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#ff00ff,bg=cyan,bold,underline"
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8,bg=0,bold,underline'
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
-zinit light hcgraf/zsh-sudo
-zinit light zdharma/fast-syntax-highlighting
-zinit light zpm-zsh/undollar
-zinit light agkozak/zsh-z
-zinit light paulirish/git-open
+# Combined installation of multiple plugins:
+# - hcgraf/zsh-sudo
+# - zpm-zsh/undollar
+# - agkozak/zsh-z
+# - paulirish/git-open
+# - fast-syntax-highlighting
+# - zsh-autosuggestions
+# - zsh-completions
+zinit wait light-mode lucid for \
+  hcgraf/zsh-sudo \
+  zpm-zsh/undollar \
+  agkozak/zsh-z \
+  paulirish/git-open \
+  atinit"zicompinit; zicdreplay" \
+    @zdharma-continuum/fast-syntax-highlighting \
+  atload"_zsh_autosuggest_start" \
+  atinit"bindkey '^_' autosuggest-execute;bindkey '^ ' autosuggest-accept;" \
+    @zsh-users/zsh-autosuggestions \
+  blockf atpull'zinit creinstall -q .' \
+    @zsh-users/zsh-completions
 
-zinit as"program" for paulirish/git-recent
-zinit as"program" from"gh-r" for eza-community/eza
+zinit as"program" for \
+  paulirish/git-recent \
+  eza-community/eza
 
 zinit as"command" pick"git-recall" for Fakerr/git-recall
 
@@ -19,19 +35,13 @@ zinit ice as"command" from"gh-r" mv"fd* -> fd" pick"fd/fd"
 zinit light sharkdp/fd
 
 # https://github.com/zdharma-continuum/zsh-diff-so-fancy
-# zplugin ice as"program" pick"bin/git-dsf"
-# zplugin light zdharma-continuum/zsh-diff-so-fancy
+zplugin ice as"program" pick"bin/git-dsf"
+zplugin light zdharma-continuum/zsh-diff-so-fancy
 
-# marlonrichert/zsh-autocomplete \
-# as"program" pick"bin/git-fuzzy" \
-#   bigH/git-fuzzy \
-# ytakahashi/igit \
-
-
-# todo autojump https://github.com/wting/autojump
-
-zinit as"program" from"gh-r" for junegunn/fzf-bin
+# Install fzf with completions and additional scripts
+zinit pack for fzf
 zinit light Aloxaf/fzf-tab
+
 # disable sort when completing `git checkout`
 zstyle ':completion:*:git-checkout:*' sort false
 # set descriptions format to enable group support
@@ -44,9 +54,7 @@ zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
 zstyle ':fzf-tab:*' switch-group ',' '.'
 zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
 
-
-zinit light zsh-users/zsh-autosuggestions
-zinit light zsh-users/zsh-completions
-
 zinit light zsh-users/zsh-history-substring-search
 zinit ice wait atload'_history_substring_search_config'
+
+zinit ice wait'!0' zinit light skywind3000/z.lua

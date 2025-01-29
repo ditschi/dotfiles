@@ -93,7 +93,7 @@ sde() {
     fi
 
     docker compose build --pull $DOCKER_SERVICE
-    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" $DOCKER_SERVICE \
+    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" -v "${HOME}/.gitconfig.shared:${HOME}/.gitconfig.shared"  $DOCKER_SERVICE \
         "
             if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh
@@ -158,6 +158,7 @@ sdz() {
         -v "${HOME}/.zshrc:${HOME}/.zshrc" \
         -v "${HOME}/.zsh/:${HOME}/.zsh/" \
         -v "${HOME}/.env:${HOME}/.env" \
+        -v "${HOME}/.gitconfig.shared:${HOME}/.gitconfig.shared" \
         -v "${HOME}/.netrc:${HOME}/.netrc" \
         -v "${HOME}/.p10k.zsh:${HOME}/.p10k.zsh" \
         -v "${HOME}/.shared_history:${HOME}/.shared_history" \

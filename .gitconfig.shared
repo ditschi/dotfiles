@@ -1,4 +1,3 @@
-
 [color]
     ui = true
     branch = auto
@@ -128,7 +127,9 @@
     preloadindex = true
     fscache = true
     autocrlf = input
-    pager = diff-so-fancy | less -FXRi
+    # Conditionally set the pager if diff-so-fancy is available
+    pager = "sh -c 'command -v diff-so-fancy > /dev/null 2>&1 && diff-so-fancy | less -FXRi  > /dev/null 2>&1 || command -v less > /dev/null 2>&1 && less -FXRi || cat'"
+
 [gc]
     auto = 256
 [init]

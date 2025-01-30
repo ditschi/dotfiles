@@ -11,7 +11,7 @@ import sys
 import tempfile
 import zipfile
 from datetime import datetime
-from typing import List
+from typing import List, Union
 from urllib.parse import unquote
 
 
@@ -46,6 +46,7 @@ APT_PACKAGES = [
     "gnome-shell-extension-prefs",
     "gnome-shell-extensions-gpaste",
     "gnupg",
+    "golang",
     "guake",
     "guake-indicator",
     "python-is-python3",
@@ -58,15 +59,15 @@ APT_PACKAGES = [
 PIP_MODULES = ["pre-commit", "pipenv", "pipx", "typer"]
 
 
-def get_dotfiles_path(relative_path: str | Path) -> Path:
+def get_dotfiles_path(relative_path: Union[str, Path]) -> Path:
     return SCRIPT_DIR / relative_path
 
 
-def get_home_path(relative_path: str | Path) -> Path:
+def get_home_path(relative_path: Union[str, Path]) -> Path:
     return HOME_DIR / relative_path
 
 
-def get_backup_path(relative_path: str | Path) -> Path:
+def get_backup_path(relative_path: Union[str, Path]) -> Path:
     return BACKUP_DIR / relative_path
 
 

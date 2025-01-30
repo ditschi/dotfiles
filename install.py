@@ -46,7 +46,6 @@ APT_PACKAGES = [
     "gnome-shell-extension-prefs",
     "gnome-shell-extensions-gpaste",
     "gnupg",
-    "golang",
     "guake",
     "guake-indicator",
     "python-is-python3",

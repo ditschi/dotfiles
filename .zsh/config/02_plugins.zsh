@@ -4,6 +4,9 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#ff00ff,bg=cyan,bold,underline"
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8,bg=0,bold,underline'
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
+# Install the bin-gem-node annex
+zinit light zdharma-continuum/zinit-annex-bin-gem-node
+
 # Combined installation of multiple plugins:
 # - hcgraf/zsh-sudo
 # - zpm-zsh/undollar
@@ -39,7 +42,7 @@ zplugin ice as"program" pick"bin/git-dsf"
 zplugin light zdharma-continuum/zsh-diff-so-fancy
 
 # Install fzf with completions and additional scripts
-zinit pack for fzf
+zinit pack"bgn" for fzf
 zinit light Aloxaf/fzf-tab
 
 # disable sort when completing `git checkout`

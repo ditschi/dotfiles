@@ -7,7 +7,7 @@ export SAVEHIST=60000 # recommended value 1.2 * SAVEHIST
 if [ -n "$BASH_VERSION" ]; then
     # bash-specific settings
     shopt -s histappend                 # Append to the history file, don't overwrite
-    export HISTIGNORE="&:[ ]*:#*"  # Ignore duplicates (&), space-only commands, and comments (#)
+    export HISTIGNORE="&:[ ]*:#*"       # Ignore duplicates (&), space-only commands, and comments (#)
     HISTCONTROL=ignoredups:ignorespace  # Ignorespace and ignoredups
     PROMPT_COMMAND="history -a; history -c; history -n; history -r; $PROMPT_COMMAND" # Sync history between sessions
     export HISTTIMEFORMAT='(%Y-%m-%d) (%H:%M:%S) '
@@ -22,19 +22,6 @@ elif [ -n "$ZSH_VERSION" ]; then
     setopt append_history              # Append to the history file, don't overwrite
     setopt inc_append_history          # Write to the history file immediately
     setopt hist_ignore_all_dups        # Ignore duplicate commands
-
-    # bash like zsh history with #<timestamp>\n<command>
-    zshaddhistory() {
-        # Extract the plain command
-        local cmd="${1%%$'\n'}"
-
-        # Add a timestamped entry manually to the HISTFILE
-        echo "#$(date +%s)" >> $HISTFILE
-        echo "$cmd" >> $HISTFILE
-
-        return 1  # Prevent zsh from adding its default formatted entry
-    }
-
 else
     echo "Unsupported shell. Shared history setup may not work."
 fi

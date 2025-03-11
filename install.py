@@ -23,7 +23,7 @@ BACKUP_DIR = HOME_DIR / ".dotfiles-backup" / timestamp
 DOTFILES = [
     ".bashrc",
     ".gitconfig",
-    ".gitconfig.shared",
+    ".gitconfig.override",
     ".p10k.zsh",
     ".profile",
     ".tmux.conf",

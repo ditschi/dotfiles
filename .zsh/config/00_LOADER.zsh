@@ -16,8 +16,8 @@ else
     unset WORK_SETUP
     echo "Not loading work config as username '$(whoami)' is not matching pattern"
     # ensure the default user in .gitconfig
-    git config --global user.name "Christian Ditscher"
-    git config --global user.email "chris@ditscher.me"
+    git config --file ~/.gitconfig.override user.name "Christian Ditscher"
+    git config --file ~/.gitconfig.override user.email "chris@ditscher.me"
 fi
 
 for __file__ in $ZSH/config/*.zsh; do

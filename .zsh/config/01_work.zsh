@@ -29,6 +29,7 @@ PS1="${RED}\${KRB_STATUS_MSG}${RESET}${PS1}"
 git config --file ~/.gitconfig.override user.name "Ditscher Christian (XC-AS/EDE3)"
 git config --file ~/.gitconfig.override user.email "dci2lr@bosch.com"
 
+alias git-user-work="git config --local user.name 'Ditscher Christian (XC-AS/EDE3)' && git config --local user.email 'dci2lr@bosch.com'"
 # proxy setup
 export http_proxy=http://localhost:3128
 export https_proxy=$http_proxy
@@ -93,7 +94,7 @@ sde() {
     fi
 
     docker compose build --pull $DOCKER_SERVICE
-    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" -v "${HOME}/.gitconfig.shared:${HOME}/.gitconfig.shared"  $DOCKER_SERVICE \
+    docker compose run --rm -v "${HOME}/:${HOME}/mnt/home/" -v "${HOME}/.gitconfig.shared:${HOME}/.gitconfig.shared" $DOCKER_SERVICE \
         "
             if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh

@@ -31,8 +31,7 @@ git config --file ~/.gitconfig.override user.email "dci2lr@bosch.com"
 
 alias git-user-work="git config --local user.name 'Ditscher Christian (XC-AS/EDE3)' && git config --local user.email 'dci2lr@bosch.com'"
 # proxy setup
-export http_proxy=http://localhost:3128
-export https_proxy=$http_proxy
+export http_proxy=http://localhost:3128export https_proxy=$http_proxy
 export ftp_proxy=$http_proxy
 export no_proxy=localhost,127.0.0.1,127.*,172.*,10.*,de.bosch.com,apac.bosch.com,emea.bosch.com,us.bosch.com,bosch.cloud,rb-artifactory.bosch.com,sourcecode01.de.bosch.com,sourcecode.socialcoding.bosch.com,sourcecode06.dev.bosch.com
 export HTTP_PROXY=$http_proxy
@@ -46,7 +45,12 @@ export CONTAINER_USER=$(whoami) && export CONTAINER_UID=$(id -u) && export CONTA
 export CONAN_LOGIN_USERNAME=dci2lr
 
 # functions
-alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -h rb-gc-12.de.bosch.com:3268"
+alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -H rb-gc-12.de.bosch.com:3268"
+
+ldap-user-info() {
+    nt-user=$1
+    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 -b OU=LR,DC=de,DC=bosch,DC=com -D "de\dci2lr" -x "(|(displayName=*${nt-user*)(samAccountname=*${ntuser}*))" -w $PASSWORD
+}
 
 ldap-groups() {
     username=$1

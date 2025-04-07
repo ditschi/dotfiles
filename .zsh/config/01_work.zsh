@@ -31,7 +31,8 @@ git config --file ~/.gitconfig.override user.email "dci2lr@bosch.com"
 
 alias git-user-work="git config --local user.name 'Ditscher Christian (XC-AS/EDE3)' && git config --local user.email 'dci2lr@bosch.com'"
 # proxy setup
-export http_proxy=http://localhost:3128export https_proxy=$http_proxy
+export http_proxy=http://localhost:3128
+export https_proxy=$http_proxy
 export ftp_proxy=$http_proxy
 export no_proxy=localhost,127.0.0.1,127.*,172.*,10.*,de.bosch.com,apac.bosch.com,emea.bosch.com,us.bosch.com,bosch.cloud,rb-artifactory.bosch.com,sourcecode01.de.bosch.com,sourcecode.socialcoding.bosch.com,sourcecode06.dev.bosch.com
 export HTTP_PROXY=$http_proxy
@@ -44,12 +45,43 @@ export DOCKER_USER=$(whoami) && export DOCKER_UID=$(id -u) && export DOCKER_GID=
 export CONTAINER_USER=$(whoami) && export CONTAINER_UID=$(id -u) && export CONTAINER_GID=$(id -g)
 export CONAN_LOGIN_USERNAME=dci2lr
 
+# aliases
+alias fix-wifi='sudo systemctl restart NetworkManager.service'
+
+alias kinit-pw='echo $(get-password 3>/dev/null) | kinit'
+alias vpn-pw='get-password 3>/dev/null | osd-vpn-connect -k'
+alias osd-vpn-connect-pw='vpn-pw'
+
+alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
+alias ldap-usergroups="ldap-groups"           # <USER-ID>
+alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
+alias tccedit="TCCEdit"
+alias branch='git branch --no-color --show-current'
+alias cruft-sync='cruft update -c $(branch) -y && git add -u .'
+alias cruft-fix-diff="cruft diff > patch.diff && git apply patch.diff && rm patch.diff"
+
+alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BSC2OSD/Change+default+shell+from+bash+to+zsh \n \
+    1. sudo nano /etc/sssd/sssd.conf \n \
+        default_shell = /bin/bash \n \
+        override_shell = /bin/zsh # <- add this \n \
+    2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
+    3. restart session'"
+
+# ansible
+alias ap="ansible-playbook"
+alias ave="ansible-vault encrypt"
+alias avd="ansible-vault decrypt"
+
 # functions
 alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -H rb-gc-12.de.bosch.com:3268"
 
 ldap-user-info() {
-    nt-user=$1
-    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 -b OU=LR,DC=de,DC=bosch,DC=com -D "de\dci2lr" -x "(|(displayName=*${nt-user*)(samAccountname=*${ntuser}*))" -w $PASSWORD
+    nt_user=$1
+    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 \
+        -b "OU=LR,DC=de,DC=bosch,DC=com" \
+        -D "de\\dci2lr" \
+        -x "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))" \
+        -w "$PASSWORD"
 }
 
 ldap-groups() {
@@ -79,14 +111,6 @@ cdfs() {
     [[ -n $dir ]] && cd $dir
     return $ret
 }
-
-# aliases
-alias chsh-bosch="echo 'https://inside-docupedia.bosch.com/confluence/display/BSC2OSD/Change+default+shell+from+bash+to+zsh \n \
-    1. sudo nano /etc/sssd/sssd.conf \n \
-        default_shell = /bin/bash \n \
-        override_shell = /bin/zsh # <- add this \n \
-    2. sudo rm /var/lib/sss/db/cache_de.bosch.com.ldb /var/lib/sss/db/ccache_DE.BOSCH.COM && sudo systemctl restart sssd \n \
-    3. restart session'"
 
 export DOCKER_SERVICE="dev-env"
 sde() {
@@ -204,24 +228,5 @@ function ra6-helix-gui() {
     command="cmake --build  --preset=$variant --target qac_daad_gui -- -dkeepdepfile"
     eval $command || echo "\n\n\n\n\n[WARNING] Retrying with setup" && ra6-setup-variant $variant && eval $command
 }
-
-alias fix-wifi='sudo systemctl restart NetworkManager.service'
-
-alias kinit-pw='echo $(get-password 3>/dev/null) | kinit'
-alias vpn-pw='$(get-password 3>/dev/null) | osd-vpn-connect -k'
-alias osd-vpn-connect-pw='vpn-pw'
-
-alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
-alias ldap-usergroups="ldap-groups"           # <USER-ID>
-alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
-alias tccedit="TCCEdit"
-alias branch='git branch --no-color --show-current'
-alias cruft-sync='cruft update -c $(branch) -y && git add -u .'
-alias cruft-fix-diff="cruft diff > patch.diff && git apply patch.diff && rm patch.diff"
-
-# ansible
-alias ap="ansible-playbook"
-alias ave="ansible-vault encrypt"
-alias avd="ansible-vault decrypt"
 
 kinit-pw

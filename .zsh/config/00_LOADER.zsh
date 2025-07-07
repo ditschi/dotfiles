@@ -18,6 +18,8 @@ else
     # ensure the default user in .gitconfig
     git config --file ~/.gitconfig.override user.name "Christian Ditscher"
     git config --file ~/.gitconfig.override user.email "chris@ditscher.me"
+    alias git-user-private="git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'"
+
 fi
 
 for __file__ in $ZSH/config/*.zsh; do

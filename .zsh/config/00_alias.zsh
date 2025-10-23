@@ -6,7 +6,7 @@ alias docker-compose='docker compose'
 alias dc='docker compose'
 
 #alias cursor='~/Applications/cursor.AppImage --no-sandbox > /dev/null 2>&1 &'
-alias setup-cursor='mkdir -p ~/Applications/ && curl -L -o ~/Applications/cursor.AppImage https://downloader.cursor.sh/linux/appImage/x64 && chmod +x ~/Applications/cursor.AppImage && command -v fusermount >/dev/null || echo "Warning: requires libfuse which is not installed. Please install it using your package manager."'
+alias cursor-setup='mkdir -p ~/Applications/ && curl -L -o ~/Applications/cursor.AppImage https://downloader.cursor.sh/linux/appImage/x64 && chmod +x ~/Applications/cursor.AppImage && command -v fusermount >/dev/null || echo "Warning: requires libfuse which is not installed. Please install it using your package manager."'
 
 # enable color support of ls and other tools
 alias ls='ls --color=auto'

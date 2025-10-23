@@ -35,27 +35,32 @@ DOTFILES = [
 APT_PACKAGES = [
     "autojump",
     "curl",
-    "flameshot",
     "fonts-firacode",
     "fonts-powerline",
     "fzf",
     "git",
     "git-lfs",
-    "gnome-shell-extension-gpaste",
-    "gnome-shell-extension-manager",
-    "gnome-shell-extension-prefs",
-    "gnome-shell-extensions-gpaste",
     "gnupg",
-    "guake",
-    "guake-indicator",
-    "python-is-python3",
+    "golang",
     "libsecret-tools",
+    "jq",
+    "pipx",
+    "python-is-python3",
     "tmux",
     "wget",
     "zsh",
 ]
 
-PIP_MODULES = ["pre-commit", "pipenv", "pipx", "typer"]
+# UI-dependent packages that should be skipped in headless mode
+UI_PACKAGES = [
+    "flameshot",
+    "gnome-shell-extension-gpaste",
+    "gnome-shell-extension-manager",
+    "gnome-shell-extension-prefs",
+    "gnome-shell-extensions-gpaste",
+    "guake",
+    "guake-indicator",
+]
 
 
 def get_dotfiles_path(relative_path: Union[str, Path]) -> Path:
@@ -268,8 +273,19 @@ def create_link_for_file(
     return {str(target_path): str(dotfile_path)}
 
 
-def install_apt_packages(dry_run: bool = False) -> None:
-    logging.info("Installing apt packages: %s", ", ".join(APT_PACKAGES))
+def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
+    packages = APT_PACKAGES.copy()
+
+    # Add UI packages if not headless mode
+    if ui:
+        packages.extend(UI_PACKAGES)
+    else:
+        logging.info(
+            "Not installing UI packages."
+        )
+
+
+    logging.info("Installing apt packages: %s", ", ".join(packages))
     update_command = ["sudo", "apt-get", "update"]
 
     try:
@@ -282,12 +298,16 @@ def install_apt_packages(dry_run: bool = False) -> None:
                 encoding="utf-8",
             )
 
-        packages_to_install = get_missing_apt_packages()
+        packages_to_install = get_missing_apt_packages(packages)
         if packages_to_install:
             logging.warning(
-                "The following packages will be skipped during installation: %s",
+                "The following packages will be installed: %s",
                 ", ".join(packages_to_install),
             )
+
+        if not packages_to_install:
+            logging.info("All packages are already installed")
+            return
 
         install_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
         if not dry_run:
@@ -305,54 +325,18 @@ def install_apt_packages(dry_run: bool = False) -> None:
     logging.info("Successfully installed apt packages")
 
 
-def get_missing_apt_packages() -> List[str]:
+def get_missing_apt_packages(packages: List[str] = None) -> List[str]:
+    if packages is None:
+        packages = APT_PACKAGES
     return [
         package
-        for package in APT_PACKAGES
+        for package in packages
         if subprocess.run(
             ["dpkg", "-s", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         ).returncode
         != 0
     ]
 
-
-def install_pip_modules(dry_run: bool = False) -> None:
-    logging.info("Installing pip modules: %s", ", ".join(PIP_MODULES))
-    try:
-        modules_to_install = get_missing_pip_modules()
-        if modules_to_install:
-            logging.warning(
-                "The following modules will be skipped during installation: %s",
-                ", ".join(modules_to_install),
-            )
-
-        install_command = [sys.executable, "-m", "pip", "install", *modules_to_install]
-        if not dry_run:
-            result = subprocess.run(
-                install_command,
-                check=True,
-                stderr=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                encoding="utf-8",
-            )
-            logging.debug(result.stdout)
-    except subprocess.CalledProcessError as cpe:
-        logging.error("Failed to install pip modules: %s", cpe.stderr)
-        sys.exit(1)
-    logging.info("Successfully installed pip modules")
-
-
-def get_missing_pip_modules() -> List[str]:
-    return [
-        module
-        for module in PIP_MODULES
-        if subprocess.run(
-            [sys.executable, "-m", "pip", "show", module],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        ).returncode
-        != 0
-    ]
 
 
 def setup_fonts(dry_run: bool = False) -> None:
@@ -465,12 +449,91 @@ def is_running_in_docker() -> bool:
     return Path("/.dockerenv").is_file()
 
 
+def has_ui_environment() -> bool:
+    """Detect if the system has a UI environment (X11, Wayland, or GNOME)"""
+    # Check for DISPLAY environment variable (X11)
+    if os.environ.get("DISPLAY"):
+        return True
+
+    # Check for Wayland
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+
+    # Check if GNOME is installed
+    result = subprocess.run(
+        ["which", "gnome-shell"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode == 0:
+        return True
+
+    # Check for other display managers
+    for dm in ["gdm", "gdm3", "lightdm", "sddm"]:
+        result = subprocess.run(
+            ["systemctl", "is-active", dm],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if result.returncode == 0:
+            return True
+
+    return False
+
+
+def has_previous_installation() -> bool:
+    """Check if dotfiles have been previously installed by looking for symlinks"""
+    for dotfile in DOTFILES:
+        target_path = get_home_path(dotfile)
+        if target_path.is_symlink():
+            resolved_path = target_path.resolve()
+            dotfile_path = get_dotfiles_path(dotfile)
+            if resolved_path == dotfile_path.resolve():
+                logging.debug(
+                    "Found existing installation: '%s' points to '%s'",
+                    target_path,
+                    resolved_path,
+                )
+                return True
+    return False
+
+def prompt_ui_setup() -> bool:
+    """Prompt user if they want to install UI tools"""
+    try:
+        response = input(
+            "UI encironment detected. Do you want to setup UI related stuff? "
+            "(Install packages, fonts, etc.) [y/N]: "
+        )
+        return response.strip().lower() in ["y", "yes"]
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def prompt_new_host_setup() -> bool:
+    """Prompt user if they want to run new host setup"""
+    try:
+        response = input(
+            "No previous installation detected. Do you want to run full new host setup? "
+            "(Install packages, fonts, etc.) [y/N]: "
+        )
+        return response.strip().lower() in ["y", "yes"]
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Setup dotfiles")
     parser.add_argument(
         "--new-host",
         action="store_true",
-        help="Install apt packages, pip modules, and fonts",
+        help="Install apt packages and fonts",
+    )
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="Install UI-dependent packages",
     )
     parser.add_argument(
         "--backup",
@@ -481,7 +544,7 @@ def parse_arguments():
         "--debug",
         "-d",
         action="store_true",
-        help="Create a backup before setting up dotfiles",
+        help="Enable debug logging",
     )
     parser.add_argument(
         "--dry-run",
@@ -551,10 +614,23 @@ def main() -> None:
     if is_running_in_docker():
         run_additional_setup_in_container()
 
+
+    # Auto-detect and prompt if no previous installation and not explicitly set
+    if not args.new_host and not has_previous_installation():
+        logging.info("No previous dotfiles installation detected")
+        args.new_host = prompt_new_host_setup()
+
+    if not args.ui and has_ui_environment():
+        args.ui = prompt_ui_setup()
+
+
     if args.new_host:
-        setup_fonts(dry_run=args.dry_run)
-        install_apt_packages(dry_run=args.dry_run)
-        install_pip_modules(dry_run=args.dry_run)
+        if args.ui:
+            setup_fonts(dry_run=args.dry_run)
+        else:
+            logging.info("No UI: Skipping font installation")
+
+        install_apt_packages(dry_run=args.dry_run, ui=args.ui)
         set_git_user_config()
 
     logging.info("Setup completed successfully")

@@ -14,7 +14,7 @@ if [ -n "$BASH_VERSION" ]; then
     export HISTTIMEFORMAT='(%Y-%m-%d) (%H:%M:%S) '
 elif [ -n "$ZSH_VERSION" ]; then
     # zsh-specific settings
-    export HISTFILE=~/.bash_history
+    export HISTFILE=~/.zsh_history
 
     unsetopt extended_history          # Don't save timestamps in extended format
     setopt share_history             # Don't use share_history (it forces extended format)

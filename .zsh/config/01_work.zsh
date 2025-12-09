@@ -75,12 +75,38 @@ alias avd="ansible-vault decrypt"
 # functions
 alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -H rb-gc-12.de.bosch.com:3268"
 
-ldap-user-info() {
+ldap-user-info-full() {
     nt_user=$1
+
+    # Check if username is provided
+    if [[ -z "$nt_user" ]]; then
+        echo "Usage: ldap-user-info <username>"
+        return 1
+    fi
     ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 \
         -b "OU=LR,DC=de,DC=bosch,DC=com" \
         -D "de\\dci2lr" \
         -x "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))" \
+        -w "$PASSWORD"
+}
+
+ldap-user-info() {
+    nt_user=$1
+
+    # Check if username is provided
+    if [[ -z "$nt_user" ]]; then
+        echo "Usage: ldap-user-info <username>"
+        return 1
+    fi
+
+    # Execute ldapsearch with specific fields in logical order, limit to first result with -z 1
+    # Fields: names first, then identity, location, and organization info
+    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 \
+        -b "OU=LR,DC=de,DC=bosch,DC=com" \
+        -D "de\\dci2lr" \
+        -x -z 1 \
+        "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))" \
+        cn givenName sn displayName uid mail c co l physicalDeliveryOfficeName department company \
         -w "$PASSWORD"
 }
 

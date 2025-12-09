@@ -134,17 +134,18 @@ def setup_dotfile_links(
     links_created = {}
     for dotfile in DOTFILES:
         dotfile_path = get_dotfiles_path(dotfile)
+        target_path = get_home_path(dotfile)
         if dotfile_path.is_dir():
-            result = create_links_for_directory(
-                dotfile, use_symlink, skip_existing, dry_run, force
+            # Create a symlink for the directory itself
+            result = create_link_for_file(
+                target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
             )
             if result:
                 links_created.update(result)
             else:
-                logging.debug("No links created for directory '%s'", dotfile_path)
+                logging.debug("No link created for directory '%s'", dotfile_path)
             continue
 
-        target_path = get_home_path(dotfile)
         result = create_link_for_file(
             target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
         )
@@ -280,10 +281,7 @@ def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
     if ui:
         packages.extend(UI_PACKAGES)
     else:
-        logging.info(
-            "Not installing UI packages."
-        )
-
+        logging.info("Not installing UI packages.")
 
     logging.info("Installing apt packages: %s", ", ".join(packages))
     update_command = ["sudo", "apt-get", "update"]
@@ -336,7 +334,6 @@ def get_missing_apt_packages(packages: List[str] = None) -> List[str]:
         ).returncode
         != 0
     ]
-
 
 
 def setup_fonts(dry_run: bool = False) -> None:
@@ -497,6 +494,7 @@ def has_previous_installation() -> bool:
                 return True
     return False
 
+
 def prompt_ui_setup() -> bool:
     """Prompt user if they want to install UI tools"""
     try:
@@ -614,7 +612,6 @@ def main() -> None:
     if is_running_in_docker():
         run_additional_setup_in_container()
 
-
     # Auto-detect and prompt if no previous installation and not explicitly set
     if not args.new_host and not has_previous_installation():
         logging.info("No previous dotfiles installation detected")
@@ -622,7 +619,6 @@ def main() -> None:
 
     if not args.ui and has_ui_environment():
         args.ui = prompt_ui_setup()
-
 
     if args.new_host:
         if args.ui:

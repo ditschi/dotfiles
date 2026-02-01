@@ -56,3 +56,11 @@ clone_org_repos() {
     gh repo clone $OWNER/$repo
   done
 }
+
+get-ipv4() {
+    dig  "$1" A +short
+}
+
+get-ipv6() {
+    dig "$1" AAAA +short
+}

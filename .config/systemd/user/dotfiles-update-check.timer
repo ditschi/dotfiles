@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic dotfiles update check
+
+[Timer]
+OnBootSec=10m
+OnUnitActiveSec=6h
+Persistent=true
+Unit=dotfiles-update-check.service
+
+[Install]
+WantedBy=timers.target

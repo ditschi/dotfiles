@@ -1,4 +1,3 @@
-.gitconfig.override
 venv/
 *.orig
-
+__pycache__/

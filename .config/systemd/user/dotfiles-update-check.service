@@ -1,0 +1,6 @@
+[Unit]
+Description=Check dotfiles updates and manage marker file
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash %h/.local/bin/dotfiles-update-check-job

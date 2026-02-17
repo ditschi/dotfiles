@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import importlib.util
 import io
 import logging
 import os
 from pathlib import Path
-import requests
 import shutil
 import subprocess
 import sys
@@ -19,11 +19,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 HOME_DIR = Path.home().resolve()
 BACKUP_DIR = HOME_DIR / ".dotfiles-backup" / timestamp
+INSTALLER_VENV_DIR = HOME_DIR / ".local" / "share" / "dotfiles-installer" / "venv"
+INSTALLER_REQUIRED_PACKAGES = ["requests"]
 
 DOTFILES = [
     ".bashrc",
+    ".config/systemd/user/dotfiles-update-check.service",
+    ".config/systemd/user/dotfiles-update-check.timer",
     ".gitconfig",
-    ".gitconfig.override",
+    ".local/bin/dotfiles-update-check-job",
     ".p10k.zsh",
     ".profile",
     ".tmux.conf",
@@ -46,6 +50,7 @@ APT_PACKAGES = [
     "jq",
     "pipx",
     "python-is-python3",
+    "python3-venv",
     "tmux",
     "wget",
     "zsh",
@@ -61,6 +66,83 @@ UI_PACKAGES = [
     "guake",
     "guake-indicator",
 ]
+
+
+def _module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _installer_venv_python() -> Path:
+    return INSTALLER_VENV_DIR / "bin" / "python3"
+
+
+def ensure_runtime_environment() -> None:
+    """Run installer from dedicated venv and ensure required Python deps exist.
+
+    Many modern distros block system/user pip installs (PEP 668). To keep setup
+    reproducible we bootstrap a private venv and re-exec the installer there.
+    """
+    in_bootstrap = os.environ.get("DOTFILES_INSTALLER_VENV_ACTIVE") == "1"
+    missing_packages = [pkg for pkg in INSTALLER_REQUIRED_PACKAGES if not _module_available(pkg)]
+    if not missing_packages and in_bootstrap:
+        return
+
+    venv_python = _installer_venv_python()
+
+    if not venv_python.exists():
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", str(INSTALLER_VENV_DIR)],
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+        except subprocess.CalledProcessError as cpe:
+            print(
+                "Failed to create installer venv at "
+                f"'{INSTALLER_VENV_DIR}'. Please install 'python3-venv'.\n"
+                f"Details: {cpe.stderr.strip()}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    if not venv_python.exists():
+        print(
+            f"Installer venv python not found at '{venv_python}'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "install", "--upgrade", "pip"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "install"] + INSTALLER_REQUIRED_PACKAGES,
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+    except subprocess.CalledProcessError as cpe:
+        print(
+            "Failed to install installer dependencies in venv.\n"
+            f"Details: {cpe.stderr.strip()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Re-exec under dedicated installer interpreter exactly once.
+    if not in_bootstrap or missing_packages:
+        env = os.environ.copy()
+        env["DOTFILES_INSTALLER_VENV_ACTIVE"] = "1"
+        result = subprocess.run([str(venv_python), __file__, *sys.argv[1:]], env=env)
+        sys.exit(result.returncode)
 
 
 def get_dotfiles_path(relative_path: Union[str, Path]) -> Path:
@@ -337,6 +419,8 @@ def get_missing_apt_packages(packages: List[str] = None) -> List[str]:
 
 
 def setup_fonts(dry_run: bool = False) -> None:
+    import requests
+
     font_zips = [
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
         "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
@@ -440,6 +524,68 @@ def run_additional_setup_in_container() -> None:
             logging.debug(result.stdout)
         else:
             logging.info("No additional setup script found at %s", script)
+
+
+def setup_update_timer(dry_run: bool = False) -> None:
+    timer_unit = "dotfiles-update-check.timer"
+    if shutil.which("systemctl") is None:
+        logging.info("systemctl not found. Skipping timer setup.")
+        return
+
+    commands = [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", "--now", timer_unit],
+    ]
+    for command in commands:
+        command_str = " ".join(command)
+        logging.info("Configuring user timer: %s", command_str)
+        if dry_run:
+            logging.debug("Dry-run:: %s", command_str)
+            continue
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+        except subprocess.CalledProcessError as cpe:
+            logging.warning(
+                "Failed to run '%s'. Timer setup skipped for now: %s",
+                command_str,
+                cpe.stderr.strip(),
+            )
+            return
+
+
+def install_starship(dry_run: bool = False) -> None:
+    if shutil.which("starship") is not None:
+        logging.info("starship is already installed")
+        return
+
+    install_command = (
+        "curl -fsSL https://starship.rs/install.sh | sh -s -- -y "
+        f"--bin-dir {HOME_DIR / '.local' / 'bin'}"
+    )
+    logging.info("Installing starship")
+    logging.debug("Running command: %s", install_command)
+    if dry_run:
+        logging.debug("Dry-run:: %s", install_command)
+        return
+
+    try:
+        subprocess.run(
+            install_command,
+            check=True,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.info("starship installed successfully")
+    except subprocess.CalledProcessError as cpe:
+        logging.warning("Failed to install starship: %s", cpe.stderr.strip())
 
 
 def is_running_in_docker() -> bool:
@@ -554,14 +700,30 @@ def parse_arguments():
         action="store_true",
         help="Delete all target files and create correct links",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Disable interactive prompts and use safe defaults",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Run update workflow (non-interactive relink, skip host/UI provisioning)",
+    )
     return parser.parse_args()
 
 
-def set_git_user_config() -> None:
+def set_git_user_config(dry_run: bool = False) -> None:
     logging.info("Setting git user configuration for dotfiles repository")
+    if dry_run:
+        logging.debug(
+            "Dry-run:: skipping git config changes for dotfiles repository"
+        )
+        return
+
     try:
         subprocess.run(
-            ["git", "config", "user.name", "Christian Ditscher"],
+            ["git", "config", "--local", "user.name", "Christian Ditscher"],
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -569,7 +731,7 @@ def set_git_user_config() -> None:
             cwd=SCRIPT_DIR,
         )
         subprocess.run(
-            ["git", "config", "user.email", "chris@ditscher.me"],
+            ["git", "config", "--local", "user.email", "chris@ditscher.me"],
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -577,11 +739,12 @@ def set_git_user_config() -> None:
             cwd=SCRIPT_DIR,
         )
         subprocess.run(
-            ["git", "config", "commit.gpgsign", "false"],
+            ["git", "config", "--local", "commit.gpgsign", "false"],
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
             encoding="utf-8",
+            cwd=SCRIPT_DIR,
         )
         logging.info("Git user configuration set successfully")
     except subprocess.CalledProcessError as cpe:
@@ -590,6 +753,8 @@ def set_git_user_config() -> None:
 
 
 def main() -> None:
+    ensure_runtime_environment()
+
     args = parse_arguments()
     log_format = "%(asctime)s %(levelname)s: %(message)s"
     if args.debug:
@@ -598,6 +763,12 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format=log_format)
 
     verify_dotfiles_exist()
+
+    if args.update:
+        args.non_interactive = True
+        args.new_host = False
+        args.ui = False
+        logging.info("Running update workflow (--update, non-interactive)")
 
     if args.backup:
         create_backup(dry_run=args.dry_run)
@@ -612,13 +783,27 @@ def main() -> None:
     if is_running_in_docker():
         run_additional_setup_in_container()
 
-    # Auto-detect and prompt if no previous installation and not explicitly set
-    if not args.new_host and not has_previous_installation():
-        logging.info("No previous dotfiles installation detected")
-        args.new_host = prompt_new_host_setup()
+    setup_update_timer(dry_run=args.dry_run)
 
-    if not args.ui and has_ui_environment():
-        args.ui = prompt_ui_setup()
+    # Auto-detect and prompt if no previous installation and not explicitly set
+    if not args.update:
+        if not args.new_host and not has_previous_installation():
+            logging.info("No previous dotfiles installation detected")
+            if args.non_interactive:
+                logging.info("Non-interactive mode: skipping new host prompt")
+            else:
+                args.new_host = prompt_new_host_setup()
+
+        if not args.ui and has_ui_environment():
+            if args.non_interactive:
+                logging.info("Non-interactive mode: skipping UI setup prompt")
+            else:
+                args.ui = prompt_ui_setup()
+
+    if args.update:
+        # Keep update runs in sync with newly added non-UI tools.
+        install_apt_packages(dry_run=args.dry_run, ui=False)
+        install_starship(dry_run=args.dry_run)
 
     if args.new_host:
         if args.ui:
@@ -627,7 +812,8 @@ def main() -> None:
             logging.info("No UI: Skipping font installation")
 
         install_apt_packages(dry_run=args.dry_run, ui=args.ui)
-        set_git_user_config()
+        install_starship(dry_run=args.dry_run)
+        set_git_user_config(dry_run=args.dry_run)
 
     logging.info("Setup completed successfully")
 

@@ -25,11 +25,6 @@ PS1="${RED}\${KRB_STATUS_MSG}${RESET}${PS1}"
 
 ### MODIFIED BY OSD-PROXY-PACKAGE END ###
 
-# set the Bosch user in .gitconfig
-git config --file ~/.gitconfig.override user.name "Ditscher Christian (XC-AS/EDE3)"
-git config --file ~/.gitconfig.override user.email "dci2lr@bosch.com"
-
-alias git-user-work="git config --local user.name 'Ditscher Christian (XC-AS/EDE3)' && git config --local user.email 'dci2lr@bosch.com'"
 # proxy setup
 export http_proxy=http://localhost:3128
 export https_proxy=$http_proxy
@@ -130,13 +125,6 @@ groups_list() {
     for i in $(id -G $user); do echo "$(getent group $i | cut -d: -f1)"; done
 }
 
-alias dfs="$SCRIPTDIR/../dfs.sh"
-cdfs() {
-    dir=$(dfs "${@:--clip}")
-    ret=$?
-    [[ -n $dir ]] && cd $dir
-    return $ret
-}
 
 export DOCKER_SERVICE="dev-env"
 sde() {
@@ -150,7 +138,7 @@ sde() {
     docker compose build --pull $DOCKER_SERVICE
     docker compose run --rm \
            -v "${HOME}/:${HOME}/mnt/home/" \
-           -v "${HOME}/.gitconfig.override:${HOME}/.gitconfig.override" $DOCKER_SERVICE \
+           $DOCKER_SERVICE \
         "
             if [ -f ./.devcontainer/post-start-command.sh ]; then
                 ./.devcontainer/post-start-command.sh
@@ -215,7 +203,6 @@ sdz() {
         -v "${HOME}/.zshrc:${HOME}/.zshrc" \
         -v "${HOME}/.zsh/:${HOME}/.zsh/" \
         -v "${HOME}/.env:${HOME}/.env" \
-        -v "${HOME}/.gitconfig.override:${HOME}/.gitconfig.override" $DOCKER_SERVICE \
         -v "${HOME}/.netrc:${HOME}/.netrc" \
         -v "${HOME}/.p10k.zsh:${HOME}/.p10k.zsh" \
         -v "${HOME}/.shared_history:${HOME}/.shared_history" \

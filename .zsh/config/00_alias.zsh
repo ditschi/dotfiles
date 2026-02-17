@@ -1,6 +1,102 @@
 alias zshalias="nano $0"
 
-alias update-dotfiles="pushd ~/dotfiles/ > /dev/null && ( git stash push .gitconfig -m \"Current .gitconfig\" || true ) && git pull && ( git stash pop || true )  && popd > /dev/null"
+export DOTFILES_REPO="${DOTFILES_REPO:-$HOME/dotfiles}"
+export DOTFILES_REPO_URL="${DOTFILES_REPO_URL:-https://github.com/ditschi/dotfiles.git}"
+export DOTFILES_UPDATE_MARKER="${DOTFILES_UPDATE_MARKER:-$HOME/.dotfiles-update-available}"
+export DOTFILES_UPDATE_LAST_CHECK="${DOTFILES_UPDATE_LAST_CHECK:-$HOME/.dotfiles-update-last-check}"
+
+dotfiles-setup() {
+    if ! command -v git >/dev/null 2>&1; then
+        echo "git not found; cannot clone dotfiles repository."
+        return 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 not found; cannot run install.py"
+        return 1
+    fi
+
+    if [ ! -d "$DOTFILES_REPO/.git" ]; then
+        echo "Dotfiles repository missing. Cloning from $DOTFILES_REPO_URL"
+        if ! git clone "$DOTFILES_REPO_URL" "$DOTFILES_REPO"; then
+            echo "Failed to clone dotfiles repository."
+            return 1
+        fi
+    fi
+
+    python3 "$DOTFILES_REPO/install.py" --new-host "$@"
+}
+
+dotfiles-update-check() {
+    if [ ! -d "$DOTFILES_REPO/.git" ]; then
+        echo "Dotfiles repo not found at: $DOTFILES_REPO"
+        return 1
+    fi
+
+    if ! git -C "$DOTFILES_REPO" fetch --quiet; then
+        echo "Dotfiles update check failed (git fetch)."
+        return 1
+    fi
+
+    current_branch=$(git -C "$DOTFILES_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
+    upstream_ref="origin/$current_branch"
+    if ! git -C "$DOTFILES_REPO" rev-parse --verify "$upstream_ref" >/dev/null 2>&1; then
+        echo "No upstream branch found for '$current_branch'."
+        return 1
+    fi
+
+    pending_count=$(git -C "$DOTFILES_REPO" rev-list --count "HEAD..$upstream_ref" 2>/dev/null || echo 0)
+    if [ "${pending_count:-0}" -gt 0 ]; then
+        : > "$DOTFILES_UPDATE_MARKER"
+        echo "Dotfiles update available ($pending_count commits)."
+        return 0
+    fi
+
+    rm -f "$DOTFILES_UPDATE_MARKER"
+    echo "Dotfiles are up to date."
+    return 0
+}
+
+dotfiles-update-status() {
+    if [ -f "$DOTFILES_UPDATE_MARKER" ]; then
+        echo "Dotfiles update marker is set."
+    else
+        echo "No dotfiles update marker set."
+    fi
+
+    if [ -f "$DOTFILES_UPDATE_LAST_CHECK" ]; then
+        echo "Last update check: $(cat "$DOTFILES_UPDATE_LAST_CHECK")"
+    else
+        echo "Last update check: never"
+    fi
+}
+
+dotfiles-update-apply() {
+    if [ ! -d "$DOTFILES_REPO/.git" ]; then
+        echo "Dotfiles repo not found at: $DOTFILES_REPO"
+        return 1
+    fi
+
+    if ! git -C "$DOTFILES_REPO" pull --ff-only; then
+        echo "Dotfiles pull failed."
+        return 1
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 not found; cannot run install.py"
+        return 1
+    fi
+
+    if python3 "$DOTFILES_REPO/install.py" --update --non-interactive --backup --force; then
+        rm -f "$DOTFILES_UPDATE_MARKER"
+        echo "Dotfiles updated and re-linked successfully."
+        return 0
+    fi
+
+    echo "Dotfiles install step failed."
+    return 1
+}
+
+alias update-dotfiles="dotfiles-update-apply"
 
 alias docker-compose='docker compose'
 alias dc='docker compose'

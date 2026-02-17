@@ -44,11 +44,11 @@ export ZSH=~/.zsh
 #  sudo apt install zsh git wget autojump fzf fonts-powerline fonts-firacode
 source $ZSH/config/00_LOADER.zsh
 
+if [ -f "$HOME/.dotfiles-update-available" ]; then
+    echo "Hint: Dotfiles update available (run: dotfiles-update-apply)"
+fi
+
 # Local zshrc extension point
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local
 
-if [ -f /.dockerenv ]; then
-    echo "Running inside a container!";
-else
-    # echo "Runing in the host machine!";
-fi
+# Quiet startup: container detection is kept implicit.

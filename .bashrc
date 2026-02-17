@@ -93,8 +93,6 @@ fi
 
 DOTFILES_DIR="/home/$(whoami)/dotfiles/.zsh/config"
 if [ -d "$DOTFILES_DIR" ]; then
-    echo "Loading customization from $DOTFILES_DIR"
-
     . "$DOTFILES_DIR/00_alias.zsh"
     . "$DOTFILES_DIR/01_env.zsh"
     . "$DOTFILES_DIR/05_pyenv.zsh"
@@ -106,13 +104,11 @@ if [ -d "$DOTFILES_DIR" ]; then
         . "$DOTFILES_DIR/01_work_tools.zsh"
         . "$DOTFILES_DIR/01_work.zsh"
     fi
-else
-    echo "Could not find dotfiles directory: $DOTFILES_DIR"
 fi
 
-echo ""
-echo -e "\033[0;33m\e[1mInstall dotfile setup to use zsh ;)\033[0m\e[21m"
-echo -e "\033[0;32m\e[1m  python3 \"$SCRIPTDIR/install.py\" && zsh \033[0m\e[21m"
+if [ -f "$HOME/.dotfiles-update-available" ]; then
+    echo "Hint: Dotfiles update available (run: dotfiles-update-apply)"
+fi
 
 ## <!-- BEGIN ANSIBLE MANAGED BLOCK - update colors -->
 if [ "$color_prompt" = yes ]; then
@@ -125,3 +121,8 @@ export PROMPT_COMMAND='history -a;history -r'
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# Optional prompt: initialize Starship only when installed.
+if command -v starship >/dev/null 2>&1; then
+    eval "$(starship init bash)"
+fi

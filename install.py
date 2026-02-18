@@ -99,24 +99,24 @@ def _reset_installer_venv_dir() -> None:
             sys.exit(1)
 
 
-def _try_install_python_venv_with_apt() -> bool:
+def _try_install_python_bootstrap_with_apt() -> bool:
     apt_get = shutil.which("apt-get")
     if apt_get is None:
         return False
 
     if os.geteuid() == 0:
         update_command = [apt_get, "update"]
-        install_command = [apt_get, "install", "-y", "python3-venv"]
+        install_command = [apt_get, "install", "-y", "python3-venv", "python3-pip"]
     else:
         sudo = shutil.which("sudo")
         if sudo is None:
             print(
-                "python3-venv is required but 'sudo' is not available for apt install.",
+                "python3-venv/python3-pip are required but 'sudo' is not available for apt install.",
                 file=sys.stderr,
             )
             return False
         update_command = [sudo, apt_get, "update"]
-        install_command = [sudo, apt_get, "install", "-y", "python3-venv"]
+        install_command = [sudo, apt_get, "install", "-y", "python3-venv", "python3-pip"]
 
     try:
         subprocess.run(
@@ -136,48 +136,14 @@ def _try_install_python_venv_with_apt() -> bool:
         return True
     except subprocess.CalledProcessError as cpe:
         print(
-            "Automatic apt install of 'python3-venv' failed.\n"
+            "Automatic apt install of python bootstrap packages failed.\n"
             f"Details: {_format_subprocess_error(cpe)}",
             file=sys.stderr,
         )
         return False
 
 
-def _try_create_installer_venv_with_uv() -> bool:
-    uv = shutil.which("uv")
-    if uv is None:
-        return False
-
-    commands = [
-        [uv, "venv", str(INSTALLER_VENV_DIR), "--python", sys.executable, "--seed"],
-        [uv, "venv", str(INSTALLER_VENV_DIR), "--seed"],
-        [uv, "venv", str(INSTALLER_VENV_DIR), "--python", sys.executable],
-        [uv, "venv", str(INSTALLER_VENV_DIR)],
-    ]
-    last_error: Union[subprocess.CalledProcessError, None] = None
-    for command in commands:
-        try:
-            subprocess.run(
-                command,
-                check=True,
-                stderr=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                encoding="utf-8",
-            )
-            return True
-        except subprocess.CalledProcessError as cpe:
-            last_error = cpe
-
-    if last_error is not None:
-        print(
-            "Automatic uv-based venv creation failed.\n"
-            f"Details: {_format_subprocess_error(last_error)}",
-            file=sys.stderr,
-        )
-    return False
-
-
-def _ensure_pip_in_installer_venv(venv_python: Path) -> bool:
+def _venv_has_pip(venv_python: Path) -> bool:
     try:
         subprocess.run(
             [str(venv_python), "-m", "pip", "--version"],
@@ -188,65 +154,6 @@ def _ensure_pip_in_installer_venv(venv_python: Path) -> bool:
         )
         return True
     except subprocess.CalledProcessError:
-        pass
-
-    print(
-        "pip is missing in installer venv. Trying to bootstrap pip via ensurepip.",
-        file=sys.stderr,
-    )
-    try:
-        subprocess.run(
-            [str(venv_python), "-m", "ensurepip", "--upgrade"],
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
-        subprocess.run(
-            [str(venv_python), "-m", "pip", "--version"],
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
-        return True
-    except subprocess.CalledProcessError as cpe:
-        print(
-            "ensurepip failed for installer venv.\n"
-            f"Details: {_format_subprocess_error(cpe)}",
-            file=sys.stderr,
-        )
-
-    uv = shutil.which("uv")
-    if uv is None:
-        return False
-
-    print(
-        "Trying uv fallback to install pip into installer venv.",
-        file=sys.stderr,
-    )
-    try:
-        subprocess.run(
-            [uv, "pip", "install", "--python", str(venv_python), "pip"],
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
-        subprocess.run(
-            [str(venv_python), "-m", "pip", "--version"],
-            check=True,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            encoding="utf-8",
-        )
-        return True
-    except subprocess.CalledProcessError as cpe:
-        print(
-            "uv fallback for pip installation failed.\n"
-            f"Details: {_format_subprocess_error(cpe)}",
-            file=sys.stderr,
-        )
         return False
 
 
@@ -266,7 +173,7 @@ def ensure_runtime_environment() -> None:
     if not venv_python.exists():
         _reset_installer_venv_dir()
 
-        venv_creation_error = None
+        venv_creation_error: Union[subprocess.CalledProcessError, None] = None
         try:
             subprocess.run(
                 [sys.executable, "-m", "venv", str(INSTALLER_VENV_DIR)],
@@ -280,10 +187,10 @@ def ensure_runtime_environment() -> None:
 
         if venv_creation_error is not None:
             print(
-                "Initial venv creation failed. Trying to install 'python3-venv' via apt.",
+                "Initial venv creation failed. Trying apt install for python3-venv/python3-pip.",
                 file=sys.stderr,
             )
-            if _try_install_python_venv_with_apt():
+            if _try_install_python_bootstrap_with_apt():
                 _reset_installer_venv_dir()
                 try:
                     subprocess.run(
@@ -299,18 +206,9 @@ def ensure_runtime_environment() -> None:
 
         if venv_creation_error is not None:
             print(
-                "Trying uv fallback for installer venv creation.",
-                file=sys.stderr,
-            )
-            _reset_installer_venv_dir()
-            if _try_create_installer_venv_with_uv():
-                venv_creation_error = None
-
-        if venv_creation_error is not None:
-            print(
                 "Failed to create installer venv at "
                 f"'{INSTALLER_VENV_DIR}'.\n"
-                "Install 'python3-venv' (apt) or 'uv', then retry.\n"
+                "Install 'python3-venv' and 'python3-pip' (apt), then retry.\n"
                 f"Details: {_format_subprocess_error(venv_creation_error)}",
                 file=sys.stderr,
             )
@@ -323,10 +221,35 @@ def ensure_runtime_environment() -> None:
         )
         sys.exit(1)
 
-    if not _ensure_pip_in_installer_venv(venv_python):
+    if not _venv_has_pip(venv_python):
+        print(
+            "pip is missing in installer venv. Trying apt install for python3-venv/python3-pip and recreating venv.",
+            file=sys.stderr,
+        )
+        if _try_install_python_bootstrap_with_apt():
+            _reset_installer_venv_dir()
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "venv", str(INSTALLER_VENV_DIR)],
+                    check=True,
+                    stderr=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    encoding="utf-8",
+                )
+            except subprocess.CalledProcessError as cpe:
+                print(
+                    "Failed to recreate installer venv after apt bootstrap install.\n"
+                    f"Details: {_format_subprocess_error(cpe)}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            venv_python = _installer_venv_python()
+
+    if not _venv_has_pip(venv_python):
         print(
             "Failed to bootstrap pip in installer venv.\n"
-            "Install 'python3-venv' (apt) or 'uv', then retry.",
+            "Install 'python3-venv' and 'python3-pip' via apt, then retry.",
             file=sys.stderr,
         )
         sys.exit(1)

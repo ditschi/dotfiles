@@ -149,6 +149,8 @@ def _try_create_installer_venv_with_uv() -> bool:
         return False
 
     commands = [
+        [uv, "venv", str(INSTALLER_VENV_DIR), "--python", sys.executable, "--seed"],
+        [uv, "venv", str(INSTALLER_VENV_DIR), "--seed"],
         [uv, "venv", str(INSTALLER_VENV_DIR), "--python", sys.executable],
         [uv, "venv", str(INSTALLER_VENV_DIR)],
     ]
@@ -173,6 +175,79 @@ def _try_create_installer_venv_with_uv() -> bool:
             file=sys.stderr,
         )
     return False
+
+
+def _ensure_pip_in_installer_venv(venv_python: Path) -> bool:
+    try:
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "--version"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        return True
+    except subprocess.CalledProcessError:
+        pass
+
+    print(
+        "pip is missing in installer venv. Trying to bootstrap pip via ensurepip.",
+        file=sys.stderr,
+    )
+    try:
+        subprocess.run(
+            [str(venv_python), "-m", "ensurepip", "--upgrade"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "--version"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        return True
+    except subprocess.CalledProcessError as cpe:
+        print(
+            "ensurepip failed for installer venv.\n"
+            f"Details: {_format_subprocess_error(cpe)}",
+            file=sys.stderr,
+        )
+
+    uv = shutil.which("uv")
+    if uv is None:
+        return False
+
+    print(
+        "Trying uv fallback to install pip into installer venv.",
+        file=sys.stderr,
+    )
+    try:
+        subprocess.run(
+            [uv, "pip", "install", "--python", str(venv_python), "pip"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "--version"],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        return True
+    except subprocess.CalledProcessError as cpe:
+        print(
+            "uv fallback for pip installation failed.\n"
+            f"Details: {_format_subprocess_error(cpe)}",
+            file=sys.stderr,
+        )
+        return False
 
 
 def ensure_runtime_environment() -> None:
@@ -244,6 +319,14 @@ def ensure_runtime_environment() -> None:
     if not venv_python.exists():
         print(
             f"Installer venv python not found at '{venv_python}'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not _ensure_pip_in_installer_venv(venv_python):
+        print(
+            "Failed to bootstrap pip in installer venv.\n"
+            "Install 'python3-venv' (apt) or 'uv', then retry.",
             file=sys.stderr,
         )
         sys.exit(1)

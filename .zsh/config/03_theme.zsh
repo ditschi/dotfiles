@@ -8,7 +8,7 @@ function prompt_dockerenv() {
     fi
 }
 
-# load powerlevel10k config and plugin
+# load powerlevel10k config and plugin (zsh prompt)
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 zinit ice depth="1"
 zinit light romkatv/powerlevel10k

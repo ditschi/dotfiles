@@ -11,7 +11,7 @@ import sys
 import tempfile
 import zipfile
 from datetime import datetime
-from typing import List, Union
+from typing import List, Set, Tuple, Union
 from urllib.parse import unquote
 
 
@@ -24,6 +24,7 @@ INSTALLER_REQUIRED_PACKAGES = ["requests"]
 
 DOTFILES = [
     ".bashrc",
+    ".config/starship.toml",
     ".config/systemd/user/dotfiles-update-check.service",
     ".config/systemd/user/dotfiles-update-check.timer",
     ".gitconfig",
@@ -39,6 +40,7 @@ DOTFILES = [
 APT_PACKAGES = [
     "autojump",
     "curl",
+    "eza",
     "fonts-firacode",
     "fonts-powerline",
     "fzf",
@@ -48,6 +50,7 @@ APT_PACKAGES = [
     "golang",
     "libsecret-tools",
     "jq",
+    "luajit",
     "pipx",
     "python-is-python3",
     "python3-venv",
@@ -357,6 +360,10 @@ def create_link_for_file(
 
 
 def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
+    if shutil.which("apt-get") is None:
+        logging.info("apt-get not found. Skipping apt package installation.")
+        return
+
     packages = APT_PACKAGES.copy()
 
     # Add UI packages if not headless mode
@@ -378,18 +385,38 @@ def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
                 encoding="utf-8",
             )
 
-        packages_to_install = get_missing_apt_packages(packages)
-        if packages_to_install:
-            logging.warning(
-                "The following packages will be installed: %s",
-                ", ".join(packages_to_install),
-            )
+        (
+            available_packages,
+            unavailable_packages,
+            already_installed_packages,
+        ) = classify_apt_packages(packages)
 
-        if not packages_to_install:
+        if not available_packages and not unavailable_packages:
             logging.info("All packages are already installed")
             return
+        if unavailable_packages:
+            logging.warning(
+                "Packages not found in apt repositories (skipped): %s",
+                ", ".join(unavailable_packages),
+            )
 
-        install_command = ["sudo", "apt-get", "install", "-y"] + packages_to_install
+        if available_packages:
+            logging.info(
+                "The following packages will be installed: %s",
+                ", ".join(available_packages),
+            )
+        else:
+            if already_installed_packages:
+                logging.info(
+                    "All available packages are already installed. Nothing to do."
+                )
+            else:
+                logging.warning(
+                    "No installable apt packages left after availability check."
+                )
+            return
+
+        install_command = ["sudo", "apt-get", "install", "-y"] + available_packages
         if not dry_run:
             result = subprocess.run(
                 install_command,
@@ -405,28 +432,126 @@ def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
     logging.info("Successfully installed apt packages")
 
 
-def get_missing_apt_packages(packages: List[str] = None) -> List[str]:
-    if packages is None:
-        packages = APT_PACKAGES
-    return [
-        package
-        for package in packages
-        if subprocess.run(
-            ["dpkg", "-s", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        ).returncode
-        != 0
-    ]
+def classify_apt_packages(packages: List[str]) -> Tuple[List[str], List[str], List[str]]:
+    """
+    Return (available_and_missing, unavailable, already_installed).
+    """
+    if shutil.which("apt-cache") is None:
+        logging.info(
+            "apt-cache not found. Missing packages cannot be verified and will be skipped."
+        )
+        available = []
+        unavailable = []
+        already_installed = []
+        for package in packages:
+            if (
+                subprocess.run(
+                    ["dpkg", "-s", package],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                ).returncode
+                == 0
+            ):
+                already_installed.append(package)
+            else:
+                # Availability cannot be verified without apt-cache.
+                # Keep behavior conservative and skip unverified packages.
+                unavailable.append(package)
+        return available, unavailable, already_installed
+
+    available = []
+    unavailable = []
+    already_installed = []
+    for package in packages:
+        if (
+            subprocess.run(
+                ["dpkg", "-s", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            ).returncode
+            == 0
+        ):
+            already_installed.append(package)
+            continue
+
+        result = subprocess.run(
+            ["apt-cache", "show", package],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            available.append(package)
+        else:
+            unavailable.append(package)
+    return available, unavailable, already_installed
+
+
+def get_installed_font_families() -> Set[str]:
+    if shutil.which("fc-list") is None:
+        logging.debug("fc-list not found; font presence checks are disabled.")
+        return set()
+
+    result = subprocess.run(
+        ["fc-list", ":", "family"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        logging.debug("fc-list failed: %s", result.stderr.strip())
+        return set()
+
+    families: Set[str] = set()
+    for line in result.stdout.splitlines():
+        for entry in line.split(","):
+            family = entry.strip().lower()
+            if family:
+                families.add(family)
+    return families
+
+
+def _normalize_font_token(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _has_font_family(
+    installed_families: Set[str], family_hints: Union[str, List[str]]
+) -> bool:
+    hints = [family_hints] if isinstance(family_hints, str) else family_hints
+    normalized_hints = {
+        _normalize_font_token(hint) for hint in hints if _normalize_font_token(hint)
+    }
+    normalized_families = {
+        _normalize_font_token(family)
+        for family in installed_families
+        if _normalize_font_token(family)
+    }
+    return any(hint in normalized_families for hint in normalized_hints)
 
 
 def setup_fonts(dry_run: bool = False) -> None:
     import requests
 
     font_zips = [
-        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
-        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
-        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/SourceCodePro.zip",
-        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Hack.zip",
-        "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Meslo.zip",
+        (
+            ["firacode", "fira code"],
+            "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/FiraCode.zip",
+        ),
+        (
+            ["robotomono", "roboto mono"],
+            "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/RobotoMono.zip",
+        ),
+        (
+            ["sourcecodepro", "source code pro", "saucecodepro"],
+            "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/SourceCodePro.zip",
+        ),
+        (
+            ["hack"],
+            "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Hack.zip",
+        ),
+        (
+            ["meslolgs", "meslo lgs"],
+            "https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Meslo.zip",
+        ),
     ]
     font_files = [
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf",
@@ -434,30 +559,65 @@ def setup_fonts(dry_run: bool = False) -> None:
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf",
         "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf",
     ]
+    # Initial snapshot; during this run we update in-memory hints instead of
+    # repeatedly calling fc-list (which is comparatively expensive).
+    installed_families = set() if dry_run else get_installed_font_families()
+
     logging.info("Downloading and installing fonts from zip files")
-    for zip_url in font_zips:
-        request = requests.get(zip_url, allow_redirects=True)
+    for idx, (family_hints, zip_url) in enumerate(font_zips, start=1):
+        if _has_font_family(installed_families, family_hints):
+            logging.info(
+                "[%d/%d] Skipping %s zip (already installed)",
+                idx,
+                len(font_zips),
+                family_hints[0],
+            )
+            continue
+
+        logging.info("[%d/%d] Downloading %s", idx, len(font_zips), zip_url)
+        request = requests.get(zip_url, allow_redirects=True, timeout=(10, 180))
         request.raise_for_status()
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_file.extractall(tmp_dir)
             if not dry_run:
                 copy_fonts_to_directory(Path(tmp_dir))
+                for family_hint in family_hints:
+                    installed_families.add(family_hint.lower())
 
     logging.info("Downloading and installing individual font files")
-    for file_url in font_files:
-        request = requests.get(file_url, allow_redirects=True)
+    for idx, file_url in enumerate(font_files, start=1):
+        filename = os.path.basename(unquote(file_url))
+        target_file = HOME_DIR / ".local" / "share" / "fonts" / filename
+        if target_file.exists():
+            logging.info(
+                "[%d/%d] Skipping %s (already installed)",
+                idx,
+                len(font_files),
+                filename,
+            )
+            continue
+
+        logging.info("[%d/%d] Downloading %s", idx, len(font_files), filename)
+        request = requests.get(file_url, allow_redirects=True, timeout=(10, 120))
+        request.raise_for_status()
         with tempfile.TemporaryDirectory() as tmp_dir:
-            filename = os.path.basename(unquote(file_url))
             filepath = Path(tmp_dir) / filename
             with open(filepath, "wb") as file:
                 file.write(request.content)
             if not dry_run:
                 copy_fonts_to_directory(filepath)
-    command = "fc-cache -f -v"
+    command = "fc-cache -f"
     logging.info("Rebuilding font cache with command: '%s'", command)
     if not dry_run:
-        subprocess.check_call(command, shell=True)
+        result = subprocess.run(
+            ["fc-cache", "-f"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.debug(result.stdout)
     logging.info(
         "Remember to configure 'MesloLGS NF' as the default font "
         + "(see https://github.com/romkatv/powerlevel10k/blob/master/font.md)"
@@ -642,11 +802,11 @@ def has_previous_installation() -> bool:
 
 
 def prompt_ui_setup() -> bool:
-    """Prompt user if they want to install UI tools"""
+    """Prompt user if they want to install additional desktop/UI tools."""
     try:
         response = input(
-            "UI encironment detected. Do you want to setup UI related stuff? "
-            "(Install packages, fonts, etc.) [y/N]: "
+            "UI environment detected. Install additional desktop/UI packages "
+            "(e.g. flameshot, guake)? [y/N]: "
         )
         return response.strip().lower() in ["y", "yes"]
     except (EOFError, KeyboardInterrupt):
@@ -659,7 +819,7 @@ def prompt_new_host_setup() -> bool:
     try:
         response = input(
             "No previous installation detected. Do you want to run full new host setup? "
-            "(Install packages, fonts, etc.) [y/N]: "
+            "(Install base packages, terminal fonts, starship, git config) [y/N]: "
         )
         return response.strip().lower() in ["y", "yes"]
     except (EOFError, KeyboardInterrupt):
@@ -769,6 +929,9 @@ def main() -> None:
         args.new_host = False
         args.ui = False
         logging.info("Running update workflow (--update, non-interactive)")
+    elif args.ui and not args.new_host:
+        logging.info("--ui selected without --new-host; enabling --new-host as prerequisite.")
+        args.new_host = True
 
     if args.backup:
         create_backup(dry_run=args.dry_run)
@@ -794,24 +957,21 @@ def main() -> None:
             else:
                 args.new_host = prompt_new_host_setup()
 
-        if not args.ui and has_ui_environment():
+        if args.new_host and not args.ui and has_ui_environment():
             if args.non_interactive:
                 logging.info("Non-interactive mode: skipping UI setup prompt")
             else:
                 args.ui = prompt_ui_setup()
 
     if args.update:
-        # Keep update runs in sync with newly added non-UI tools.
+        # Keep update runs in sync with prior update behavior.
         install_apt_packages(dry_run=args.dry_run, ui=False)
+        setup_fonts(dry_run=args.dry_run)
         install_starship(dry_run=args.dry_run)
 
     if args.new_host:
-        if args.ui:
-            setup_fonts(dry_run=args.dry_run)
-        else:
-            logging.info("No UI: Skipping font installation")
-
         install_apt_packages(dry_run=args.dry_run, ui=args.ui)
+        setup_fonts(dry_run=args.dry_run)
         install_starship(dry_run=args.dry_run)
         set_git_user_config(dry_run=args.dry_run)
 

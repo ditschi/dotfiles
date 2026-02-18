@@ -48,13 +48,21 @@ zstyle ':completion:*:git-checkout:*' sort false
 zstyle ':completion:*:descriptions' format '[%d]'
 # set list-colors to enable filename colorizing
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-# preview directory's content with eza when completing cd
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
+# Preview directory content when completing cd.
+# Prefer eza, fallback to ls if eza isn't available.
+if command -v eza >/dev/null 2>&1; then
+  zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
+else
+  zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
+fi
 # switch group using `,` and `.`
 zstyle ':fzf-tab:*' switch-group ',' '.'
 zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
 
+zinit ice wait lucid atload'(( $+functions[_history_substring_search_config] )) && _history_substring_search_config'
 zinit light zsh-users/zsh-history-substring-search
-zinit ice wait atload'_history_substring_search_config'
 
-zinit ice wait'!0' zinit light skywind3000/z.lua
+if command -v lua >/dev/null 2>&1 || command -v luajit >/dev/null 2>&1; then
+  zinit ice wait'!0' lucid
+  zinit light skywind3000/z.lua
+fi

@@ -63,8 +63,8 @@ case "$TERM" in
 esac
 
 export GIT_PS1_SHOWCONFLICTSTATE=yes
-source /usr/lib/git-core/git-sh-prompt
-source /usr/share/bash-completion/completions/git
+[ -f /usr/lib/git-core/git-sh-prompt ] && source /usr/lib/git-core/git-sh-prompt
+[ -f /usr/share/bash-completion/completions/git ] && source /usr/share/bash-completion/completions/git
 
 # Add git branch to commandline
 parse_git_branch() {
@@ -88,6 +88,55 @@ if ! shopt -oq posix; then
         . /usr/share/bash-completion/bash_completion
     elif [ -f /etc/bash_completion ]; then
         . /etc/bash_completion
+    fi
+fi
+
+# Optional fzf bindings/completion. Source only if available.
+if command -v fzf >/dev/null 2>&1; then
+    for fzf_keys in \
+        /usr/share/doc/fzf/examples/key-bindings.bash \
+        /usr/share/fzf/key-bindings.bash \
+        "$HOME/.fzf/shell/key-bindings.bash"; do
+        if [ -f "$fzf_keys" ]; then
+            . "$fzf_keys"
+            break
+        fi
+    done
+    for fzf_completion in \
+        /usr/share/doc/fzf/examples/completion.bash \
+        /usr/share/fzf/completion.bash \
+        "$HOME/.fzf/shell/completion.bash"; do
+        if [ -f "$fzf_completion" ]; then
+            . "$fzf_completion"
+            break
+        fi
+    done
+fi
+
+# Optional z.lua init (jump around directories with `z`).
+# Keep this resilient in containers where lua/z.lua may be absent.
+if command -v lua >/dev/null 2>&1 || command -v luajit >/dev/null 2>&1; then
+    if command -v z.lua >/dev/null 2>&1; then
+        eval "$(z.lua --init bash enhanced once 2>/dev/null)"
+    else
+        zlua_runner=""
+        if command -v lua >/dev/null 2>&1; then
+            zlua_runner="$(command -v lua)"
+        else
+            zlua_runner="$(command -v luajit)"
+        fi
+        for zlua_script in \
+            "$HOME/.local/share/zinit/plugins/skywind3000---z.lua/z.lua" \
+            "$HOME/.zinit/plugins/skywind3000---z.lua/z.lua" \
+            /usr/share/z.lua/z.lua \
+            /usr/local/share/z.lua/z.lua; do
+            if [ -f "$zlua_script" ]; then
+                eval "$("$zlua_runner" "$zlua_script" --init bash enhanced once 2>/dev/null)"
+                break
+            fi
+        done
+        unset zlua_runner
+        unset zlua_script
     fi
 fi
 

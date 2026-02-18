@@ -8,10 +8,25 @@ if [ -n "$BASH_VERSION" ]; then
     # bash-specific settings
     export HISTFILE=~/.bash_history
     shopt -s histappend                 # Append to the history file, don't overwrite
+    shopt -s cdspell dirspell           # Correct minor typos in cd paths
     export HISTIGNORE="&:[ ]*:#*"       # Ignore duplicates (&), space-only commands, and comments (#)
     HISTCONTROL=ignoredups:ignorespace  # Ignorespace and ignoredups
     PROMPT_COMMAND="history -a; history -c; history -n; history -r; $PROMPT_COMMAND" # Sync history between sessions
     export HISTTIMEFORMAT='(%Y-%m-%d) (%H:%M:%S) '
+
+    # Prefix-aware history search with Up/Down (uses current input as filter).
+    # Support both common arrow sequences and application cursor mode.
+    bind '"\e[A": history-search-backward'
+    bind '"\e[B": history-search-forward'
+    bind '"\eOA": history-search-backward'
+    bind '"\eOB": history-search-forward'
+
+    # Align basic cursor/editing keys with common zsh behavior.
+    bind '"\e[H": beginning-of-line'
+    bind '"\e[F": end-of-line'
+    bind '"\eOH": beginning-of-line'
+    bind '"\eOF": end-of-line'
+    bind '"\e[3~": delete-char'
 elif [ -n "$ZSH_VERSION" ]; then
     # zsh-specific settings
     export HISTFILE=~/.zsh_history

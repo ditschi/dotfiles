@@ -1,0 +1,46 @@
+format = """
+$directory$git_branch$git_status$fill$status$python$cmd_duration$time
+$character
+"""
+
+add_newline = false
+
+[directory]
+format = "[$path]($style) "
+truncation_length = 3
+truncate_to_repo = false
+
+[git_branch]
+format = "[$branch]($style) "
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+
+[fill]
+symbol = "─"
+
+[status]
+disabled = false
+format = "[$symbol$common_meaning$signal_name]($style) "
+map_symbol = true
+recognize_signal_code = true
+symbol = "✘ "
+sigint_symbol = "INT "
+
+[python]
+format = "[$symbol$virtualenv]($style) "
+symbol = "Py "
+
+[cmd_duration]
+min_time = 0
+format = "[$duration]($style) "
+
+[time]
+disabled = false
+time_format = "%H:%M:%S"
+format = "[$time]($style) "
+
+[character]
+success_symbol = "[❯](bold green) "
+error_symbol = "[❯](bold red) "
+vimcmd_symbol = "[❮](bold green) "

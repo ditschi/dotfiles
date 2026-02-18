@@ -13,9 +13,33 @@ bindkey "^[[3~" delete-char
 bindkey "^[[H" beginning-of-line
 bindkey "^[[F" end-of-line
 
-# Bind the Up/down arrow key to search the command history for a command that matches the current input
-bindkey '^[[A' history-substring-search-up
-bindkey '^[[B' history-substring-search-down
+# Bind Up/Down to prefix history search.
+# Some terminals send ^[[A/^[[B, others ^[OA/^[OB (application cursor mode).
+# This function is intentionally called twice:
+# - once now (fallback may be used if plugin is not loaded yet),
+# - again via zinit atload hook once history-substring-search is available.
+function _history_substring_search_config() {
+    if (( $+widgets[history-substring-search-up] && $+widgets[history-substring-search-down] )); then
+        for keymap in emacs viins vicmd; do
+            bindkey -M "$keymap" '^[[A' history-substring-search-up
+            bindkey -M "$keymap" '^[[B' history-substring-search-down
+            bindkey -M "$keymap" '^[OA' history-substring-search-up
+            bindkey -M "$keymap" '^[OB' history-substring-search-down
+        done
+    else
+        autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+        zle -N up-line-or-beginning-search
+        zle -N down-line-or-beginning-search
+        for keymap in emacs viins vicmd; do
+            bindkey -M "$keymap" '^[[A' up-line-or-beginning-search
+            bindkey -M "$keymap" '^[[B' down-line-or-beginning-search
+            bindkey -M "$keymap" '^[OA' up-line-or-beginning-search
+            bindkey -M "$keymap" '^[OB' down-line-or-beginning-search
+        done
+    fi
+}
+
+_history_substring_search_config
 
 # Bind the Right/Left arrow key to move the cursor forward one character
 bindkey "^[[C" forward-char

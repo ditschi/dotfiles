@@ -687,7 +687,13 @@ def _has_font_family(
         for family in installed_families
         if _normalize_font_token(family)
     }
-    return any(hint in normalized_families for hint in normalized_hints)
+    # fc-list often reports extended family names like "robotomono nerd font";
+    # treat a family as present when any normalized hint is contained in it.
+    for hint in normalized_hints:
+        for family in normalized_families:
+            if hint == family or hint in family:
+                return True
+    return False
 
 
 def setup_fonts(dry_run: bool = False) -> None:

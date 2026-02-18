@@ -38,8 +38,29 @@ zinit light sharkdp/fd
 zplugin ice as"program" pick"bin/git-dsf"
 zplugin light zdharma-continuum/zsh-diff-so-fancy
 
-# Install fzf with completions and additional scripts
-zinit pack for fzf
+# Use distro-provided fzf (installed via apt) to avoid zinit-pack build issues.
+# Source completion/key-bindings only when available on the host.
+if command -v fzf >/dev/null 2>&1; then
+  for fzf_keys in \
+    /usr/share/doc/fzf/examples/key-bindings.zsh \
+    /usr/share/fzf/key-bindings.zsh \
+    "${HOME}/.fzf/shell/key-bindings.zsh"; do
+    if [ -f "${fzf_keys}" ]; then
+      source "${fzf_keys}"
+      break
+    fi
+  done
+
+  for fzf_completion in \
+    /usr/share/doc/fzf/examples/completion.zsh \
+    /usr/share/fzf/completion.zsh \
+    "${HOME}/.fzf/shell/completion.zsh"; do
+    if [ -f "${fzf_completion}" ]; then
+      source "${fzf_completion}"
+      break
+    fi
+  done
+fi
 zinit light Aloxaf/fzf-tab
 
 # disable sort when completing `git checkout`

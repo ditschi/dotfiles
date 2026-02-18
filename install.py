@@ -79,6 +79,102 @@ def _installer_venv_python() -> Path:
     return INSTALLER_VENV_DIR / "bin" / "python3"
 
 
+def _format_subprocess_error(cpe: subprocess.CalledProcessError) -> str:
+    stderr = (cpe.stderr or "").strip()
+    stdout = (cpe.stdout or "").strip()
+    output = stderr or stdout or "<no output>"
+    return f"exit code {cpe.returncode}; output: {output}"
+
+
+def _reset_installer_venv_dir() -> None:
+    if INSTALLER_VENV_DIR.exists():
+        try:
+            shutil.rmtree(INSTALLER_VENV_DIR)
+        except OSError as exc:
+            print(
+                "Failed to clean existing installer venv directory at "
+                f"'{INSTALLER_VENV_DIR}'.\nDetails: {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
+def _try_install_python_venv_with_apt() -> bool:
+    apt_get = shutil.which("apt-get")
+    if apt_get is None:
+        return False
+
+    if os.geteuid() == 0:
+        update_command = [apt_get, "update"]
+        install_command = [apt_get, "install", "-y", "python3-venv"]
+    else:
+        sudo = shutil.which("sudo")
+        if sudo is None:
+            print(
+                "python3-venv is required but 'sudo' is not available for apt install.",
+                file=sys.stderr,
+            )
+            return False
+        update_command = [sudo, apt_get, "update"]
+        install_command = [sudo, apt_get, "install", "-y", "python3-venv"]
+
+    try:
+        subprocess.run(
+            update_command,
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        subprocess.run(
+            install_command,
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        return True
+    except subprocess.CalledProcessError as cpe:
+        print(
+            "Automatic apt install of 'python3-venv' failed.\n"
+            f"Details: {_format_subprocess_error(cpe)}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def _try_create_installer_venv_with_uv() -> bool:
+    uv = shutil.which("uv")
+    if uv is None:
+        return False
+
+    commands = [
+        [uv, "venv", str(INSTALLER_VENV_DIR), "--python", sys.executable],
+        [uv, "venv", str(INSTALLER_VENV_DIR)],
+    ]
+    last_error: Union[subprocess.CalledProcessError, None] = None
+    for command in commands:
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            return True
+        except subprocess.CalledProcessError as cpe:
+            last_error = cpe
+
+    if last_error is not None:
+        print(
+            "Automatic uv-based venv creation failed.\n"
+            f"Details: {_format_subprocess_error(last_error)}",
+            file=sys.stderr,
+        )
+    return False
+
+
 def ensure_runtime_environment() -> None:
     """Run installer from dedicated venv and ensure required Python deps exist.
 
@@ -93,6 +189,9 @@ def ensure_runtime_environment() -> None:
     venv_python = _installer_venv_python()
 
     if not venv_python.exists():
+        _reset_installer_venv_dir()
+
+        venv_creation_error = None
         try:
             subprocess.run(
                 [sys.executable, "-m", "venv", str(INSTALLER_VENV_DIR)],
@@ -102,10 +201,42 @@ def ensure_runtime_environment() -> None:
                 encoding="utf-8",
             )
         except subprocess.CalledProcessError as cpe:
+            venv_creation_error = cpe
+
+        if venv_creation_error is not None:
+            print(
+                "Initial venv creation failed. Trying to install 'python3-venv' via apt.",
+                file=sys.stderr,
+            )
+            if _try_install_python_venv_with_apt():
+                _reset_installer_venv_dir()
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "venv", str(INSTALLER_VENV_DIR)],
+                        check=True,
+                        stderr=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        encoding="utf-8",
+                    )
+                    venv_creation_error = None
+                except subprocess.CalledProcessError as cpe:
+                    venv_creation_error = cpe
+
+        if venv_creation_error is not None:
+            print(
+                "Trying uv fallback for installer venv creation.",
+                file=sys.stderr,
+            )
+            _reset_installer_venv_dir()
+            if _try_create_installer_venv_with_uv():
+                venv_creation_error = None
+
+        if venv_creation_error is not None:
             print(
                 "Failed to create installer venv at "
-                f"'{INSTALLER_VENV_DIR}'. Please install 'python3-venv'.\n"
-                f"Details: {cpe.stderr.strip()}",
+                f"'{INSTALLER_VENV_DIR}'.\n"
+                "Install 'python3-venv' (apt) or 'uv', then retry.\n"
+                f"Details: {_format_subprocess_error(venv_creation_error)}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -135,7 +266,7 @@ def ensure_runtime_environment() -> None:
     except subprocess.CalledProcessError as cpe:
         print(
             "Failed to install installer dependencies in venv.\n"
-            f"Details: {cpe.stderr.strip()}",
+            f"Details: {_format_subprocess_error(cpe)}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -199,7 +330,7 @@ def create_backup(dry_run: bool = False) -> None:
                     else:
                         backup_path.unlink()
                 if source_path.is_dir():
-                    shutil.copytree(source_path, backup_path)
+                    shutil.copytree(source_path, backup_path, symlinks=True)
                 else:
                     shutil.copy2(source_path, backup_path)
             did_backup = True

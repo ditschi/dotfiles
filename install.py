@@ -187,12 +187,21 @@ def create_backup(dry_run: bool = False) -> None:
                 logging.debug("'%s' is a symlink, skipping backup", source_path)
                 continue
 
-            message = "Backing up '%s' to '%s'", source_path, backup_path
+            message = "Backing up '%s' to '%s'" % (source_path, backup_path)
             if dry_run:
                 logging.debug("Dry-run:: " + message)
             else:
                 logging.debug(message)
-                shutil.copy2(source_path, backup_path)
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                if backup_path.exists() or backup_path.is_symlink():
+                    if backup_path.is_dir() and not backup_path.is_symlink():
+                        shutil.rmtree(backup_path)
+                    else:
+                        backup_path.unlink()
+                if source_path.is_dir():
+                    shutil.copytree(source_path, backup_path)
+                else:
+                    shutil.copy2(source_path, backup_path)
             did_backup = True
         else:
             logging.debug("'%s' does not exist, skipping backup", source_path)
@@ -217,13 +226,22 @@ def setup_dotfile_links(
 
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
+    used_directory_symlink_fallback = False
     for dotfile in DOTFILES:
         dotfile_path = get_dotfiles_path(dotfile)
         target_path = get_home_path(dotfile)
         if dotfile_path.is_dir():
-            # Create a symlink for the directory itself
+            # Directories cannot be hard-linked. Fall back to symlink mode.
+            link_as_symlink = use_symlink
+            if not use_symlink:
+                link_as_symlink = True
+                used_directory_symlink_fallback = True
+                logging.warning(
+                    "Hard links are not supported for directories. Falling back to symlink for '%s'",
+                    dotfile_path,
+                )
             result = create_link_for_file(
-                target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
+                target_path, dotfile_path, link_as_symlink, skip_existing, dry_run, force
             )
             if result:
                 links_created.update(result)
@@ -236,10 +254,13 @@ def setup_dotfile_links(
         )
         if result:
             links_created.update(result)
+    mode_label = "sym" if use_symlink else "hard"
+    if used_directory_symlink_fallback:
+        mode_label = "hard (directory entries as sym)"
     logging.info(
         "Successfully set up %d %s-links for dotfiles in %s",
         len(links_created),
-        "sym" if use_symlink else "hard",
+        mode_label,
         HOME_DIR,
     )
 
@@ -321,14 +342,18 @@ def create_link_for_file(
                 logging.info("Correct link already exists: '%s'", target_abs_path)
                 return None
 
-        message = "Removing incorrect link '%s'" % target_abs_path
+        if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+            message = "Removing incorrect directory '%s'" % target_abs_path
+        else:
+            message = "Removing incorrect link '%s'" % target_abs_path
         if dry_run:
             logging.debug("Dry-run:: " + message)
         else:
             logging.debug(message)
-            os.remove(
-                target_abs_path
-            )  # warning: target_path.unlink() for some reason will delete the linked destination
+            if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+                shutil.rmtree(target_abs_path)
+            else:
+                os.remove(target_abs_path)
             if target_abs_path.exists():
                 raise FileExistsError(
                     f"Failed to remove incorrect link '{target_abs_path}'"
@@ -788,9 +813,10 @@ def has_previous_installation() -> bool:
     """Check if dotfiles have been previously installed by looking for symlinks"""
     for dotfile in DOTFILES:
         target_path = get_home_path(dotfile)
+        dotfile_path = get_dotfiles_path(dotfile)
+
         if target_path.is_symlink():
             resolved_path = target_path.resolve()
-            dotfile_path = get_dotfiles_path(dotfile)
             if resolved_path == dotfile_path.resolve():
                 logging.debug(
                     "Found existing installation: '%s' points to '%s'",
@@ -798,6 +824,21 @@ def has_previous_installation() -> bool:
                     resolved_path,
                 )
                 return True
+
+        if (
+            target_path.exists()
+            and target_path.is_file()
+            and not target_path.is_symlink()
+            and dotfile_path.exists()
+            and dotfile_path.is_file()
+            and target_path.samefile(dotfile_path)
+        ):
+            logging.debug(
+                "Found existing installation: '%s' is hard-linked to '%s'",
+                target_path,
+                dotfile_path,
+            )
+            return True
     return False
 
 

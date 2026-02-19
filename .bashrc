@@ -2,7 +2,7 @@
 # see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
 # for examples
 
-SCRIPTDIR=$(dirname "$0")
+SCRIPTDIR=$(dirname -- "$0")
 
 # If not running interactively, don't do anything
 case $- in

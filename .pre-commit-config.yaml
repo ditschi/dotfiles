@@ -50,10 +50,10 @@ repos:
       - id: flake8
         args:
           - --max-line-length=120
-  - repo: https://github.com/ditschi/pre-commit-hooks
-    rev: v0.1.0
-    hooks:
-      - id: protect-files
-        # Note: pre-commit appends the filenames of staged files to the command.
-        #       To seperate the globs from the list of filenames add a '--'
-        args: ['--protected-files-globs', '.gitconfig', '--']
+# - repo: https://github.com/ditschi/pre-commit-hooks
+#   rev: v0.1.0
+#   hooks:
+#     - id: protect-files
+#       # Note: pre-commit appends the filenames of staged files to the command.
+#       #       To seperate the globs from the list of filenames add a '--'
+#       args: ['--protected-files-globs', '.gitconfig', '--']

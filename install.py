@@ -116,7 +116,14 @@ def _try_install_python_bootstrap_with_apt() -> bool:
             )
             return False
         update_command = [sudo, apt_get, "update"]
-        install_command = [sudo, apt_get, "install", "-y", "python3-venv", "python3-pip"]
+        install_command = [
+            sudo,
+            apt_get,
+            "install",
+            "-y",
+            "python3-venv",
+            "python3-pip",
+        ]
 
     try:
         subprocess.run(
@@ -164,7 +171,9 @@ def ensure_runtime_environment() -> None:
     reproducible we bootstrap a private venv and re-exec the installer there.
     """
     in_bootstrap = os.environ.get("DOTFILES_INSTALLER_VENV_ACTIVE") == "1"
-    missing_packages = [pkg for pkg in INSTALLER_REQUIRED_PACKAGES if not _module_available(pkg)]
+    missing_packages = [
+        pkg for pkg in INSTALLER_REQUIRED_PACKAGES if not _module_available(pkg)
+    ]
     if not missing_packages and in_bootstrap:
         return
 
@@ -378,7 +387,12 @@ def setup_dotfile_links(
                     dotfile_path,
                 )
             result = create_link_for_file(
-                target_path, dotfile_path, link_as_symlink, skip_existing, dry_run, force
+                target_path,
+                dotfile_path,
+                link_as_symlink,
+                skip_existing,
+                dry_run,
+                force,
             )
             if result:
                 links_created.update(result)
@@ -594,7 +608,9 @@ def install_apt_packages(dry_run: bool = False, ui: bool = False) -> None:
     logging.info("Successfully installed apt packages")
 
 
-def classify_apt_packages(packages: List[str]) -> Tuple[List[str], List[str], List[str]]:
+def classify_apt_packages(
+    packages: List[str],
+) -> Tuple[List[str], List[str], List[str]]:
     """
     Return (available_and_missing, unavailable, already_installed).
     """
@@ -1060,9 +1076,7 @@ def parse_arguments():
 def set_git_user_config(dry_run: bool = False) -> None:
     logging.info("Setting git user configuration for dotfiles repository")
     if dry_run:
-        logging.debug(
-            "Dry-run:: skipping git config changes for dotfiles repository"
-        )
+        logging.debug("Dry-run:: skipping git config changes for dotfiles repository")
         return
 
     try:
@@ -1114,7 +1128,9 @@ def main() -> None:
         args.ui = False
         logging.info("Running update workflow (--update, non-interactive)")
     elif args.ui and not args.new_host:
-        logging.info("--ui selected without --new-host; enabling --new-host as prerequisite.")
+        logging.info(
+            "--ui selected without --new-host; enabling --new-host as prerequisite."
+        )
         args.new_host = True
 
     if args.backup:

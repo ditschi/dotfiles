@@ -4,7 +4,7 @@ if [[ "${WORK_SETUP}" != "true" ]]; then # set in 00_LOADER.zsh
     return
 fi
 
-SCRIPTDIR=$(dirname "$0")
+SCRIPTDIR=$(dirname -- "$0")
 
 ### MODIFIED BY OSD-PROXY-PACKAGE BEGIN ###
 

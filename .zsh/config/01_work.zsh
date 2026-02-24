@@ -127,101 +127,111 @@ groups_list() {
 
 
 export DOCKER_SERVICE="dev-env"
+# ---------------------------------------------------------------------------
+# _sde_run: helper for sde/sdx that builds a single command string
+#           joined with &&, so it can be passed as a quoted string to the container.
+#           This supports the style where the command is wrapped in double quotes.
+# Usage: _sde_run <shell> <setup_cmd> <extra_volumes...> -- [user command...]
+#   shell:         "bash" or "zsh" (zsh falls back to bash if unavailable)
+#   setup_cmd:     command to run inside container before post-start (empty string to skip)
+#   extra_volumes: additional -v flags (terminated by --)
+#   user command:  optional command args (quotes preserved)
+# ---------------------------------------------------------------------------
+_sde_run() {
+    local shell="$1"; shift
+    local setup_cmd="$1"; shift
+
+    # Collect extra volume flags until we hit "--"
+    local -a extra_vols=()
+    while [[ $# -gt 0 && "$1" != "--" ]]; do
+        extra_vols+=("$1"); shift
+    done
+    [[ "$1" == "--" ]] && shift
+    # $@ now contains user command args with preserved quoting
+
+    # --- Compose file check ---
+    if [ ! -f docker-compose.yml ] && [ ! -f compose.yaml ]; then
+        echo 'Error: No docker-compose.yml or compose.yaml found in this directory. Cannot start devcontainer.'
+        return 1
+    fi
+
+    # --- Host-side: run initialize-command.sh if present ---
+    if [ -f .devcontainer/initialize-command.sh ]; then
+        ./.devcontainer/initialize-command.sh
+    else
+        echo 'Info: .devcontainer/initialize-command.sh not found, skipping initialization.'
+    fi
+
+    # --- Build ---
+    docker compose build $DOCKER_SERVICE
+
+    # --- Build the command string ---
+    post_start_cmd='if [ -f ./.devcontainer/post-start-command.sh ]; then ./.devcontainer/post-start-command.sh; else echo "Info: .devcontainer/post-start-command.sh not found, skipping post-start setup."; fi'
+
+    # --- Determine shell launch logic ---
+    local cmd_str=""
+    if [ $# -le 0 ]; then
+        # interactive shell case, run setup (incl. shell setup), then start shell
+        cmd_str="$setup_cmd && $post_start_cmd && "
+        [[ "$shell" == "zsh" ]] && cmd_str+='exec zsh || exec bash' || cmd_str+='exec bash'
+    else
+        # user command case - run only post-start, then user command
+        cmd_str="( $post_start_cmd ) && bash -c \"$@\""
+    fi
+
+    echo "[DEBUG] Running in container: $cmd_str"
+    docker compose run --rm \
+        "${extra_vols[@]}" \
+        $DOCKER_SERVICE \
+        "$cmd_str"
+}
+
+# ---------------------------------------------------------------------------
+# sde: start devcontainer with bash (minimal, no dotfiles setup)
+# ---------------------------------------------------------------------------
 sde() {
-    COMMAND="$@"
-    if [ -f .devcontainer/initialize-command.sh ]; then
-        ./.devcontainer/initialize-command.sh
-    else
-        echo '.devcontainer/initialize-command.sh not found, skipping execution'
-    fi
-
-    docker compose build --pull $DOCKER_SERVICE
-    docker compose run --rm \
-           -v "${HOME}/:${HOME}/mnt/home/" \
-           $DOCKER_SERVICE \
-        "
-            if [ -f ./.devcontainer/post-start-command.sh ]; then
-                ./.devcontainer/post-start-command.sh
-            else
-                echo '.devcontainer/post-start-command.sh not found, skipping execution'
-            fi \
-            && if [ -z \"$COMMAND\" ]; then
-                exec bash
-            else
-                bash -c \"$COMMAND\"
-            fi
-        "
-}
-
-sdx() {
-    COMMAND="$@"
-    if [ -f .devcontainer/initialize-command.sh ]; then
-        ./.devcontainer/initialize-command.sh
-    else
-        echo '.devcontainer/initialize-command.sh not found, skipping execution'
-    fi
-
-    mkdir -p "${HOME}/.docker-cache/.zsh"
-    mkdir -p "${HOME}/.docker-cache/.local_share_zinit"
-
-    docker compose build --pull $DOCKER_SERVICE
-    docker compose run --rm \
+    _sde_run bash "" \
         -v "${HOME}/:/mnt/host_home/" \
-        -v "/usr/share/autojump/:/usr/share/autojump/" \
-        -v "${HOME}/.docker-cache/.zsh:${HOME}/.zsh/" \
-        -v "${HOME}/.docker-cache/.local_share_zinit:${HOME}/.local/share/zinit/" \
-        $DOCKER_SERVICE \
-        "
-            if [ -f /mnt/host_home/dotfiles/install.py ]; then
-                python3 /mnt/host_home/dotfiles/install.py
-            else
-                echo '/mnt/host_home/dotfiles/install.py not found, skipping execution'
-            fi \
-            && if [ -f ./.devcontainer/post-start-command.sh ]; then
-                ./.devcontainer/post-start-command.sh
-            else
-                echo '.devcontainer/post-start-command.sh not found, skipping execution'
-            fi \
-            && if [ -z \"$COMMAND\" ]; then
-                exec zsh || exec bash
-            else
-                zsh -c \"$COMMAND\" || bash -c \"$COMMAND\"
-            fi
-        "
+        -- "$@"
 }
 
-sdz() {
-    COMMAND="$@"
-    if [ -f .devcontainer/initialize-command.sh ]; then
-        ./.devcontainer/initialize-command.sh
-    else
-        echo '.devcontainer/initialize-command.sh not found, skipping execution'
-    fi
+# ---------------------------------------------------------------------------
+# sdx: start devcontainer with EXTENDED setup (zsh/bash + full dotfiles)
+#
+# Both zsh and bash get the better setup from host (all dotfiles, plugins, history).
+#
+# Volumes:
+#   /mnt/host_home/           - host home (rw) for install.py + .gitconfig propagation
+#   dotfiles-zinit-cache      - named volume for zinit (isolated from host)
+#   dotfiles-apt-cache        - named volume caching .deb files across --rm runs
+#   commandhistory.d/<repo>_zsh - per-repo persistent zsh history
+#   /usr/share/autojump/      - autojump data from host (ro)
+#
+# Setup: install.py handles everything:
+#   1. apt install zsh deps (idempotent, cached debs)
+#   2. backup bind-mounted files to ~/.dotfiles-backup/<timestamp>/ (preserves company configs)
+#   3. symlink dotfiles (full zsh/bash setup from repo)
+#   4. seed zinit cache from host on first run
+# ---------------------------------------------------------------------------
+sdx() {
+    local repo_name
+    repo_name="$(basename "$(pwd)")"
 
-    docker-compose build $DOCKER_SERVICE
-    docker-compose run --rm \
-        -v "${HOME}/.zshrc:${HOME}/.zshrc" \
-        -v "${HOME}/.zsh/:${HOME}/.zsh/" \
-        -v "${HOME}/.env:${HOME}/.env" \
-        -v "${HOME}/.netrc:${HOME}/.netrc" \
-        -v "${HOME}/.p10k.zsh:${HOME}/.p10k.zsh" \
-        -v "${HOME}/.shared_history:${HOME}/.shared_history" \
-        -v "${HOME}/.local/share/:${HOME}/.local/share/" \
-        -v "/usr/share/autojump/:/usr/share/autojump/" \
-        -v "${HOME}/.cache/:${HOME}/.cache/" \
-        $DOCKER_SERVICE \
-        "
-            if [ -f ./.devcontainer/post-start-command.sh ]; then
-                ./.devcontainer/post-start-command.sh
-            else
-                echo '.devcontainer/post-start-command.sh not found, skipping execution'
-            fi \
-            && if [ -z \"$COMMAND\" ]; then
-                exec zsh || exec bash
-            else
-                zsh -c \"$COMMAND\" || bash -c \"$COMMAND\"
-            fi
-        "
+    # Ensure zsh history file exists on host (prevent Docker creating it as a directory)
+    mkdir -p "${HOME}/.docker-cache/zinit"
+    mkdir -p "${HOME}/.docker-cache/apt"
+    mkdir -p "${HOME}/.docker-cache/dotfiles-installer"
+    mkdir -p "${HOME}/.docker-cache/commandhistory.d"
+    touch "${HOME}/.docker-cache/commandhistory.d/${repo_name}_zsh"
+
+    _sde_run zsh "python3 /mnt/host_home/dotfiles/install.py" \
+        -v "${HOME}/:/mnt/host_home/" \
+        -v "${HOME}/.docker-cache/zinit:${HOME}/.local/share/zinit/" \
+        -v "${HOME}/.docker-cache/apt:/var/cache/apt/archives/" \
+        -v "${HOME}/.docker-cache/dotfiles-installer:${HOME}/.local/share/dotfiles-installer" \
+        -v "${HOME}/.docker-cache/commandhistory.d/${repo_name}_zsh:${HOME}/.zsh_history" \
+        -v "/usr/share/autojump/:/usr/share/autojump/:ro" \
+        -- "$@"
 }
 
 

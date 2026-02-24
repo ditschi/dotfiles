@@ -37,27 +37,36 @@ DOTFILES = [
     ".zshrc",
 ]
 
-APT_PACKAGES = [
+# Packages needed for a working zsh environment.
+# Used both on the host and inside containers.
+APT_ZSH_PACKAGES = [
     "autojump",
+    "fzf",
+    "jq",
+    "luajit",
+    "tmux",
+    "zsh",
+]
+
+# Packages only needed on the host (already in company base image or
+# irrelevant inside a container).
+APT_HOST_PACKAGES = [
     "curl",
     "eza",
     "fonts-firacode",
     "fonts-powerline",
-    "fzf",
     "git",
     "git-lfs",
     "gnupg",
     "golang",
     "libsecret-tools",
-    "jq",
-    "luajit",
     "pipx",
     "python-is-python3",
     "python3-venv",
-    "tmux",
     "wget",
-    "zsh",
 ]
+
+APT_PACKAGES = APT_ZSH_PACKAGES + APT_HOST_PACKAGES
 
 # UI-dependent packages that should be skipped in headless mode
 UI_PACKAGES = [
@@ -302,10 +311,6 @@ def get_home_path(relative_path: Union[str, Path]) -> Path:
     return HOME_DIR / relative_path
 
 
-def get_backup_path(relative_path: Union[str, Path]) -> Path:
-    return BACKUP_DIR / relative_path
-
-
 def verify_dotfiles_exist() -> None:
     logging.debug("Verifying dotfiles to be installed")
     missing_files = [
@@ -320,55 +325,12 @@ def verify_dotfiles_exist() -> None:
     logging.info("All required dotfiles are present")
 
 
-def create_backup(dry_run: bool = False) -> None:
-    logging.debug("Creating backup of existing dotfiles")
-    did_backup = False
-    if not dry_run:
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    for dotfile in DOTFILES:
-        source_path = get_home_path(dotfile)
-        backup_path = get_backup_path(dotfile)
-        if source_path.exists():
-            if source_path.is_symlink():
-                logging.debug("'%s' is a symlink, skipping backup", source_path)
-                continue
-
-            message = "Backing up '%s' to '%s'" % (source_path, backup_path)
-            if dry_run:
-                logging.debug("Dry-run:: " + message)
-            else:
-                logging.debug(message)
-                backup_path.parent.mkdir(parents=True, exist_ok=True)
-                if backup_path.exists() or backup_path.is_symlink():
-                    if backup_path.is_dir() and not backup_path.is_symlink():
-                        shutil.rmtree(backup_path)
-                    else:
-                        backup_path.unlink()
-                if source_path.is_dir():
-                    shutil.copytree(source_path, backup_path, symlinks=True)
-                else:
-                    shutil.copy2(source_path, backup_path)
-            did_backup = True
-        else:
-            logging.debug("'%s' does not exist, skipping backup", source_path)
-    if did_backup:
-        logging.info("Existing dotfiles backed up to '%s'", BACKUP_DIR)
-    else:
-        if not dry_run:
-            BACKUP_DIR.rmdir()
-
-
 def setup_dotfile_links(
     use_symlink: bool = True,
-    skip_existing: bool = False,
+    backup: bool = True,
     dry_run: bool = False,
     force: bool = False,
 ) -> None:
-    if skip_existing and force:
-        logging.warning(
-            "Both 'skip_existing' and 'force' are set, Docker usecase 'skip_existing' will be"
-        )
-        skip_existing = False
 
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
@@ -390,7 +352,7 @@ def setup_dotfile_links(
                 target_path,
                 dotfile_path,
                 link_as_symlink,
-                skip_existing,
+                backup,
                 dry_run,
                 force,
             )
@@ -401,7 +363,7 @@ def setup_dotfile_links(
             continue
 
         result = create_link_for_file(
-            target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
+            target_path, dotfile_path, use_symlink, backup, dry_run, force
         )
         if result:
             links_created.update(result)
@@ -419,7 +381,7 @@ def setup_dotfile_links(
 def create_links_for_directory(
     dotfile_dir: Path,
     use_symlink: bool,
-    skip_existing: bool,
+    backup: bool,
     dry_run: bool,
     force: bool,
 ) -> dict:
@@ -437,7 +399,7 @@ def create_links_for_directory(
                 dotfile_path,
             )
             result = create_link_for_file(
-                target_path, dotfile_path, use_symlink, skip_existing, dry_run, force
+                target_path, dotfile_path, use_symlink, backup, dry_run, force
             )
             if result:
                 links_created.update(result)
@@ -470,7 +432,7 @@ def create_link_for_file(
     target_path: Path,
     dotfile_path: Path,
     use_symlink: bool,
-    skip_existing: bool,
+    backup: bool,
     dry_run: bool,
     force: bool,
 ) -> dict:
@@ -484,31 +446,86 @@ def create_link_for_file(
 
     target_abs_path = target_path.absolute()
     if target_abs_path.exists() or target_abs_path.is_symlink():
-        if not force:
-            if skip_existing:
-                logging.debug("Skipping existing file '%s'", target_abs_path)
-                return None
+        # STEP 1: Backup regular files/dirs (not symlinks) to BACKUP_DIR before linking.
+        # Symlinks are NOT backed up — they were created by a previous dotfiles run.
+        # Guard: skip if backup_path already exists.
+        if backup and target_abs_path.exists() and not target_abs_path.is_symlink():
+            try:
+                rel_path = target_abs_path.relative_to(HOME_DIR)
+            except ValueError:
+                logging.warning(
+                    "Cannot backup '%s' — outside HOME directory",
+                    target_abs_path,
+                )
+            else:
+                backup_path = BACKUP_DIR / rel_path
+                if backup_path.exists():
+                    logging.debug(
+                        "Backup already exists at '%s', skipping inline backup of '%s'",
+                        backup_path,
+                        target_abs_path,
+                    )
+                else:
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    if target_abs_path.is_dir():
+                        logging.info(
+                            "Backing up directory '%s' to '%s'",
+                            target_abs_path,
+                            backup_path,
+                        )
+                    else:
+                        logging.info(
+                            "Backing up regular file '%s' to '%s'",
+                            target_abs_path,
+                            backup_path,
+                        )
+                    if dry_run:
+                        logging.debug("Dry-run:: would backup to '%s'", backup_path)
+                    else:
+                        shutil.move(str(target_abs_path), str(backup_path))
+                        # After move, target no longer exists, fall through to link creation
 
+        # STEP 2: If force=True, remove whatever remains (symlinks, broken links) to force recreation.
+        if force and (target_abs_path.exists() or target_abs_path.is_symlink()):
+            if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+                message = "Force removing directory '%s'" % target_abs_path
+            else:
+                message = "Force removing link '%s'" % target_abs_path
+            if dry_run:
+                logging.debug("Dry-run:: " + message)
+            else:
+                logging.debug(message)
+                if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+                    shutil.rmtree(target_abs_path)
+                else:
+                    os.remove(target_abs_path)
+
+        # STEP 3: If not force, check if we can skip or need to fix an incorrect link.
+        elif not force:
             if _existing_link_correct(target_path, dotfile_path, use_symlink):
                 logging.info("Correct link already exists: '%s'", target_abs_path)
                 return None
 
-        if target_abs_path.is_dir() and not target_abs_path.is_symlink():
-            message = "Removing incorrect directory '%s'" % target_abs_path
-        else:
-            message = "Removing incorrect link '%s'" % target_abs_path
-        if dry_run:
-            logging.debug("Dry-run:: " + message)
-        else:
-            logging.debug(message)
-            if target_abs_path.is_dir() and not target_abs_path.is_symlink():
-                shutil.rmtree(target_abs_path)
-            else:
-                os.remove(target_abs_path)
-            if target_abs_path.exists():
-                raise FileExistsError(
-                    f"Failed to remove incorrect link '{target_abs_path}'"
-                )
+            # Incorrect target (wrong symlink or leftover regular file): remove it.
+            if target_abs_path.exists() or target_abs_path.is_symlink():
+                if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+                    message = "Removing incorrect directory '%s'" % target_abs_path
+                else:
+                    message = "Removing incorrect link '%s'" % target_abs_path
+                if dry_run:
+                    logging.debug("Dry-run:: " + message)
+                else:
+                    logging.debug(message)
+                    if target_abs_path.is_dir() and not target_abs_path.is_symlink():
+                        shutil.rmtree(target_abs_path)
+                    else:
+                        os.remove(target_abs_path)
+
+        # Verify target was removed successfully (unless dry_run)
+        if not dry_run and (target_abs_path.exists() or target_abs_path.is_symlink()):
+            raise FileExistsError(
+                f"Failed to remove target '{target_abs_path}' before creating link"
+            )
     else:
         logging.debug("Link '%s' does not exist yet", target_abs_path)
 
@@ -828,13 +845,54 @@ def copy_fonts_to_directory(source: Path) -> None:
             logging.debug("Skipping non-font file '%s'", file)
 
 
+def _install_zsh_packages() -> None:
+    """Install zsh dependencies inside the container via apt (idempotent).
+
+    Skips entirely if all packages are already installed.
+    The /var/cache/apt/archives/ volume used by alias caches .deb files across --rm runs.
+    """
+    missing: list[str] = []
+    for pkg in APT_ZSH_PACKAGES:
+        result = subprocess.run(
+            ["dpkg", "-s", pkg],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            missing.append(pkg)
+
+    if not missing:
+        logging.info("All container zsh packages already installed")
+        return
+
+    logging.info("Installing container zsh packages: %s", ", ".join(missing))
+    try:
+        subprocess.run(
+            ["sudo", "apt-get", "update", "-qq"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["sudo", "apt-get", "install", "-y", "--no-install-recommends"] + missing,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.info("Container zsh packages installed successfully")
+    except subprocess.CalledProcessError as exc:
+        logging.warning("Failed to install container zsh packages: %s", exc.stderr)
+
+
 def run_additional_setup_in_container() -> None:
     logging.info("Running additional setup in container")
-    extension_scripts = [
-        SCRIPT_DIR / "setup_in_container.sh",
-        HOME_DIR / "setup_in_container.sh",
-    ]
 
+    # 1. Install zsh apt dependencies (idempotent, cached debs)
+    _install_zsh_packages()
+
+    # 2. Seed zinit cache from host mount into named volume (first run only)
     zinit_cache_path = Path(".local") / "share" / "zinit"
     host_home_mount_path = Path("/mnt/host_home")
     host_zinit_cache = host_home_mount_path / zinit_cache_path
@@ -842,7 +900,7 @@ def run_additional_setup_in_container() -> None:
 
     if host_zinit_cache.exists() and not container_zinit_cache.exists():
         logging.info(
-            "Linking host zsh cache environment from '%s' to '%s'",
+            "Copying zinit cache from '%s' to '%s'",
             host_zinit_cache,
             container_zinit_cache,
         )
@@ -850,24 +908,45 @@ def run_additional_setup_in_container() -> None:
         shutil.copytree(host_zinit_cache, container_zinit_cache)
     else:
         logging.debug(
-            "Cached zsh environment not linked: source exists: %s, destination exists: %s",
+            "Zinit cache not copied: source exists: %s, destination exists: %s",
             host_zinit_cache.exists(),
             container_zinit_cache.exists(),
         )
 
-    for script in extension_scripts:
-        if script.is_file():
-            logging.info("Running additional setup script: %s", script)
-            result = subprocess.run(
-                [str(script)],
-                check=True,
-                stderr=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                encoding="utf-8",
+    # 3. Run optional extension scripts
+    script_path_from_env = os.environ.get("DOTFILES_CONTAINER_EXTENSION_SCRIPT")
+    if script_path_from_env:
+        extension_scripts = [Path(script_path_from_env)]
+    else:
+        extension_scripts = [
+            HOME_DIR / "setup_in_container.sh",
+            HOME_DIR / "setup_in_container.py",
+        ]
+
+    interpreters = {".sh": "bash", ".py": sys.executable}
+    for entry in extension_scripts:
+        script = Path(entry) if not isinstance(entry, Path) else entry
+        if not script.is_file():
+            continue
+        interpreter = interpreters.get(script.suffix)
+        if interpreter is None:
+            logging.warning(
+                "Skipping extension script '%s' — unsupported suffix '%s' "
+                "(expected %s)",
+                script,
+                script.suffix,
+                ", ".join(interpreters),
             )
-            logging.debug(result.stdout)
-        else:
-            logging.info("No additional setup script found at %s", script)
+            continue
+        logging.info("Running additional setup script: %s", script)
+        result = subprocess.run(
+            [interpreter, str(script)],
+            check=True,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            encoding="utf-8",
+        )
+        logging.debug(result.stdout)
 
 
 def setup_update_timer(dry_run: bool = False) -> None:
@@ -1040,9 +1119,9 @@ def parse_arguments():
         help="Install UI-dependent packages",
     )
     parser.add_argument(
-        "--backup",
+        "--no-backup",
         action="store_true",
-        help="Create a backup before setting up dotfiles",
+        help="Skip backing up real files before replacing them with links",
     )
     parser.add_argument(
         "--debug",
@@ -1110,15 +1189,24 @@ def set_git_user_config(dry_run: bool = False) -> None:
         sys.exit(1)
 
 
+class PrefixFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        if record.levelno >= logging.ERROR:
+            record.levelname = f"❌ {record.levelname}"
+        elif record.levelno >= logging.WARNING:
+            record.levelname = f"⚠️ {record.levelname}"
+        return super().format(record)
+
+
 def main() -> None:
     ensure_runtime_environment()
 
     args = parse_arguments()
     log_format = "%(asctime)s %(levelname)s: %(message)s"
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
-    else:
-        logging.basicConfig(level=logging.INFO, format=log_format)
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    handler = logging.StreamHandler()
+    handler.setFormatter(PrefixFormatter(log_format))
+    logging.basicConfig(level=log_level, handlers=[handler])
 
     verify_dotfiles_exist()
 
@@ -1133,12 +1221,9 @@ def main() -> None:
         )
         args.new_host = True
 
-    if args.backup:
-        create_backup(dry_run=args.dry_run)
-
     setup_dotfile_links(
         use_symlink=True,
-        skip_existing=is_running_in_docker(),
+        backup=not args.no_backup,
         dry_run=args.dry_run,
         force=args.force,
     )

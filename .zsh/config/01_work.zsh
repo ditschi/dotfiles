@@ -224,24 +224,22 @@ sdz() {
         "
 }
 
-function ra6-setup-variant() {
-    variant=${1:-$variant}
-    ./tools/jenkins/shared/scripts/conan-install.sh . $variant $variant $(basename -s .git $(git config --get remote.origin.url))
-    ./tools/jenkins/shared/scripts/setup_and_configure.sh . $variant
-}
-function ra6-build-variant() {
-    variant=${1:-$variant}
-    command="./tools/jenkins/shared/scripts/build-cmake.sh . $variant $variant"
-    eval $command || ra6-setup-variant $variant && eval $command $variant
-}
-function ra6-clean-variant() {
-    variant=${1:-$variant}
-    rm -rf ./build/$variant
-}
-function ra6-helix-gui() {
-    variant=${1:-$variant}
-    command="cmake --build  --preset=$variant --target qac_daad_gui -- -dkeepdepfile"
-    eval $command || echo "\n\n\n\n\n[WARNING] Retrying with setup" && ra6-setup-variant $variant && eval $command
+
+# Kerberos token auto-refresh (bash/zsh compatible)
+# Only runs kinit if token is invalid or expired
+ensure_kerberos_token() {
+    if command -v klist >/dev/null 2>&1; then
+        if ! klist -s >/dev/null 2>&1; then
+            # Check for network before trying to refresh token
+            if ping -c1 -W1 8.8.8.8 >/dev/null 2>&1; then
+                echo "Kerberos token invalid, refreshing..."
+                kinit-pw
+            else
+                echo "Kerberos token invalid, but no network connection. Skipping refresh."
+            fi
+        fi
+    fi
 }
 
-kinit-pw
+# Auto-refresh Kerberos token on shell startup if needed
+ensure_kerberos_token

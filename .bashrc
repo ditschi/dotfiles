@@ -11,28 +11,39 @@ case $- in
 esac
 
 # Auto-switch to zsh if available (workaround when chsh doesn't work)
+# Do NOT auto-switch if bash was started manually (from another shell or nested bash)
 if [ -z "$ZSH_VERSION" ]; then
-    # Skip auto-switch in Docker containers
-    if [ ! -f /.dockerenv ]; then
-        # Check for host-specific shell preference
-        if [ -f "$HOME/.preferred-shell" ]; then
-            preferred_shell=$(cat "$HOME/.preferred-shell" | tr -d '[:space:]')
-            # Only switch if preferred shell is not bash and is available
-            if [ "$preferred_shell" != "bash" ] && [ "$preferred_shell" != "/bin/bash" ] && command -v "$preferred_shell" >/dev/null 2>&1; then
-                export SHELL=$(command -v "$preferred_shell")
-                exec "$preferred_shell" -l
-            fi
-        else
-            # Default: try to switch to zsh
-            if command -v zsh >/dev/null 2>&1; then
-                # Only exec zsh for interactive shells, not for scripts
-                if [ -z "$BASH_EXECUTION_STRING" ]; then
-                    export SHELL=$(command -v zsh)
-                    exec zsh -l
+    parent_shell=$(ps -p "$PPID" -o comm=)
+    shlvl_gt_1="no"
+    if [ "$SHLVL" -gt 1 ]; then
+        shlvl_gt_1="yes"
+    fi
+    case "$parent_shell:$shlvl_gt_1" in
+        zsh:*|bash:*|fish:*|dash:*|ksh:*|tcsh:*|csh:*)
+            # Bash was started manually from another shell, skip auto-switch
+            ;;
+        *:yes)
+            # Nested bash shell, skip auto-switch
+            ;;
+        *)
+            # Always honor preferred shell if set and not bash
+            if [ -f "$HOME/.preferred-shell" ]; then
+                preferred_shell=$(cat "$HOME/.preferred-shell" | tr -d '[:space:]')
+                if [ "$preferred_shell" != "bash" ] && [ "$preferred_shell" != "/bin/bash" ] && command -v "$preferred_shell" >/dev/null 2>&1; then
+                    export SHELL=$(command -v "$preferred_shell")
+                    exec "$preferred_shell" -l
                 fi
             fi
-        fi
-    fi
+            if [ ! -f /.dockerenv ]; then
+                if command -v zsh >/dev/null 2>&1; then
+                    if [ -z "$BASH_EXECUTION_STRING" ]; then
+                        export SHELL=$(command -v zsh)
+                        exec zsh -l
+                    fi
+                fi
+            fi
+            ;;
+    esac
 fi
 
 # check the window size after each command and, if necessary,

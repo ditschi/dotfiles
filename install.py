@@ -20,9 +20,9 @@ timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 HOME_DIR = Path.home().resolve()
 BACKUP_DIR = HOME_DIR / ".dotfiles-backup" / timestamp
 INSTALLER_VENV_DIR = HOME_DIR / ".local" / "share" / "dotfiles-installer" / "venv"
-INSTALLER_REQUIRED_PACKAGES = ["requests"]
+INSTALLER_REQUIRED_PACKAGES = {"requests"}
 
-DOTFILES = [
+DOTFILES = {
     ".bashrc",
     ".config/starship.toml",
     ".config/systemd/user/dotfiles-update-check.service",
@@ -35,22 +35,24 @@ DOTFILES = [
     ".zprofile",
     ".zsh",
     ".zshrc",
-]
+}
+
+PATHS_IGNORED_IN_DOCKER = {".gitconfig"}
 
 # Packages needed for a working zsh environment.
 # Used both on the host and inside containers.
-APT_ZSH_PACKAGES = [
+APT_ZSH_PACKAGES = {
     "autojump",
     "fzf",
     "jq",
     "luajit",
     "tmux",
     "zsh",
-]
+}
 
 # Packages only needed on the host (already in company base image or
 # irrelevant inside a container).
-APT_HOST_PACKAGES = [
+APT_HOST_PACKAGES = {
     "curl",
     "eza",
     "fonts-firacode",
@@ -64,12 +66,12 @@ APT_HOST_PACKAGES = [
     "python-is-python3",
     "python3-venv",
     "wget",
-]
+}
 
-APT_PACKAGES = APT_ZSH_PACKAGES + APT_HOST_PACKAGES
+APT_PACKAGES = APT_ZSH_PACKAGES | APT_HOST_PACKAGES
 
 # UI-dependent packages that should be skipped in headless mode
-UI_PACKAGES = [
+UI_PACKAGES = {
     "flameshot",
     "gnome-shell-extension-gpaste",
     "gnome-shell-extension-manager",
@@ -77,7 +79,7 @@ UI_PACKAGES = [
     "gnome-shell-extensions-gpaste",
     "guake",
     "guake-indicator",
-]
+}
 
 
 def _module_available(module_name: str) -> bool:
@@ -281,7 +283,8 @@ def ensure_runtime_environment() -> None:
             encoding="utf-8",
         )
         subprocess.run(
-            [str(venv_python), "-m", "pip", "install"] + INSTALLER_REQUIRED_PACKAGES,
+            [str(venv_python), "-m", "pip", "install"]
+            + list(INSTALLER_REQUIRED_PACKAGES),
             check=True,
             stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -335,6 +338,11 @@ def setup_dotfile_links(
     logging.debug("Setting up links for dotfiles in %s/", HOME_DIR)
     links_created = {}
     used_directory_symlink_fallback = False
+
+    if is_running_in_docker():
+        for ignored_path in PATHS_IGNORED_IN_DOCKER:
+            DOTFILES.remove(ignored_path)
+
     for dotfile in DOTFILES:
         dotfile_path = get_dotfiles_path(dotfile)
         target_path = get_home_path(dotfile)
@@ -1152,7 +1160,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def set_git_user_config(dry_run: bool = False) -> None:
+def set_dotfiles_git_user_config(dry_run: bool = False) -> None:
     logging.info("Setting git user configuration for dotfiles repository")
     if dry_run:
         logging.debug("Dry-run:: skipping git config changes for dotfiles repository")
@@ -1228,12 +1236,14 @@ def main() -> None:
         force=args.force,
     )
 
-    if is_running_in_docker():
-        run_additional_setup_in_container()
-
-    setup_update_timer(dry_run=args.dry_run)
-
     # Auto-detect and prompt if no previous installation and not explicitly set
+    if not any([args.update, is_running_in_docker(), args.non_interactive]):
+        if not args.new_host and not has_previous_installation():
+            logging.info("No previous dotfiles installation detected")
+            args.new_host = prompt_new_host_setup()
+        if args.new_host and not args.ui and has_ui_environment():
+            args.ui = prompt_ui_setup()
+
     if not args.update:
         if not args.new_host and not has_previous_installation():
             logging.info("No previous dotfiles installation detected")
@@ -1248,17 +1258,18 @@ def main() -> None:
             else:
                 args.ui = prompt_ui_setup()
 
-    if args.update:
+    if args.update or args.new_host:
         # Keep update runs in sync with prior update behavior.
         install_apt_packages(dry_run=args.dry_run, ui=False)
         setup_fonts(dry_run=args.dry_run)
         install_starship(dry_run=args.dry_run)
+        set_dotfiles_git_user_config(dry_run=args.dry_run)
 
-    if args.new_host:
-        install_apt_packages(dry_run=args.dry_run, ui=args.ui)
-        setup_fonts(dry_run=args.dry_run)
-        install_starship(dry_run=args.dry_run)
-        set_git_user_config(dry_run=args.dry_run)
+    if is_running_in_docker():
+        run_additional_setup_in_container()
+    else:
+        # schedule regular update checks via systemd timer on host (no-op in container)
+        setup_update_timer(dry_run=args.dry_run)
 
     logging.info("Setup completed successfully")
 

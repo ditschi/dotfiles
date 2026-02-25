@@ -86,7 +86,7 @@ dotfiles-update-apply() {
         return 1
     fi
 
-    if python3 "$DOTFILES_REPO/install.py" --update --non-interactive --backup --force; then
+    if python3 "$DOTFILES_REPO/install.py" --update --non-interactive; then
         rm -f "$DOTFILES_UPDATE_MARKER"
         echo "Dotfiles updated and re-linked successfully."
         return 0

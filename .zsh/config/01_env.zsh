@@ -5,7 +5,7 @@ export PATH="$PATH:$HOME/.local/bin"
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 
-# load customisation
+# load customization
 setopt nullglob
 for envfile in ~/.env ~/.env.*; do
 	[[ -f $envfile ]] || continue

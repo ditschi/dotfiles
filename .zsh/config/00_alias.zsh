@@ -97,6 +97,7 @@ dotfiles-update-apply() {
 }
 
 alias update-dotfiles="dotfiles-update-apply"
+alias update-system="get-password | sudo -S apt update && sudo apt upgrade -y"
 
 alias docker-compose='docker compose'
 alias dc='docker compose'
@@ -122,28 +123,8 @@ alias ipv6-enable='sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 && sudo sysct
 
 
 store-password() {
-    if [ -n "$1" ]; then
-        user="$1"
-    else
-        user="$(whoami)"
-    fi
-
+    local user="${1:-$(whoami)}"
     secret-tool store --label "User Credentials" password "$user"
-}
-
-get-password() {
-    if [ -n "$1" ]; then
-        user="$1"
-    else
-        user="$(whoami)"
-    fi
-
-    result=$(secret-tool lookup password "$user")
-    if [ -z "$result" ]; then
-        echo "$PASSWORD"
-    else
-        echo "$result"
-    fi
 }
 
 clone_org_repos() {

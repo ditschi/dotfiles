@@ -43,8 +43,7 @@ export CONAN_LOGIN_USERNAME=dci2lr
 # aliases
 alias fix-wifi='sudo systemctl restart NetworkManager.service'
 
-alias kinit-pw='echo $(get-password 3>/dev/null) | kinit'
-alias vpn-pw='get-password 3>/dev/null | osd-vpn-connect -k'
+alias vpn-pw='get-password 2>/dev/null | osd-vpn-connect -k'
 alias osd-vpn-connect-pw='vpn-pw'
 
 alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
@@ -235,21 +234,47 @@ sdx() {
 }
 
 
-# Kerberos token auto-refresh (bash/zsh compatible)
-# Only runs kinit if token is invalid or expired
+### Kerberos token auto-refresh: call external refresher and hint about cron.
+
+# Path to expected refresher script
+KERB_SCRIPT="$HOME/.local/bin/ensure-kerberos-token"
+
 ensure_kerberos_token() {
-    if command -v klist >/dev/null 2>&1; then
-        if ! klist -s >/dev/null 2>&1; then
-            # Check for network before trying to refresh token
-            if ping -c1 -W1 8.8.8.8 >/dev/null 2>&1; then
-                echo "Kerberos token invalid, refreshing..."
-                kinit-pw
-            else
-                echo "Kerberos token invalid, but no network connection. Skipping refresh."
-            fi
-        fi
+    if [[ -x "$KERB_SCRIPT" ]]; then
+        # Run external refresher; ignore non-zero so shell startup isn't disrupted
+        "$KERB_SCRIPT" || true
+    else
+        echo "Warning: Kerberos refresher not found at $KERB_SCRIPT." >&2
+        echo "Please update your dotfiles to include the refresher script." >&2
     fi
 }
 
-# Auto-refresh Kerberos token on shell startup if needed
+# Check whether a user cron job was installed; if not, give a hint how to install it.
+# To avoid running 'crontab -l' on every shell startup, only perform this check at most once per day.
+if command -v crontab >/dev/null 2>&1; then
+    _kerb_cron_hint_cache_dir="${HOME}/.cache"
+    _kerb_cron_hint_cache_file="${_kerb_cron_hint_cache_dir}/kerberos_cron_hint_last_check"
+
+    # Best-effort creation of cache directory; ignore failure to avoid impacting shell startup.
+    mkdir -p "${_kerb_cron_hint_cache_dir}" 2>/dev/null || true
+
+    _kerb_today="$(date +%Y-%m-%d 2>/dev/null || printf '')"
+    _kerb_last_check=""
+    if [[ -f "${_kerb_cron_hint_cache_file}" ]]; then
+        _kerb_last_check="$(<"${_kerb_cron_hint_cache_file}")"
+    fi
+
+    if [[ "${_kerb_today}" != "${_kerb_last_check}" ]]; then
+        if ! crontab -l 2>/dev/null | grep -q "BEGIN ensure-kerberos-token"; then
+            echo "Tip: No ensure-kerberos-token cron job found. Install with:" >&2
+            echo "  $HOME/.local/bin/setup-ensure-kerberos-cron --install --freq 15" >&2
+        fi
+        # Record that we've performed today's check; ignore errors writing the file.
+        echo "${_kerb_today}" > "${_kerb_cron_hint_cache_file}" 2>/dev/null || true
+    fi
+
+    unset _kerb_cron_hint_cache_dir _kerb_cron_hint_cache_file _kerb_today _kerb_last_check
+fi
+
+# Run the refresher once at shell startup
 ensure_kerberos_token

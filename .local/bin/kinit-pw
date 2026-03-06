@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Non-interactive kinit: retrieves the password via get-password and pipes it to kinit.
+# This must be a script (not a shell alias) so it is available to bash, cron jobs,
+# and any other non-interactive context that has ~/.local/bin in PATH.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+password=$("$SCRIPT_DIR/get-password")
+echo "$password" | kinit "$@"

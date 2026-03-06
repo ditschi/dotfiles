@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Ensure Kerberos token is valid; refresh using kinit-pw or kinit when needed.
+# Compatible with bash/zsh and meant to be installed in ~/.local/bin
+
+# Resolve the KDC hostname for the current/default Kerberos realm.
+# Checks klist for the active realm, then falls back to /etc/krb5.conf.
+# Prints the KDC hostname on stdout; prints nothing if undetermined.
+_kdc_host() {
+    local realm kdc
+    # Prefer the realm from an existing (possibly expired) ticket
+    realm=$(klist 2>/dev/null | awk -F'[@ ]+' '/Default principal/{print $NF; exit}')
+    # Fall back to default_realm in /etc/krb5.conf
+    if [[ -z $realm ]] && [[ -f /etc/krb5.conf ]]; then
+        realm=$(awk '/default_realm/{print $NF; exit}' /etc/krb5.conf)
+    fi
+    [[ -z $realm ]] && return 0
+
+    # Try the [realms] section of /etc/krb5.conf first
+    if [[ -f /etc/krb5.conf ]]; then
+        kdc=$(awk -v r="$realm" '
+            /^\[realms\]/{in_realms=1; next}
+            /^\[/{if(in_realms) exit; next}
+            in_realms && $0 ~ r " *{" {in_realm=1; next}
+            in_realm && /kdc *=/{gsub(/.*kdc *= */,""); gsub(/:88$/,""); print; exit}
+            in_realm && /\}/ {exit}
+        ' /etc/krb5.conf)
+    fi
+    # Fall back to DNS SRV record
+    if [[ -z ${kdc:-} ]] && command -v dig >/dev/null 2>&1; then
+        kdc=$(dig +short SRV "_kerberos._tcp.${realm}" 2>/dev/null |
+            sort -n | head -1 | awk '{print $4}' | sed 's/\.$//')
+    fi
+    echo "${kdc:-}"
+}
+
+# Test if the KDC is reachable on TCP port 88 (2 s timeout, no extra tools needed).
+_kdc_reachable() {
+    local kdc
+    kdc=$(_kdc_host)
+    [[ -z $kdc ]] && return 1
+    timeout 2 bash -c ">/dev/tcp/${kdc}/88" 2>/dev/null
+}
+
+# Run the main logic only when executed directly, not when sourced for testing.
+if [[ ${BASH_SOURCE[0]} == "${0}" ]]; then
+    if command -v klist >/dev/null 2>&1; then
+        # klist -s exits non-zero when there's no valid ticket
+        if ! klist -s >/dev/null 2>&1; then
+            # Only attempt refresh when the KDC is reachable (i.e. VPN/network is up).
+            # If the KDC is unreachable we skip silently — no user action needed.
+            if _kdc_reachable; then
+                echo "[$(date --iso-8601=seconds)] Kerberos token invalid, refreshing..." >&2
+                if command -v kinit-pw >/dev/null 2>&1; then
+                    kinit-pw
+                else
+                    # Fallback to kinit if available
+                    if command -v kinit >/dev/null 2>&1; then
+                        kinit
+                    else
+                        echo "[$(date --iso-8601=seconds)] No kinit-pw or kinit found; cannot refresh Kerberos token." >&2
+                        exit 2
+                    fi
+                fi
+            else
+                echo "[$(date --iso-8601=seconds)] KDC unreachable (VPN down?), skipping refresh." >&2
+            fi
+        fi
+    fi
+    exit 0
+fi

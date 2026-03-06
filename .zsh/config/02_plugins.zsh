@@ -12,6 +12,11 @@ ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 # - fast-syntax-highlighting
 # - zsh-autosuggestions
 # - zsh-completions
+
+# Extend undollar behaviour: also strip the ❯ prompt indicator (e.g. from
+# Starship / Powerlevel10k) when pasting copied shell commands.
+'❯'() { "$@" }
+
 zinit wait light-mode lucid for \
   hcgraf/zsh-sudo \
   zpm-zsh/undollar \

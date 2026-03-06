@@ -70,7 +70,7 @@ dotfiles-update-status() {
     fi
 }
 
-dotfiles-update-apply() {
+dotfiles-update() {
     if [ ! -d "$DOTFILES_REPO/.git" ]; then
         echo "Dotfiles repo not found at: $DOTFILES_REPO"
         return 1
@@ -96,7 +96,7 @@ dotfiles-update-apply() {
     return 1
 }
 
-alias update-dotfiles="dotfiles-update-apply"
+alias update-dotfiles="dotfiles-update"
 alias update-system="get-password | sudo -S apt update && sudo apt upgrade -y"
 
 alias docker-compose='docker compose'

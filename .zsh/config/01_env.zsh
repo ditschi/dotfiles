@@ -6,7 +6,8 @@ export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 
 # load customization
-setopt nullglob
+# enable nullglob in a shell-agnostic way
+[[ -n "$ZSH_VERSION" ]] && setopt nullglob || shopt -s nullglob
 for envfile in ~/.env ~/.env.*; do
 	[[ -f $envfile ]] || continue
     # Check permissions: warn if world-readable or writable
@@ -28,7 +29,6 @@ for envfile in ~/.env ~/.env.*; do
 				export "$line"
 			fi
 		done < "$envfile"
-        echo DONE loading $envfile
 	fi
 done
-unsetopt nullglob
+[[ -n "$ZSH_VERSION" ]] && unsetopt nullglob || shopt -u nullglob

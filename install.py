@@ -24,16 +24,14 @@ INSTALLER_REQUIRED_PACKAGES = {"requests"}
 
 DOTFILES = {
     ".bashrc",
-    ".config/starship.toml",
-    ".config/systemd/user/dotfiles-update-check.service",
-    ".config/systemd/user/dotfiles-update-check.timer",
+    ".config/",
     ".gitconfig",
-    ".local/bin/dotfiles-update-check-job",
+    ".local/bin/",
     ".p10k.zsh",
     ".profile",
     ".tmux.conf",
     ".zprofile",
-    ".zsh",
+    ".zsh/",
     ".zshrc",
 }
 
@@ -347,27 +345,45 @@ def setup_dotfile_links(
         dotfile_path = get_dotfiles_path(dotfile)
         target_path = get_home_path(dotfile)
         if dotfile_path.is_dir():
-            # Directories cannot be hard-linked. Fall back to symlink mode.
-            link_as_symlink = use_symlink
-            if not use_symlink:
-                link_as_symlink = True
-                used_directory_symlink_fallback = True
-                logging.warning(
-                    "Hard links are not supported for directories. Falling back to symlink for '%s'",
-                    dotfile_path,
-                )
-            result = create_link_for_file(
-                target_path,
-                dotfile_path,
-                link_as_symlink,
-                backup,
-                dry_run,
-                force,
+            # For directories in the repo, create links for individual files
+            # inside the directory instead of linking the directory itself.
+            #
+            # If the home-side target is a directory-level symlink pointing
+            # into the repo (left over from an old install), remove it first
+            # so that per-file linking can take over cleanly.
+            if target_path.is_symlink() and target_path.is_dir():
+                target_resolved = target_path.resolve()
+                dotfile_resolved = dotfile_path.resolve()
+                if target_resolved == dotfile_resolved:
+                    msg = (
+                        "Removing stale directory symlink '%s' "
+                        "(pointed into repo; switching to per-file links)" % target_path
+                    )
+                    if dry_run:
+                        logging.debug(
+                            "Dry-run:: would remove stale directory symlink '%s' "
+                            "(pointed into repo; switching to per-file links)",
+                            target_path,
+                        )
+                    else:
+                        logging.info(msg)
+                        target_path.unlink()
+
+            logging.debug(
+                "Creating links for files inside directory '%s'", dotfile_path
             )
-            if result:
-                links_created.update(result)
-            else:
-                logging.debug("No link created for directory '%s'", dotfile_path)
+            try:
+                result = create_links_for_directory(
+                    dotfile_path, use_symlink, backup, dry_run, force
+                )
+                if result:
+                    links_created.update(result)
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logging.error(
+                    "Failed to create links for directory '%s': %s",
+                    dotfile_path,
+                    exc,
+                )
             continue
 
         result = create_link_for_file(
@@ -394,15 +410,46 @@ def create_links_for_directory(
     force: bool,
 ) -> dict:
     links_created = {}
-    for root, _, files in os.walk(dotfile_dir):
+    repo_root = SCRIPT_DIR
+
+    # Resolve the dotfile_dir to its real path on disk. If the entry in the
+    # repo is itself a symlink (e.g. from a previous directory-level install
+    # that pointed ~/.config -> dotfiles/.config), resolve it so that we are
+    # always walking the canonical repo directory and never following the link
+    # out into the live home directory.
+    real_dotfile_dir = dotfile_dir.resolve()
+    if not str(real_dotfile_dir).startswith(str(repo_root.resolve())):
+        logging.error(
+            "Directory '%s' resolves to '%s' which is outside the repository "
+            "root '%s'. The repo must not contain symlinks pointing outside "
+            "itself. Remove the offending symlink and re-run.",
+            dotfile_dir,
+            real_dotfile_dir,
+            repo_root,
+        )
+        sys.exit(1)
+
+    # followlinks=False so we never accidentally walk into symlinked subtrees
+    # inside the repo directory.
+    for root, _, files in os.walk(real_dotfile_dir, followlinks=False):
         logging.debug("Setting up link for files in folder '%s'", root)
         for name in files:
-            relative_path = Path(root) / name
+            # Compute path relative to repository root so get_dotfiles_path
+            # and get_home_path produce the correct targets.
+            root_path = Path(root)
+            try:
+                rel = root_path.relative_to(repo_root.resolve())
+            except ValueError:
+                logging.warning(
+                    "Cannot compute relative path for '%s'; skipping.", root_path
+                )
+                continue
+            relative_path = rel / name
 
             dotfile_path = get_dotfiles_path(relative_path)
             target_path = get_home_path(relative_path)
             logging.debug(
-                "Setting up link for file in folder:  Target '%s' -> Link '%s'",
+                "Setting up link for file in folder: Target '%s' -> Dotfile '%s'",
                 target_path,
                 dotfile_path,
             )
@@ -446,11 +493,22 @@ def create_link_for_file(
 ) -> dict:
     if not dry_run:
         if dotfile_path.absolute() == target_path.absolute():
-            # dry run will not remove existing links, so check if the paths are the same will follow links and fail
             logging.error(
-                "Dotfile path and target path are the same: '%s'", dotfile_path
+                "Dotfile path and target path are the same: '%s'. "
+                "This should never happen — check your DOTFILES entries and "
+                "that the repo is not checked out inside HOME in a conflicting way.",
+                dotfile_path,
             )
             sys.exit(1)
+        if dotfile_path.resolve() == target_path.resolve():
+            # The target already resolves to the exact same file as the
+            # dotfile (e.g. because a parent directory is a symlink pointing
+            # into the repo). Nothing to do and nothing to back up.
+            logging.debug(
+                "Dotfile and target resolve to the same file; skipping: '%s'",
+                dotfile_path,
+            )
+            return {}
 
     target_abs_path = target_path.absolute()
     if target_abs_path.exists() or target_abs_path.is_symlink():
@@ -474,22 +532,19 @@ def create_link_for_file(
                         target_abs_path,
                     )
                 else:
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    if target_abs_path.is_dir():
-                        logging.info(
-                            "Backing up directory '%s' to '%s'",
-                            target_abs_path,
-                            backup_path,
-                        )
-                    else:
-                        logging.info(
-                            "Backing up regular file '%s' to '%s'",
-                            target_abs_path,
-                            backup_path,
-                        )
                     if dry_run:
-                        logging.debug("Dry-run:: would backup to '%s'", backup_path)
+                        logging.info(
+                            "Dry-run:: would back up file '%s' to '%s'",
+                            target_abs_path,
+                            backup_path,
+                        )
                     else:
+                        backup_path.parent.mkdir(parents=True, exist_ok=True)
+                        logging.info(
+                            "Backing up file '%s' to '%s'",
+                            target_abs_path,
+                            backup_path,
+                        )
                         shutil.move(str(target_abs_path), str(backup_path))
                         # After move, target no longer exists, fall through to link creation
 
@@ -783,16 +838,23 @@ def setup_fonts(dry_run: bool = False) -> None:
             )
             continue
 
+        if dry_run:
+            logging.info(
+                "[%d/%d] Dry-run:: would download and install %s",
+                idx,
+                len(font_zips),
+                zip_url,
+            )
+            continue
         logging.info("[%d/%d] Downloading %s", idx, len(font_zips), zip_url)
         request = requests.get(zip_url, allow_redirects=True, timeout=(10, 180))
         request.raise_for_status()
         zip_file = zipfile.ZipFile(io.BytesIO(request.content))
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_file.extractall(tmp_dir)
-            if not dry_run:
-                copy_fonts_to_directory(Path(tmp_dir))
-                for family_hint in family_hints:
-                    installed_families.add(family_hint.lower())
+            copy_fonts_to_directory(Path(tmp_dir), dry_run=dry_run)
+            for family_hint in family_hints:
+                installed_families.add(family_hint.lower())
 
     logging.info("Downloading and installing individual font files")
     for idx, file_url in enumerate(font_files, start=1):
@@ -807,6 +869,14 @@ def setup_fonts(dry_run: bool = False) -> None:
             )
             continue
 
+        if dry_run:
+            logging.info(
+                "[%d/%d] Dry-run:: would download and install %s",
+                idx,
+                len(font_files),
+                filename,
+            )
+            continue
         logging.info("[%d/%d] Downloading %s", idx, len(font_files), filename)
         request = requests.get(file_url, allow_redirects=True, timeout=(10, 120))
         request.raise_for_status()
@@ -814,8 +884,7 @@ def setup_fonts(dry_run: bool = False) -> None:
             filepath = Path(tmp_dir) / filename
             with open(filepath, "wb") as file:
                 file.write(request.content)
-            if not dry_run:
-                copy_fonts_to_directory(filepath)
+            copy_fonts_to_directory(filepath, dry_run=dry_run)
     command = "fc-cache -f"
     logging.info("Rebuilding font cache with command: '%s'", command)
     if not dry_run:
@@ -833,14 +902,16 @@ def setup_fonts(dry_run: bool = False) -> None:
     )
 
 
-def copy_fonts_to_directory(source: Path) -> None:
+def copy_fonts_to_directory(source: Path, dry_run: bool = False) -> None:
     font_dir = HOME_DIR / ".local" / "share" / "fonts"
-    font_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        font_dir.mkdir(parents=True, exist_ok=True)
 
     if source.is_file():
         destination = font_dir / source.name
         logging.debug("Moving font file '%s' to '%s'", source, font_dir)
-        shutil.move(str(source), str(destination))
+        if not dry_run:
+            shutil.move(str(source), str(destination))
         return
 
     logging.debug("Moving all font files from directory '%s' to '%s'", source, font_dir)
@@ -848,7 +919,8 @@ def copy_fonts_to_directory(source: Path) -> None:
         if file.suffix in (".ttf", ".otf", ".ttc"):
             destination = font_dir / file.name
             logging.debug("Moving file '%s' to '%s'", file, destination)
-            shutil.move(str(file), str(destination))
+            if not dry_run:
+                shutil.move(str(file), str(destination))
         else:
             logging.debug("Skipping non-font file '%s'", file)
 
@@ -1217,6 +1289,9 @@ def main() -> None:
     logging.basicConfig(level=log_level, handlers=[handler])
 
     verify_dotfiles_exist()
+
+    if args.dry_run:
+        logging.info("*** DRY RUN — no files will be modified ***")
 
     if args.update:
         args.non_interactive = True

@@ -88,8 +88,8 @@ dotfiles-update() {
 
     if python3 "$DOTFILES_REPO/install.py" --update --non-interactive; then
         rm -f "$DOTFILES_UPDATE_MARKER"
-        echo "Dotfiles updated and re-linked successfully."
-        return 0
+        echo "Dotfiles updated and re-linked successfully. Restarting shell..."
+        exec "$(ps -p $$ -o comm= | tr -d ' ')"
     fi
 
     echo "Dotfiles install step failed."

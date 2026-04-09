@@ -211,6 +211,7 @@ ldap-group-overview() {
     printf "\n"
 }
 
+
 # ---------------------------------------------------------------------------
 # ldap-group-users: list NT IDs of direct user members (no subgroups)
 # Usage: ldap-group-users <group-name>
@@ -233,6 +234,7 @@ ldap-group-users() {
         | awk -F'[=,]' '{ print tolower($2) }' \
         | sort
 }
+
 
 # ---------------------------------------------------------------------------
 # ldap-group-emails: list email addresses of direct user members
@@ -284,6 +286,7 @@ ldap-group-subgroups() {
     _ldap-group-member-dns "$group_dn" \
         | grep -i ',OU=Securitygroups,' \
         | grep -i '^CN=' \
+
         | awk -F'[=,]' '{ print $2 }' \
         | sort
 }

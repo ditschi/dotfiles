@@ -46,8 +46,6 @@ alias fix-wifi='sudo systemctl restart NetworkManager.service'
 alias vpn-pw='get-password 2>/dev/null | osd-vpn-connect -k'
 alias osd-vpn-connect-pw='vpn-pw'
 
-alias ldap-userdetails="ldapsearch-bosch -cn" # <USER-ID>
-alias ldap-usergroups="ldap-groups"           # <USER-ID>
 alias TCCEdit="NODE_TLS_REJECT_UNAUTHORIZED=0 ~/tools/tccEdit/TCCEdit"
 alias tccedit="TCCEdit"
 alias branch='git branch --no-color --show-current'
@@ -67,48 +65,6 @@ alias ave="ansible-vault encrypt"
 alias avd="ansible-vault decrypt"
 
 # functions
-alias ldapsearch-bosch="ldapsearch -D dc=bosch,dc=com -Z -H rb-gc-12.de.bosch.com:3268"
-
-ldap-user-info-full() {
-    nt_user=$1
-
-    # Check if username is provided
-    if [[ -z "$nt_user" ]]; then
-        echo "Usage: ldap-user-info <username>"
-        return 1
-    fi
-    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 \
-        -b "OU=LR,DC=de,DC=bosch,DC=com" \
-        -D "de\\dci2lr" \
-        -x "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))" \
-        -w "$PASSWORD"
-}
-
-ldap-user-info() {
-    nt_user=$1
-
-    # Check if username is provided
-    if [[ -z "$nt_user" ]]; then
-        echo "Usage: ldap-user-info <username>"
-        return 1
-    fi
-
-    # Execute ldapsearch with specific fields in logical order, limit to first result with -z 1
-    # Fields: names first, then identity, location, and organization info
-    ldapsearch -H ldaps://rb-gc-lb.bosch.com:3269 \
-        -b "OU=LR,DC=de,DC=bosch,DC=com" \
-        -D "de\\dci2lr" \
-        -x -z 1 \
-        "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))" \
-        cn givenName sn displayName uid mail c co l physicalDeliveryOfficeName department company \
-        -w "$PASSWORD"
-}
-
-ldap-groups() {
-    username=$1
-    ldapsearch-bosch -cn "$username" memberOf
-}
-
 setup-machine() {
     machine=$1
     ssh-copy-id $machine
@@ -116,10 +72,10 @@ setup-machine() {
     scp -r ~/dotfiles dci2lr@$machine:~/
 }
 
-groups_list() {
+groups-list() {
     # usage:
-    #   groups_list -> list groups for current user
-    #   groups_list <user> -> list groups for specific user
+    #   groups-list -> list groups for current user
+    #   groups-list <user> -> list groups for specific user
     user=$1
     for i in $(id -G $user); do echo "$(getent group $i | cut -d: -f1)"; done
 }

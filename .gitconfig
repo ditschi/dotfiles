@@ -35,43 +35,45 @@
     su = submodule update --recursive
     sui = submodule update --init --recursive
     ssr = submodule status --recursive
-    #show branches that contain a submodule commit
-    smb = "!f() { pushd "./$1/" ; git fetch ; git branch -r --contains $2; popd; } ; f"
-    # revoves a submodule and makes the files native in the repo
-    rmsm = "!f() { mv $1 $1_tmp ; git submodule deinit $1 ; git rm --cached $1 ; mv $1_tmp $1 ; git add $1; } ; f"
+    # removes a submodule and makes the files native in the repo
+    rmsm = !sh -c 'd="$1"; mv -- "$d" "${d}_tmp" && git submodule deinit -- "$d" && git rm --cached -- "$d" && mv -- "${d}_tmp" "$d" && git add -- "$d"' -
 
     ca = commit --amend -C HEAD
-    caa =  "!git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -t git add ; git commit --amend  "$@" -C HEAD"
+    # Amend and add back the files that were part of HEAD, forwarding args; works in sh/bash/zsh
+    caa = !sh -c 'git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -I{} git add -- "{}"; git commit --amend "$@" -C HEAD' -
     caaa = commit -a --amend -C HEAD
-    cap = "!git commit --amend -C HEAD ;  git push -f"
-    caap =  "!git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -t git add ; git commit --amend "$@" -C HEAD;  git push -f"
-    caaap = "!git commit -a --amend -C HEAD ;  git push -f"
-    redo = "!git commit -a --amend -C HEAD ;  git push -f"
+    # "p" variants reuse the base alias and then push with --force-with-lease
+    cap = !sh -c 'git ca "$@" && git push --force-with-lease' -
+    caap = !sh -c 'git caa "$@" && git push --force-with-lease' -
+    caaap = !sh -c 'git caaa "$@" && git push --force-with-lease' -
+    redo = !sh -c 'git caaa "$@" && git push --force-with-lease' -
 
     # shows all chages which will be included in next commit (staged changes)
     curr-diff = diff --cached
     cdiff = diff --cached
-    undo = "!git stash save --keep-index ; git stash drop"
-    commit-all = "!git add -A ; git commit -a"
+    undo = !sh -c 'git stash push --keep-index -m "undo-temp" && git stash drop -q' -
+    commit-all = !sh -c 'git add -A && git commit' -
     unstage = "reset HEAD"
     lol = "log --graph --decorate --pretty=oneline --abbrev-commit --all"
-    cob = "!f() { git fetch -q ; git checkout -b $1 origin/$1; } ; f"
-    coc = "!f() { git checkout -f $1 ; git pull origin ; git submodule update --init --recursive ; git clean -df -f ; git submodule foreach 'git clean -df -f' --recursive ; git status; } ; f" # CheckOut Clean
-    tidy = "!git checkout -f ; git clean -dff ; git submodule foreach 'git checkout -f && git clean -dff' ; git submodule update --init --recursive ; git clean -dff ; git status"
-    fresh = "!git reset --hard ; git clean -dff ; git submodule foreach 'git reset --hard && git clean -dff' ; git submodule update --init --recursive ; "
+    cob = !sh -c 'git fetch -q && git checkout -b "$1" origin/"$1"' -
+    coc = !sh -c 'git checkout -f -- "$1" && git pull origin && git submodule update --init --recursive && git clean -df -f && git submodule foreach "git clean -df -f" --recursive && git status' - # CheckOut Clean
+    tidy = !git checkout -f ; git clean -dff ; git submodule foreach 'git checkout -f && git clean -dff' ; git submodule update --init --recursive ; git clean -dff ; git status
+    fresh = !git reset --hard ; git clean -dff ; git submodule foreach 'git reset --hard && git clean -dff' ; git submodule update --init --recursive ;
     # update branch from origin -- no need to ckeck out
-    u2d = "!f() { git fetch origin -u $1:$1; } ; f"
-    # updates all branches from remote
-    uab = "!f() { git fetch origin -u $1:$1; } ; git branch -l | xargs  f"
+    u2d = !sh -c 'git fetch origin -u "$1":"$1"' -
+    # updates all branches from remote (faster: fetch all and prune)
+    uab = !sh -c 'git fetch --all --prune' -
     # deletes all local branches not on server
-    clean-brances = "!git checkout -q develop ; git fetch -q --prune ; git branch -vv | grep ': gone]' | cut -d' ' -f3 | xargs git branch -d"
-    clb = "!git checkout -q develop ; git fetch -q --prune ; git branch -vv | grep ': gone]' | cut -d' ' -f3 | xargs git branch -d"
-    # deletes all local tags an re-fetches from origin
-    clean-tags = "!git tag -l | xargs git tag -d ; git fetch --tags"
-    clt = "!git tag -l | xargs git tag -d ; git fetch --tags"
-    reset-to-origin = "!git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
-    rework-commit-messages = "!f() { BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE '[A-Z]{2,}-[0-9]+'); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E 's/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/'); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" $BASE_BRANCH; }; f"
-    branch-change-issue-id = "!f() { NEW_ISSUE_ID=$1; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E \"s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/\"); git checkout -b $NEW_BRANCH_NAME; }; f"
+    clean-branches = !sh -c 'git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format="%(refname:short)|%(upstream:track)" refs/heads/ | while IFS="|" read -r name track; do case "$track" in *gone*) echo "$name";; esac; done); if [ -n "$TODELETE" ]; then echo "$TODELETE" | xargs git branch -d; fi' -
+    clb = !sh -c 'git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format="%(refname:short)|%(upstream:track)" refs/heads/ | while IFS="|" read -r name track; do case "$track" in *gone*) echo "$name";; esac; done); if [ -n "$TODELETE" ]; then echo "$TODELETE" | xargs git branch -d; fi' -
+    # deletes all local tags and re-fetches from origin (safe loop to handle spaces)
+    clean-tags = !sh -c 'git tag -l | while IFS= read -r t; do [ -n "$t" ] && git tag -d "$t"; done; git fetch --tags' -
+    clt = !sh -c 'git tag -l | while IFS= read -r t; do [ -n "$t" ] && git tag -d "$t"; done; git fetch --tags' -
+    reset-to-origin = !git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
+    # rework-commit-messages: replace leading issue IDs in commit messages by rebasing.
+    # Usage: git rework-commit-messages [BASE_BRANCH]
+    rework-commit-messages = "!bash -c 'BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E \\\"s/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/\\\"); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" \"$BASE_BRANCH\"' -"
+    branch-change-issue-id = !sh -c 'NEW_ISSUE_ID="$1"; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE "[A-Z]{2,}-[0-9]+"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E "s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/"); git checkout -b "$NEW_BRANCH_NAME"' -
 
     slmog = log --full-diff -p
     smlog = log --full-diff -p
@@ -83,21 +85,20 @@
     le = log --oneline --decorate
     filelog = log -u
     fl = log -u
-    bclean = "!f() { git branch --merged ${1-master} | grep -v " ${1-master}$" | xargs -r git branch -d; }; f"
+    bclean = !sh -c 'BR=${1:-develop}; LIST=$(git branch --merged "$BR" | awk '\''{$1=$1; print}'\'' | grep -v "^$BR$"); if [ -n "$LIST" ]; then echo "$LIST" | xargs git branch -d; fi' -
 
-    la = "!git config -l | grep alias | cut -c 7-"
+    la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
     # set the user based on the remote url
-    user-work = "!git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'dci2lr@bosch.com'"
-    user-private = "!git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'"
-    user-setup = "!f(){ url=$(git remote get-url origin 2>/dev/null || true); if echo \"$url\" | grep -Eiq 'bosch|boschdevcloud|sourcecode.*bosch'; then git user-work; else git user-private; fi; git config --get user.name; git config --get user.email; }; f"
-    user-show = "!f(){ echo \"local : $(git config --local --get user.name 2>/dev/null || echo -) <$(git config --local --get user.email 2>/dev/null || echo -)>\"; echo \"global: $(git config --global --get user.name 2>/dev/null || echo -) <$(git config --global --get user.email 2>/dev/null || echo -)>\"; echo \"active: $(git config --get user.name 2>/dev/null || echo -) <$(git config --get user.email 2>/dev/null || echo -)>\"; }; f"
-    user-unset-local = "!git config --local --unset-all user.name && git config --local --unset-all user.email || true"
+    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'dci2lr@bosch.com'
+    user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
+    user-setup = !sh -c 'url=$(git remote get-url origin 2>/dev/null || true); if echo "$url" | grep -Eiq "bosch|boschdevcloud|sourcecode.*bosch"; then git user-work; else git user-private; fi; git config --get user.name; git config --get user.email' -
+    user-show = !sh -c 'echo "local : $(git config --local --get user.name 2>/dev/null || echo -) <$(git config --local --get user.email 2>/dev/null || echo -)>"; echo "global: $(git config --global --get user.name 2>/dev/null || echo -) <$(git config --global --get user.email 2>/dev/null || echo -)>"; echo "active: $(git config --get user.name 2>/dev/null || echo -) <$(git config --get user.email 2>/dev/null || echo -)>"' -
+    user-unset-local = !git config --local --unset-all user.name && git config --local --unset-all user.email || true
 
     # conflict/merges
-    ours = "!f() { git co --ours $@ && git add $@; }; f"
-    theirs = "!f() { git co --theirs $@ && git add $@; }; f"
-    adda-mirror-update = "!f() { git fetch origin --prune --tags && git push --prune adda +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*; }; f"
+    ours = !sh -c 'git checkout --ours "$@" && git add -- "$@"' -
+    theirs = !sh -c 'git checkout --theirs "$@" && git add -- "$@"' -
     store =  config --global credential.helper store
     root = rev-parse --show-toplevel
     rc = rebase --continue

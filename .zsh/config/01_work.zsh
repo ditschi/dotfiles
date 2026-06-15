@@ -127,7 +127,11 @@ _sde_run() {
     local cmd_str=""
     if [ $# -le 0 ]; then
         # interactive shell case, run setup (incl. shell setup), then start shell
-        cmd_str="$setup_cmd && $post_start_cmd && "
+        if [ -n "$setup_cmd" ]; then
+            cmd_str="$setup_cmd && $post_start_cmd && "
+        else
+            cmd_str="$post_start_cmd && "
+        fi
         [[ "$shell" == "zsh" ]] && cmd_str+='exec zsh || exec bash' || cmd_str+='exec bash'
     else
         # user command case - run only post-start, then user command

@@ -76,9 +76,18 @@ dotfiles-update() {
         return 1
     fi
 
-    if ! git -C "$DOTFILES_REPO" pull --ff-only; then
+    pull_output=$(git -C "$DOTFILES_REPO" pull --ff-only 2>&1)
+    pull_exit=$?
+    echo "$pull_output"
+    if [ $pull_exit -ne 0 ]; then
         echo "Dotfiles pull failed."
         return 1
+    fi
+
+    if echo "$pull_output" | grep -q "Already up to date"; then
+        rm -f "$DOTFILES_UPDATE_MARKER"
+        echo "Dotfiles already up to date. Skipping install step."
+        return 0
     fi
 
     if ! command -v python3 >/dev/null 2>&1; then

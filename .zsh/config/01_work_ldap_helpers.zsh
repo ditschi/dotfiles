@@ -286,7 +286,6 @@ ldap-group-subgroups() {
     _ldap-group-member-dns "$group_dn" \
         | grep -i ',OU=Securitygroups,' \
         | grep -i '^CN=' \
-
         | awk -F'[=,]' '{ print $2 }' \
         | sort
 }

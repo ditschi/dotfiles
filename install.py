@@ -20,7 +20,7 @@ def main() -> int:
 
     args = sys.argv[1:]
     if "--help" in args or "-h" in args:
-        print("install.py is a wrapper. Use ./bootstrap or: machine setup|update")
+        print("install.py is a wrapper. Use ./bootstrap or: machine setup|update|migrate")
         print("Mapped flags: --update -> machine update, --new-host/--ui -> machine setup")
         return 0
 

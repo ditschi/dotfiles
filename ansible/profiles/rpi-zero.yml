@@ -2,3 +2,7 @@
 profile: rpi-zero
 features:
   - zsh-full
+  - monitoring
+  - unattended-upgrades
+  - ssh-host-key
+ssh_allow_from: []

@@ -1,0 +1,120 @@
+---
+# Role gated at playbook level (workstation.yml). Tasks assume monitoring feature.
+
+- name: Ensure telegraf package present when available
+  ansible.builtin.apt:
+    name: telegraf
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+  register: monitoring_telegraf_apt
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Note when telegraf package is missing from apt
+  ansible.builtin.debug:
+    msg: >-
+      telegraf is not in apt; add the InfluxData repo or install the .deb.
+      Config will still be written under {{ monitoring_conf_dir }}.
+  when: monitoring_telegraf_apt is defined and monitoring_telegraf_apt.failed | default(false)
+
+- name: Ensure telegraf config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/telegraf
+    - "{{ monitoring_conf_dir }}"
+  become: true
+
+- name: Minimal main telegraf.conf that loads telegraf.d
+  ansible.builtin.copy:
+    dest: "{{ monitoring_main_conf }}"
+    mode: "0644"
+    content: |
+      # Managed by ansible roles/monitoring
+      [agent]
+        hostname = "{{ inventory_hostname }}"
+        omit_hostname = false
+      # Drop-ins: {{ monitoring_conf_dir }}
+  become: true
+
+- name: Resolve monitoring config names
+  ansible.builtin.set_fact:
+    _monitoring_names: "{{ monitoring_configs | default([]) }}"
+
+- name: Deploy local fallback config fragments
+  ansible.builtin.copy:
+    src: "{{ item | replace('/', '_') }}.conf"
+    dest: "{{ monitoring_conf_dir }}/{{ item | replace('/', '_') }}.conf"
+    mode: "0644"
+  loop: "{{ _monitoring_names }}"
+  become: true
+  when:
+    - _monitoring_names | length > 0
+    - influx_telegraf_config_base | default('') | length == 0
+
+- name: Write remote Influx Telegraf config URL list
+  ansible.builtin.copy:
+    dest: "{{ monitoring_conf_dir }}/00_remote_urls.conf"
+    mode: "0644"
+    content: |
+      # Remote Telegraf configs from Influx (names: {{ _monitoring_names | join(', ') }})
+      # Start with: telegraf {% for n in _monitoring_names %}--config {{ influx_telegraf_config_base }}/{{ n }} {% endfor %}
+  become: true
+  when:
+    - _monitoring_names | length > 0
+    - influx_telegraf_config_base | default('') | length > 0
+
+- name: Write InfluxDB 1.x output when credentials present
+  ansible.builtin.copy:
+    dest: "{{ monitoring_conf_dir }}/99_output_influx1.conf"
+    mode: "0600"
+    content: |
+      [[outputs.influxdb]]
+        urls = ["{{ influx_url }}"]
+        database = "{{ influx_database }}"
+        skip_database_creation = true
+        username = "{{ influx_username }}"
+        password = "{{ influx_password }}"
+        timeout = "5s"
+  become: true
+  when:
+    - influx_url | default('') | length > 0
+    - influx_username | default('') | length > 0
+    - influx_token | default('') | length == 0
+
+- name: Write InfluxDB 2.x output when token present
+  ansible.builtin.copy:
+    dest: "{{ monitoring_conf_dir }}/99_output_influx2.conf"
+    mode: "0600"
+    content: |
+      [[outputs.influxdb_v2]]
+        urls = ["{{ influx_url }}"]
+        token = "{{ influx_token }}"
+        organization = "{{ influx_org }}"
+        bucket = "{{ influx_bucket }}"
+        timeout = "5s"
+  become: true
+  when:
+    - influx_url | default('') | length > 0
+    - influx_token | default('') | length > 0
+
+- name: Warn when monitoring has no Influx credentials
+  ansible.builtin.debug:
+    msg: >-
+      Telegraf configs are in place but INFLUX_URL / credentials are empty.
+      Agent will start without shipping metrics until Bitwarden env is pulled.
+  when:
+    - _monitoring_names | length > 0
+    - influx_url | default('') | length == 0
+
+- name: Enable telegraf when binary exists
+  ansible.builtin.service:
+    name: telegraf
+    state: started
+    enabled: true
+  become: true
+  failed_when: false
+  when: ansible_os_family == "Debian"

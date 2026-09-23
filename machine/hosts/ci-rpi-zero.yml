@@ -1,0 +1,9 @@
+---
+# CI / integration: docker --hostname ci-rpi-zero
+# Used by tests/integration/test_host_yaml_install.py
+profile: rpi-zero
+features:
+  - zsh-full
+  - monitoring
+  - unattended-upgrades
+ssh_allow_from: []

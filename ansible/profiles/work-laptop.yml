@@ -7,3 +7,5 @@ features:
   - desktop
   - gnome
   - kerberos
+  - ssh-host-key
+ssh_allow_from: []

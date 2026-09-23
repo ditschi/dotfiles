@@ -1,4 +1,16 @@
 ---
+# Collections required by workstation playbooks.
 collections:
   - name: ansible.posix
     version: ">=1.5.0"
+  # Optional later (not pulled automatically):
+  # - name: community.docker
+  # - name: community.general
+
+# Galaxy *roles* considered but not vendored (keep thin local roles):
+#   Telegraf: dj-wasabi.telegraf / boutetnico.telegraf / alvistack.telegraf
+#     → we keep roles/monitoring (Influx env + machine/* fragments).
+#   Docker: geerlingguy.docker / community.docker
+#     → apt packages_docker (docker.io) is enough for home; CE later if needed.
+#   SSH: ansible.posix.authorized_key (+ local sshd_home port drop-in)
+# Install: ansible-galaxy collection install -r ansible/requirements.yml

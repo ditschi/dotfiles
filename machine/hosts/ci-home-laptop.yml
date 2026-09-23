@@ -1,0 +1,15 @@
+---
+# CI / integration: docker --hostname ci-home-laptop
+# Mirrors ThinkPad home-laptop (stylus/sshd services skipped or soft in containers).
+profile: home-laptop
+features:
+  - zsh-full
+  - fonts
+  - starship
+  - desktop
+  - gnome
+  - monitoring
+  - ssh-host-key
+  - stylus-touch-guard
+  - sshd-home
+ssh_allow_from: []

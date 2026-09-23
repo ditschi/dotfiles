@@ -5,6 +5,28 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ansible: ${{ steps.filter.outputs.ansible }}
+      hosts: ${{ steps.filter.outputs.hosts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ansible:
+              - 'ansible/**'
+              - '.ansible-lint'
+              - 'tests/requirements.txt'
+              - '.github/workflows/verify.yml'
+            hosts:
+              - 'machine/hosts/**'
+              - 'home/dot_local/bin/executable_machine'
+              - 'tests/integration/test_host_yaml_install.py'
+              - 'tests/unit/test_host_profiles.py'
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -15,13 +37,41 @@ jobs:
       - name: Install test deps
         run: |
           pip install -r tests/requirements.txt
-          pip install ansible-core
       - name: Unit tests and CLI smoke
         run: |
           python3 -m py_compile home/dot_local/bin/executable_machine install.py
           pytest tests/unit -q
       - name: Ansible syntax
         run: ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml
+
+  ansible-lint:
+    needs: changes
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.hosts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install -r tests/requirements.txt
+      - name: Lint ansible + host profiles
+        run: |
+          ansible-lint ansible/workstation.yml ansible/homelab.yml ansible/site.yml ansible/dump_packages.yml ansible/dump_monitoring.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          from importlib.machinery import SourceFileLoader
+          cli = SourceFileLoader("m", "home/dot_local/bin/executable_machine").load_module()
+          hosts = Path("machine/hosts")
+          for path in sorted(hosts.glob("*.yml")):
+              if path.name.startswith("_"):
+                  continue
+              data = cli.parse_profile_file(path)
+              assert data.get("profile") in cli.PROFILES, path
+              for feat in data.get("features") or []:
+                  assert feat in cli.FEATURES, (path, feat)
+          print("host profiles ok")
+          PY
 
   presets:
     runs-on: ubuntu-latest
@@ -41,6 +91,19 @@ jobs:
           pytest -q -m "docker and not apt" \
             "tests/integration/test_profile_containers.py::test_profile_dotfiles[${{ matrix.profile }}]"
 
+  host-yaml-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+      - name: Clean install from machine/hosts/ci-container.yml
+        run: |
+          pytest -q tests/integration/test_host_yaml_install.py::test_clean_install_from_versioned_host_yaml_container
+
   apt-rpi-zero:
     runs-on: ubuntu-latest
     steps:
@@ -50,5 +113,34 @@ jobs:
           python-version: "3.12"
       - name: Install test deps
         run: pip install -r tests/requirements.txt
-      - name: Pi Zero package install in container
-        run: pytest tests/integration -q -m apt
+      - name: Pi Zero apt + versioned host YAML ansible install
+        run: |
+          pytest tests/integration -q -m apt
+
+  apt-home-laptop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+      - name: Home-laptop apt + versioned host YAML (ThinkPad mirror)
+        run: |
+          pytest tests/integration -q -m apt_gnome
+
+  unit-arm:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+      - name: Unit tests and Ansible syntax on ARM
+        run: |
+          python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          pytest tests/unit -q
+          ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml

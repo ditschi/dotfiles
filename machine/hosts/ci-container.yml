@@ -1,0 +1,6 @@
+---
+# CI / integration: docker --hostname ci-container
+profile: container
+features:
+  - zsh-full
+ssh_allow_from: []

@@ -57,3 +57,13 @@ def test_rpi_zero_apt_packages(profile_env):
     assert host.package("tmux").is_installed
     assert not host.package("guake").is_installed
     assert not host.package("ldap-utils").is_installed
+
+
+@pytest.mark.docker
+@pytest.mark.apt_gnome
+@pytest.mark.parametrize("profile_env", ["home-laptop"], indirect=True)
+def test_home_laptop_gnome_apt_packages(profile_env):
+    host, _profile = profile_env
+    assert host.package("guake").is_installed
+    assert host.package("flameshot").is_installed
+    assert not host.package("ldap-utils").is_installed

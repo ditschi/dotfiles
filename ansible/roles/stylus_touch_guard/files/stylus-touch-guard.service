@@ -1,0 +1,16 @@
+[Unit]
+Description=Disable touchscreen while stylus is in proximity (Yoga / Xournal++)
+Documentation=https://github.com/ditschi/dotfiles
+After=multi-user.target
+ConditionVirtualization=!docker
+ConditionVirtualization=!container
+ConditionVirtualization=!podman
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/machine/stylus_touch_guard.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

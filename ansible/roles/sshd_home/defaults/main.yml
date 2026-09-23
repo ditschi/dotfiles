@@ -1,0 +1,8 @@
+---
+sshd_home_port: 5115
+sshd_home_config_dropin: /etc/ssh/sshd_config.d/99-machine-port.conf
+sshd_home_also_port_22: false
+sshd_home_manage_authorized_keys: true
+sshd_home_keys_dir: "{{ playbook_dir }}/../machine/ssh_keys"
+sshd_home_authorized_keys_user: "{{ ansible_user_id if ansible_user_id != 'root' else (ansible_env.SUDO_USER | default(ansible_user_id)) }}"
+sshd_home_authorized_keys_home: "/home/{{ sshd_home_authorized_keys_user }}"

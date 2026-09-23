@@ -1,0 +1,14 @@
+---
+# Dump resolved monitoring_configs for unit tests (mirrors resolve_monitoring.yml).
+- name: Dump monitoring configs
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Resolve monitoring config names from profile features
+      ansible.builtin.include_tasks: tasks/resolve_monitoring.yml
+
+    - name: Write monitoring_configs JSON
+      ansible.builtin.copy:
+        dest: "{{ dump_path }}"
+        content: "{{ monitoring_configs | default([]) | to_json }}"

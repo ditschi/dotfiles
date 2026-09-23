@@ -1,0 +1,22 @@
+---
+# ansible-lint for ansible/ + related host profiles
+profile: basic
+exclude_paths:
+  - ansible/profiles/
+  - ansible/inventory/
+  - tests/
+skip_list:
+  - yaml[line-length]
+  - name[casing]
+  - name[template]
+  - risky-file-permissions
+  - no-changed-when
+  - command-instead-of-module
+  - package-latest
+  - galaxy[no-changelog]
+  - meta-no-info
+  - role-name
+warn_list:
+  - experimental
+  - jinja[spacing]
+offline: true

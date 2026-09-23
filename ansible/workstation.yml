@@ -23,3 +23,38 @@
   roles:
     - role: user_tools
       when: profile | default('') != 'container'
+
+- name: Monitoring (Telegraf)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [monitoring]
+  pre_tasks:
+    - name: Resolve monitoring config names from profile features
+      ansible.builtin.include_tasks: tasks/resolve_monitoring.yml
+  roles:
+    - role: monitoring
+      when:
+        - "'monitoring' in (features | default([]))"
+        - profile | default('') not in ['container', 'work-laptop']
+        - (monitoring_configs | default([])) | length > 0
+
+- name: Stylus touch-guard (Yoga / convertible)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [stylus]
+  roles:
+    - role: stylus_touch_guard
+      when: "'stylus-touch-guard' in (features | default([]))"
+
+- name: SSH port + authorized_keys (home fleet)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [sshd]
+  roles:
+    - role: sshd_home
+      when:
+        - "'sshd-home' in (features | default([]))"
+        - profile | default('') not in ['container', 'work-laptop']

@@ -1,5 +1,7 @@
 venv/
 tests/.venv/
+tests/.ansible/
+.ansible/
 .pytest_cache/
 *.orig
 __pycache__/

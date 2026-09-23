@@ -35,8 +35,35 @@ packages_gnome:
   - gnome-shell-extension-prefs
   - guake
 
+packages_cosmic: []
+
+packages_docker:
+  - docker.io
+  - docker-compose-v2
+
 packages_work:
   - ldap-utils
+  - krb5-user
+
+# telegraf is often missing from Ubuntu apt; roles/monitoring installs/configures it.
+packages_monitoring: []
+
+packages_unattended:
+  - unattended-upgrades
+
+packages_syncthing:
+  - syncthing
+
+packages_tailscale: []
+
+# Yoga / convertible: stylus proximity → grab touchscreen (Xournal++ workaround)
+packages_stylus_touch_guard:
+  - evtest
+  - python3-evdev
+  - python3-psutil
+
+packages_sshd_home:
+  - openssh-server
 
 packages_rpi_zero:
   - curl
@@ -46,3 +73,30 @@ packages_rpi_zero:
   - fzf
 
 apt_cache_valid_time: 3600
+
+# Telegraf config names (SoT). Role roles/monitoring resolves the list from
+# profile + features; CLI must not duplicate this map.
+monitoring_by_profile:
+  home-laptop:
+    - machine/base
+    - machine/laptop
+  home-server:
+    - machine/base
+    - machine/server
+  rpi:
+    - machine/base
+    - machine/pi
+  rpi-zero:
+    - machine/base
+    - machine/pi
+
+# Prefer Influx Telegraf config URLs when set (from ~/.env / Bitwarden).
+# Fallback: files under roles/monitoring/files/<name with / -> _>.conf
+influx_telegraf_config_base: "{{ lookup('env', 'INFLUX_TELEGRAF_CONFIG_BASE') | default('', true) }}"
+influx_url: "{{ lookup('env', 'INFLUX_URL') | default('', true) }}"
+influx_token: "{{ lookup('env', 'INFLUX_TOKEN') | default('', true) }}"
+influx_org: "{{ lookup('env', 'INFLUX_ORG') | default('', true) }}"
+influx_bucket: "{{ lookup('env', 'INFLUX_BUCKET') | default('telegraf', true) }}"
+influx_username: "{{ lookup('env', 'INFLUXDB_USER') | default('', true) }}"
+influx_password: "{{ lookup('env', 'INFLUXDB_USER_PASSWORD') | default('', true) }}"
+influx_database: "{{ lookup('env', 'INFLUXDB_DB') | default('telegraf', true) }}"

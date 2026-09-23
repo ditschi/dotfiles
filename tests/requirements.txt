@@ -1,3 +1,5 @@
 pytest>=8.0
 pytest-testinfra>=10.0
 PyYAML>=6.0
+ansible-lint>=24.2.0
+ansible-core>=2.16

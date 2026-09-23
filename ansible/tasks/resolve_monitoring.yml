@@ -1,0 +1,21 @@
+---
+# Single source: derive Telegraf config names from profile + features.
+# Do not compute this list in the machine CLI.
+
+- name: Clear monitoring configs when feature is off
+  ansible.builtin.set_fact:
+    monitoring_configs: []
+  when: "'monitoring' not in (features | default([]))"
+
+- name: Base monitoring configs for profile
+  ansible.builtin.set_fact:
+    monitoring_configs: "{{ monitoring_by_profile[profile | default('')] | default([]) }}"
+  when: "'monitoring' in (features | default([]))"
+
+- name: Add docker monitoring fragment
+  ansible.builtin.set_fact:
+    monitoring_configs: "{{ monitoring_configs + ['machine/docker'] }}"
+  when:
+    - "'monitoring' in (features | default([]))"
+    - "'docker' in (features | default([]))"
+    - (monitoring_configs | default([]) | length) > 0

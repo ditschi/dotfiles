@@ -1,0 +1,9 @@
+---
+- name: Reload sshd
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+    state: reloaded
+  when:
+    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'
+  failed_when: false

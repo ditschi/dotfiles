@@ -29,7 +29,53 @@
     install_packages: "{{ install_packages + packages_gnome }}"
   when: "'gnome' in (features | default([]))"
 
+- name: Add Cosmic packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_cosmic }}"
+  when: "'cosmic' in (features | default([]))"
+
+- name: Warn when Cosmic selected on non-Pop
+  ansible.builtin.debug:
+    msg: >-
+      Feature cosmic is selected but packages_cosmic is empty on this OS;
+      desktop session will not be installed here.
+  when:
+    - "'cosmic' in (features | default([]))"
+    - (packages_cosmic | default([]) | length) == 0
+
+- name: Add Docker packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_docker }}"
+  when: "'docker' in (features | default([]))"
+
 - name: Add work packages
   ansible.builtin.set_fact:
     install_packages: "{{ install_packages + packages_work }}"
-  when: profile | default('') == 'work-laptop'
+  when: >-
+    profile | default('') == 'work-laptop'
+    or 'kerberos' in (features | default([]))
+
+- name: Add monitoring packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_monitoring }}"
+  when: "'monitoring' in (features | default([]))"
+
+- name: Add unattended-upgrades
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_unattended }}"
+  when: "'unattended-upgrades' in (features | default([]))"
+
+- name: Add syncthing
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_syncthing }}"
+  when: "'syncthing' in (features | default([]))"
+
+- name: Add stylus touch-guard packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_stylus_touch_guard }}"
+  when: "'stylus-touch-guard' in (features | default([]))"
+
+- name: Add sshd-home packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_sshd_home }}"
+  when: "'sshd-home' in (features | default([]))"

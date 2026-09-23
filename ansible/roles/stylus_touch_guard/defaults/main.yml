@@ -1,0 +1,4 @@
+---
+stylus_touch_guard_script_dir: /usr/local/lib/machine
+stylus_touch_guard_script: "{{ stylus_touch_guard_script_dir }}/stylus_touch_guard.py"
+stylus_touch_guard_unit: /etc/systemd/system/stylus-touch-guard.service

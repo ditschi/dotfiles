@@ -1,0 +1,7 @@
+---
+# Role: Telegraf agent for home profiles.
+# Prefer remote Influx Telegraf configs when INFLUX_TELEGRAF_CONFIG_BASE is set.
+# Fallback: ship local fragments under files/ and stitch an outputs.conf from env.
+
+monitoring_conf_dir: /etc/telegraf/telegraf.d
+monitoring_main_conf: /etc/telegraf/telegraf.conf

@@ -1,0 +1,83 @@
+---
+- name: Ensure sshd_config.d exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    mode: "0755"
+
+- name: Deploy sshd port drop-in (5115)
+  ansible.builtin.copy:
+    dest: "{{ sshd_home_config_dropin }}"
+    mode: "0644"
+    content: |
+      # Managed by ansible role sshd_home — do not edit by hand
+      Port {{ sshd_home_port }}
+      {% if sshd_home_also_port_22 | bool %}
+      Port 22
+      {% endif %}
+  notify: Reload sshd
+
+- name: Ensure Port line in main sshd_config matches
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Port\s+'
+    line: "Port {{ sshd_home_port }}"
+    backup: true
+  notify: Reload sshd
+  when: ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+
+- name: Validate sshd configuration
+  ansible.builtin.command: sshd -t
+  changed_when: false
+  when:
+    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'
+
+- name: Build list of present pubkey files for ssh_allow_from
+  ansible.builtin.stat:
+    path: "{{ sshd_home_keys_dir }}/{{ item }}.pub"
+  loop: "{{ ssh_allow_from | default([]) }}"
+  register: sshd_home_key_stats
+  when:
+    - sshd_home_manage_authorized_keys | bool
+    - (ssh_allow_from | default([])) | length > 0
+  delegate_to: localhost
+  become: false
+
+- name: Warn on missing machine/ssh_keys entries
+  ansible.builtin.debug:
+    msg: "missing machine/ssh_keys/{{ item.item }}.pub — not added to authorized_keys"
+  loop: "{{ sshd_home_key_stats.results | default([]) }}"
+  when:
+    - sshd_home_manage_authorized_keys | bool
+    - item.stat is defined
+    - not item.stat.exists
+  loop_control:
+    label: "{{ item.item | default('?') }}"
+
+- name: Ensure ~/.ssh for login user
+  ansible.builtin.file:
+    path: "{{ sshd_home_authorized_keys_home }}/.ssh"
+    state: directory
+    mode: "0700"
+    owner: "{{ sshd_home_authorized_keys_user }}"
+    group: "{{ sshd_home_authorized_keys_user }}"
+  when:
+    - sshd_home_manage_authorized_keys | bool
+    - (ssh_allow_from | default([])) | length > 0
+    - sshd_home_authorized_keys_user | length > 0
+
+- name: Install authorized_keys from machine/ssh_keys
+  ansible.posix.authorized_key:
+    user: "{{ sshd_home_authorized_keys_user }}"
+    key: "{{ lookup('file', item.stat.path) }}"
+    state: present
+    exclusive: false
+  loop: "{{ sshd_home_key_stats.results | default([]) }}"
+  when:
+    - sshd_home_manage_authorized_keys | bool
+    - item.stat is defined
+    - item.stat.exists
+    - sshd_home_authorized_keys_user | length > 0
+  loop_control:
+    label: "{{ item.item | default('?') }}"

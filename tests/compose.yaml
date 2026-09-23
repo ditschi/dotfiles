@@ -1,0 +1,45 @@
+services:
+  shell:
+    build:
+      context: docker
+    image: dotfiles-preset-test:local
+    working_dir: /dotfiles
+    volumes:
+      - ..:/dotfiles:rw
+    environment:
+      DOTFILES_REPO: /dotfiles
+      DEBIAN_FRONTEND: noninteractive
+      HOME: /home/tester
+    user: tester
+    stdin_open: true
+    tty: true
+    command: ["bash", "-lc", "git config --global --add safe.directory /dotfiles; exec bash"]
+
+  migrate:
+    build:
+      context: docker
+    image: dotfiles-preset-test:local
+    working_dir: /dotfiles
+    volumes:
+      - ..:/dotfiles:ro
+    environment:
+      DOTFILES_REPO: /dotfiles
+      DEBIAN_FRONTEND: noninteractive
+      HOME: /home/tester
+    user: tester
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        set -euo pipefail
+        git config --global --add safe.directory /dotfiles
+        # Simulate old root-layout symlinks pointing at repo root paths
+        mkdir -p "$$HOME"
+        ln -sfn /dotfiles/.zshrc "$$HOME/.zshrc" || true
+        ln -sfn /dotfiles/.zsh "$$HOME/.zsh" || true
+        echo "Prepared old-style symlinks. Try:"
+        echo "  ./bootstrap --profile home-laptop"
+        echo "  machine update"
+        echo "  machine migrate --yes --profile home-laptop --skip-ansible --no-become"
+        exec bash

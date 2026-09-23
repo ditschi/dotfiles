@@ -1,0 +1,30 @@
+---
+- name: Ensure machine lib directory
+  ansible.builtin.file:
+    path: "{{ stylus_touch_guard_script_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install stylus touch-guard script
+  ansible.builtin.copy:
+    src: stylus_touch_guard.py
+    dest: "{{ stylus_touch_guard_script }}"
+    mode: "0755"
+  notify: Restart stylus-touch-guard
+
+- name: Install stylus-touch-guard systemd unit
+  ansible.builtin.copy:
+    src: stylus-touch-guard.service
+    dest: "{{ stylus_touch_guard_unit }}"
+    mode: "0644"
+  notify: Restart stylus-touch-guard
+
+- name: Enable stylus-touch-guard when not a container
+  ansible.builtin.systemd:
+    name: stylus-touch-guard.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when:
+    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'

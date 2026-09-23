@@ -39,7 +39,10 @@ def docker_image():
 def profile_env(docker_image, request):
     profile = request.param
     name = f"dotfiles-{profile}-{uuid.uuid4().hex[:8]}"
-    run_apt = request.node.get_closest_marker("apt") is not None
+    run_apt = (
+        request.node.get_closest_marker("apt") is not None
+        or request.node.get_closest_marker("apt_gnome") is not None
+    )
     setup_cmd = ["./bootstrap", "--profile", profile, "--yes"]
     if not run_apt:
         setup_cmd.extend(["--skip-ansible", "--no-become"])

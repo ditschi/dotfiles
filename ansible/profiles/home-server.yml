@@ -3,3 +3,8 @@ profile: home-server
 features:
   - zsh-full
   - docker
+  - monitoring
+  - unattended-upgrades
+  - ssh-host-key
+  - sshd-home
+ssh_allow_from: []

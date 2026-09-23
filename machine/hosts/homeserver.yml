@@ -1,0 +1,12 @@
+---
+profile: home-server
+features:
+  - zsh-full
+  - docker
+  - monitoring
+  - unattended-upgrades
+  - ssh-host-key
+  - sshd-home
+ssh_allow_from:
+  - ditschi-ThinkPad-L13-Yoga-Gen-2
+  - ditschi-ThinkPad-T470

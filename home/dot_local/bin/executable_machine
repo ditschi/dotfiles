@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified machine CLI: local setup, control-node push, Bitwarden env sync."""
+"""Unified machine CLI: orchestrate chezmoi + ansible; host answers; Bitwarden UX."""
 from __future__ import annotations
 
 import argparse
@@ -7,14 +7,16 @@ import atexit
 import getpass
 import json
 import os
+import platform
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 PROFILES = [
     "work-laptop",
@@ -33,16 +35,33 @@ FEATURES = [
     "cosmic",
     "docker",
     "kerberos",
+    "work-cli",
     "monitoring",
+    "unattended-upgrades",
+    "syncthing",
+    "tailscale",
+    "ssh-host-key",
+    "stylus-touch-guard",
+    "sshd-home",
 ]
 PLAYBOOKS = ["workstation", "homelab", "site"]
-DEFAULT_FEATURES = {
-    "work-laptop": ["zsh-full", "fonts", "starship", "desktop", "gnome", "kerberos"],
-    "home-laptop": ["zsh-full", "fonts", "starship", "desktop", "gnome"],
-    "home-server": ["zsh-full", "docker"],
-    "rpi": ["zsh-full", "docker"],
-    "rpi-zero": ["zsh-full"],
-    "container": ["zsh-full"],
+FEATURE_HELP = {
+    "zsh-full": "Shell stack (zsh, fzf, tmux, jq)",
+    "fonts": "Meslo / Nerd fonts for prompts",
+    "starship": "Starship prompt config",
+    "desktop": "Desktop extras (empty list today)",
+    "gnome": "GNOME tools (flameshot, guake, …)",
+    "cosmic": "Cosmic desktop packages (Pop OS)",
+    "docker": "Docker engine packages",
+    "kerberos": "krb5-user + ldap-utils (work)",
+    "work-cli": "GitHub CLI / Azure CLI helpers",
+    "monitoring": "Telegraf agent (home profiles)",
+    "unattended-upgrades": "Automatic security upgrades",
+    "syncthing": "Syncthing package",
+    "tailscale": "Tailscale package (+ optional login)",
+    "ssh-host-key": "Per-host ed25519 key + Bitwarden pub",
+    "stylus-touch-guard": "Disable touch while stylus near (Yoga / Xournal++)",
+    "sshd-home": "sshd Port 5115 + authorized_keys from machine/ssh_keys",
 }
 ENV_CLASS = {
     "work-laptop": "work",
@@ -50,6 +69,27 @@ ENV_CLASS = {
     "rpi-zero": "iot",
     "container": "",
 }
+SSH_CLASS = {
+    "work-laptop": "work",
+    "home-laptop": "home",
+    "home-server": "home",
+    "rpi": "home",
+    "rpi-zero": "home",
+    "container": "",
+}
+OLD_ROOT_LINK_NAMES = [
+    ".zshrc",
+    ".bashrc",
+    ".gitconfig",
+    ".p10k.zsh",
+    ".tmux.conf",
+    ".zprofile",
+    ".profile",
+]
+
+
+def in_docker() -> bool:
+    return Path("/.dockerenv").is_file() or os.environ.get("MACHINE_IN_DOCKER") == "1"
 
 
 def log(message: str) -> None:
@@ -99,7 +139,7 @@ def detect_repo() -> Path:
         if (parent / ".git").is_dir() and (parent / "home").is_dir():
             return parent
     fallback = Path.home() / "dotfiles"
-    if (fallback / ".git").is_dir():
+    if (fallback / ".git").is_dir() and (fallback / "home").is_dir():
         return fallback
     die("cannot find dotfiles repository")
     raise AssertionError
@@ -109,15 +149,87 @@ def hostname_short() -> str:
     return socket.gethostname().split(".")[0]
 
 
-def read_profile_value(path: Path, key: str) -> str:
+def prompt_yes_no(question: str, default: bool = False) -> bool:
+    if not is_tty():
+        return default
+    hint = "Y/n" if default else "y/N"
+    answer = input(f"{question} [{hint}]: ").strip().lower()
+    if not answer:
+        return default
+    return answer in {"y", "yes"}
+
+
+def parse_profile_file(path: Path) -> Dict[str, object]:
+    result: Dict[str, object] = {
+        "profile": "",
+        "features": [],
+        "ssh_allow_from": [],
+    }
     if not path.is_file():
-        return ""
-    prefix = f"{key}:"
+        return result
+    section = ""
+    features: List[str] = []
+    allow: List[str] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
-        if line.startswith(prefix):
-            return line.split(":", 1)[1].strip()
-    return ""
+        if not line or line.startswith("#") or line == "---":
+            continue
+        if line.startswith("profile:"):
+            result["profile"] = line.split(":", 1)[1].strip()
+            section = ""
+            continue
+        if line.startswith("features:"):
+            rest = line.split(":", 1)[1].strip()
+            section = "features"
+            if rest == "[]":
+                features = []
+                section = ""
+            continue
+        if line.startswith("ssh_allow_from:"):
+            rest = line.split(":", 1)[1].strip()
+            section = "ssh_allow_from"
+            if rest == "[]":
+                allow = []
+                section = ""
+            continue
+        if line.startswith("- "):
+            value = line[2:].strip()
+            if section == "features":
+                features.append(value)
+            elif section == "ssh_allow_from":
+                allow.append(value)
+            continue
+        if ":" in line:
+            section = ""
+    result["features"] = features
+    result["ssh_allow_from"] = allow
+    return result
+
+
+def format_profile_yaml(
+    profile: str,
+    features: Sequence[str],
+    ssh_allow_from: Optional[Sequence[str]] = None,
+) -> str:
+    feats = list(features) or ["zsh-full"]
+    allow = list(ssh_allow_from or [])
+    lines = ["---", f"profile: {profile}", "features:"]
+    lines.extend(f"  - {feat}" for feat in feats)
+    if allow:
+        lines.append("ssh_allow_from:")
+        lines.extend(f"  - {name}" for name in allow)
+    else:
+        lines.append("ssh_allow_from: []")
+    return "\n".join(lines) + "\n"
+
+
+def profile_fingerprint(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    data = parse_profile_file(path)
+    feats = sorted(str(x) for x in (data.get("features") or []))
+    allow = sorted(str(x) for x in (data.get("ssh_allow_from") or []))
+    return f"{data.get('profile')}|{','.join(feats)}|{','.join(allow)}"
 
 
 class Machine:
@@ -126,8 +238,14 @@ class Machine:
         self.repo = detect_repo()
         self.chezmoi_source = self.repo / "home"
         self.ansible_dir = self.repo / "ansible"
+        self.host_profiles_dir = self.repo / "machine" / "hosts"
+        # Path to local cache. Do not use MACHINE_PROFILE — zsh exports that as the
+        # profile *name* (see 00_LOADER.zsh).
         self.profile_path = Path(
-            os.environ.get("MACHINE_PROFILE", self.home / ".config/machine/profile.yml")
+            os.environ.get(
+                "MACHINE_PROFILE_FILE",
+                self.home / ".config/machine/profile.yml",
+            )
         )
         self.chezmoi_config = Path(
             os.environ.get("CHEZMOI_CONFIG", self.home / ".config/chezmoi/chezmoi.yaml")
@@ -143,15 +261,51 @@ class Machine:
                 self.home / ".dotfiles-update-last-check",
             )
         )
+        self.state_dir = Path(
+            os.environ.get(
+                "MACHINE_STATE_DIR", self.home / ".local/share/machine"
+            )
+        )
         self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
         os.environ["DOTFILES_REPO"] = str(self.repo)
 
+    def ansible_profile_path(self, profile: str) -> Path:
+        return self.ansible_dir / "profiles" / f"{profile}.yml"
+
+    def default_features_for(self, profile: str) -> List[str]:
+        """Feature defaults from ansible/profiles/<profile>.yml (single source)."""
+        path = self.ansible_profile_path(profile)
+        data = parse_profile_file(path)
+        feats = data.get("features") or []
+        if isinstance(feats, list) and feats:
+            return [str(x) for x in feats]
+        return ["zsh-full"]
+
     def current_profile(self) -> str:
-        return read_profile_value(self.profile_path, "profile") or "home-laptop"
+        data = parse_profile_file(self.profile_path)
+        return str(data.get("profile") or "home-laptop")
+
+    def saved_features(self) -> List[str]:
+        data = parse_profile_file(self.profile_path)
+        feats = data.get("features") or []
+        return list(feats) if isinstance(feats, list) else []
+
+    def saved_ssh_allow_from(self) -> List[str]:
+        data = parse_profile_file(self.profile_path)
+        allow = data.get("ssh_allow_from") or []
+        return list(allow) if isinstance(allow, list) else []
+
+    def env_class(self, profile: Optional[str] = None) -> str:
+        profile = profile or self.current_profile()
+        return ENV_CLASS.get(profile, "home")
+
+    def ssh_class(self, profile: Optional[str] = None) -> str:
+        profile = profile or self.current_profile()
+        return SSH_CLASS.get(profile, "home")
 
     def env_item_names(self) -> List[str]:
         profile = self.current_profile()
-        env_class = ENV_CLASS.get(profile, "home")
+        env_class = self.env_class(profile)
         if not env_class:
             return []
         return [
@@ -160,18 +314,174 @@ class Machine:
             f"env/hosts/{hostname_short()}",
         ]
 
+    def ssh_item_name(self, hostname: Optional[str] = None) -> str:
+        klass = self.ssh_class()
+        host = hostname or hostname_short()
+        return f"ssh/{klass}/hosts/{host}"
+
+    def host_key_paths(self) -> Tuple[Path, Path]:
+        host = hostname_short()
+        private = self.home / ".ssh" / f"id_ed25519_{host}"
+        return private, Path(str(private) + ".pub")
+
     def ensure_dirs(self) -> None:
         (self.home / ".config/machine").mkdir(parents=True, exist_ok=True)
         (self.home / ".config/chezmoi").mkdir(parents=True, exist_ok=True)
         (self.home / ".local/bin").mkdir(parents=True, exist_ok=True)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
 
-    def write_profile(self, profile: str, features: Sequence[str]) -> None:
+    def write_profile(
+        self,
+        profile: str,
+        features: Sequence[str],
+        ssh_allow_from: Optional[Sequence[str]] = None,
+    ) -> None:
         self.ensure_dirs()
-        feats = list(features) or ["zsh-full"]
-        lines = ["---", f"profile: {profile}", "features:"]
-        lines.extend(f"  - {feat}" for feat in feats)
-        self.profile_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        allow = (
+            list(ssh_allow_from)
+            if ssh_allow_from is not None
+            else self.saved_ssh_allow_from()
+        )
+        text = format_profile_yaml(profile, features, allow)
+        self.profile_path.write_text(text, encoding="utf-8")
         self.profile_path.chmod(0o600)
+
+    def host_profile_path(self, hostname: Optional[str] = None) -> Path:
+        return self.host_profiles_dir / f"{hostname or hostname_short()}.yml"
+
+    def save_host_profile_to_repo(
+        self,
+        profile: str,
+        features: Sequence[str],
+        ssh_allow_from: Sequence[str],
+        hostname: Optional[str] = None,
+    ) -> Path:
+        self.host_profiles_dir.mkdir(parents=True, exist_ok=True)
+        path = self.host_profile_path(hostname)
+        path.write_text(
+            format_profile_yaml(profile, features, ssh_allow_from), encoding="utf-8"
+        )
+        log(f"wrote repo host profile {path.relative_to(self.repo)}")
+        return path
+
+    def sync_host_profile_from_repo(self, hostname: Optional[str] = None) -> bool:
+        """Copy machine/hosts/<hostname>.yml → local profile.yml. Return True if changed."""
+        path = self.host_profile_path(hostname)
+        if not path.is_file():
+            return False
+        self.ensure_dirs()
+        before = profile_fingerprint(self.profile_path)
+        text = path.read_text(encoding="utf-8")
+        self.profile_path.write_text(text, encoding="utf-8")
+        self.profile_path.chmod(0o600)
+        after = profile_fingerprint(self.profile_path)
+        if before != after:
+            log(f"synced local profile from {path.relative_to(self.repo)}")
+            data = parse_profile_file(self.profile_path)
+            self.write_chezmoi_config(str(data.get("profile") or "home-laptop"))
+            return True
+        return False
+
+    def backup_local_profile(self) -> Optional[Path]:
+        if not self.profile_path.is_file():
+            return None
+        backup_dir = self.state_dir / "profile-backup"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        bak = backup_dir / f"profile.{stamp}.yml"
+        shutil.copy2(self.profile_path, bak)
+        return bak
+
+    def restore_local_profile(self, backup: Path) -> None:
+        self.ensure_dirs()
+        shutil.copy2(backup, self.profile_path)
+        self.profile_path.chmod(0o600)
+        data = parse_profile_file(self.profile_path)
+        self.write_chezmoi_config(str(data.get("profile") or "home-laptop"))
+        log(f"restored local profile from {backup}")
+
+    def health_check_after_apply(self) -> bool:
+        ok = True
+        if have("sshd"):
+            result = run(["sshd", "-t"], check=False, capture=True)
+            if result.returncode != 0:
+                # try with sudo
+                if have("sudo"):
+                    result = run(["sudo", "-n", "sshd", "-t"], check=False, capture=True)
+                if result.returncode != 0:
+                    log("health check: sshd -t failed")
+                    ok = False
+        if "monitoring" in self.saved_features() and have("systemctl"):
+            result = run(
+                ["systemctl", "is-active", "telegraf"],
+                check=False,
+                capture=True,
+            )
+            status = (result.stdout or "").strip()
+            if status not in {"active", "activating"} and result.returncode != 0:
+                # telegraf may not be installed yet from apt — warn only
+                log(f"health check: telegraf status={status or 'unknown'} (warn)")
+        return ok
+
+    def maybe_persist_host_profile(
+        self,
+        profile: str,
+        features: Sequence[str],
+        allow_from: Sequence[str],
+        *,
+        yes: bool,
+    ) -> None:
+        if profile == "container" or in_docker():
+            return
+        path = self.host_profile_path()
+        new_text = format_profile_yaml(profile, features, allow_from)
+        if path.is_file() and path.read_text(encoding="utf-8") == new_text:
+            return
+        if path.is_file():
+            if yes:
+                return
+            if not is_tty() or not prompt_yes_no(
+                f"Repo-Host-Profil {path.relative_to(self.repo)} überschreiben?",
+                False,
+            ):
+                log(
+                    "left repo host profile unchanged; "
+                    "run: machine profile save"
+                )
+                return
+        elif not yes and is_tty():
+            if not prompt_yes_no(
+                f"Host-Profil nach {path.relative_to(self.repo)} schreiben?",
+                True,
+            ):
+                return
+        elif yes and not path.is_file():
+            # non-interactive first setup: always create so fleet can version it
+            pass
+        self.save_host_profile_to_repo(profile, features, allow_from)
+        if is_tty() and not yes and prompt_yes_no(
+            "Jetzt committen (machine commit)?", False
+        ):
+            run(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo),
+                    "add",
+                    str(path.relative_to(self.repo)),
+                ]
+            )
+            run(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo),
+                    "commit",
+                    "-m",
+                    f"Add/update host profile for {hostname_short()}",
+                ],
+                check=False,
+            )
 
     def write_chezmoi_config(self, profile: str) -> None:
         self.ensure_dirs()
@@ -191,6 +501,14 @@ class Machine:
             check=False,
         )
         return bool((result.stdout or "").strip())
+
+    def git_head(self) -> str:
+        result = run(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"],
+            capture=True,
+            check=False,
+        )
+        return (result.stdout or "").strip()
 
     def passwordless_sudo(self) -> bool:
         if os.geteuid() == 0:
@@ -227,16 +545,84 @@ class Machine:
             return False
         return True
 
-    def ensure_bootstrap_tools(self, need_chezmoi: bool, need_ansible: bool) -> None:
+    def ensure_gum(self) -> None:
+        if have("gum") or not is_tty() or in_docker():
+            return
+        arch = platform.machine()
+        arch_map = {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armv7"}
+        gum_arch = arch_map.get(arch)
+        if not gum_arch:
+            return
+        version = "0.14.5"
+        url = (
+            f"https://github.com/charmbracelet/gum/releases/download/v{version}/"
+            f"gum_{version}_Linux_{gum_arch}.tar.gz"
+        )
+        local_bin = self.home / ".local/bin"
+        local_bin.mkdir(parents=True, exist_ok=True)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                archive = Path(tmp) / "gum.tgz"
+                urllib.request.urlretrieve(url, archive)
+                run(["tar", "-xzf", str(archive), "-C", tmp], check=True)
+                binary = next(Path(tmp).rglob("gum"), None)
+                if binary and binary.is_file():
+                    dest = local_bin / "gum"
+                    shutil.copy2(binary, dest)
+                    dest.chmod(0o755)
+                    os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+                    log(f"installed gum to {dest}")
+        except (OSError, subprocess.CalledProcessError, StopIteration):
+            log("could not install gum; using plain prompts")
+
+    def ensure_bitwarden_cli(self) -> bool:
+        if have("bw"):
+            return True
+        arch = platform.machine()
+        arch_map = {"x86_64": "x64", "aarch64": "arm64"}
+        bw_arch = arch_map.get(arch)
+        if not bw_arch:
+            log(f"no Bitwarden CLI build for {arch}")
+            return False
+        local_bin = self.home / ".local/bin"
+        local_bin.mkdir(parents=True, exist_ok=True)
+        url = (
+            "https://github.com/bitwarden/clients/releases/download/"
+            f"cli-v2024.12.0/bw-linux-{bw_arch}.zip"
+        )
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                archive = Path(tmp) / "bw.zip"
+                urllib.request.urlretrieve(url, archive)
+                run(["unzip", "-o", "-q", str(archive), "-d", tmp], check=True)
+                binary = Path(tmp) / "bw"
+                if not binary.is_file():
+                    return False
+                dest = local_bin / "bw"
+                shutil.copy2(binary, dest)
+                dest.chmod(0o755)
+                os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+                log(f"installed bw to {dest}")
+                return True
+        except (OSError, subprocess.CalledProcessError):
+            log("could not install Bitwarden CLI")
+            return False
+
+    def ensure_bootstrap_tools(
+        self, need_chezmoi: bool, need_ansible: bool, need_bw: bool
+    ) -> None:
         if not have("git") and not self.install_pkg_if_missing("git"):
             die("git is required")
         if not have("python3") and not self.install_pkg_if_missing("python3"):
             die("python3 is required")
         if not have("curl"):
             self.install_pkg_if_missing("curl")
+        if not have("unzip"):
+            self.install_pkg_if_missing("unzip")
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True, exist_ok=True)
         os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+        self.ensure_gum()
         if need_chezmoi and not have("chezmoi"):
             log("installing chezmoi to ~/.local/bin")
             script = run(["curl", "-fsLS", "get.chezmoi.io"], capture=True).stdout
@@ -245,23 +631,150 @@ class Machine:
             if have("pipx"):
                 log("installing ansible-core via pipx")
                 run(["pipx", "install", "ansible-core"])
-                return
-            if self.install_pkg_if_missing("ansible-core"):
-                return
-            if self.install_pkg_if_missing("ansible"):
-                return
-            self.install_pkg_if_missing("pipx")
-            if have("pipx"):
-                run(["pipx", "install", "ansible-core"])
+            elif self.install_pkg_if_missing("ansible-core"):
+                pass
+            elif self.install_pkg_if_missing("ansible"):
+                pass
             else:
-                die("could not install ansible-core")
+                self.install_pkg_if_missing("pipx")
+                if have("pipx"):
+                    run(["pipx", "install", "ansible-core"])
+                else:
+                    die("could not install ansible-core")
+        if need_ansible and have("ansible-galaxy"):
+            req = self.ansible_dir / "requirements.yml"
+            if req.is_file():
+                run(
+                    [
+                        "ansible-galaxy",
+                        "collection",
+                        "install",
+                        "-r",
+                        str(req),
+                    ],
+                    check=False,
+                    capture=True,
+                )
+        if need_bw:
+            self.ensure_bitwarden_cli()
 
-    def unlock_bitwarden(self) -> bool:
+    def needs_layout_migration(self) -> bool:
+        if not self.chezmoi_config.is_file():
+            for name in OLD_ROOT_LINK_NAMES:
+                target = self.home / name
+                if target.is_symlink():
+                    try:
+                        dest = target.resolve(strict=False)
+                    except OSError:
+                        return True
+                    if dest == self.repo / name or str(dest).startswith(
+                        str(self.repo / name)
+                    ):
+                        return True
+                    # broken symlink that used to point into repo root
+                    raw = os.readlink(target)
+                    if raw.startswith(str(self.repo)) and "/home/" not in raw.replace(
+                        str(self.repo), "", 1
+                    ):
+                        return True
+            zsh = self.home / ".zsh"
+            if zsh.is_symlink():
+                raw = os.readlink(zsh)
+                if raw.endswith("/.zsh") or raw == str(self.repo / ".zsh"):
+                    return True
+            # new layout present in repo but no chezmoi config yet
+            if (self.repo / "home" / "dot_zshrc").is_file() and (
+                self.repo / ".zshrc"
+            ).exists() is False:
+                # After checkout of new branch without chezmoi config
+                for name in OLD_ROOT_LINK_NAMES:
+                    target = self.home / name
+                    if target.is_symlink():
+                        raw = os.readlink(target)
+                        if "dotfiles" in raw and "/home/dot_" not in raw:
+                            return True
+                if not self.chezmoi_config.is_file() and any(
+                    (self.home / n).exists() for n in OLD_ROOT_LINK_NAMES
+                ):
+                    # Soft signal: home layout files exist, chezmoi missing,
+                    # and repo already uses home/ source.
+                    if (self.repo / "bootstrap").is_file() and (
+                        self.repo / "home" / "dot_zshrc"
+                    ).is_file():
+                        # Only treat as migration if a root-style link is broken
+                        # or still points outside home/
+                        for name in OLD_ROOT_LINK_NAMES + [".zsh"]:
+                            target = self.home / name
+                            if not target.is_symlink():
+                                continue
+                            raw = os.readlink(target)
+                            if "/home/dot_" in raw or "/home/" in raw.split("dotfiles", 1)[-1]:
+                                continue
+                            if "dotfiles" in raw:
+                                return True
+        return False
+
+    def write_rollback_script(self, old_sha: str) -> Path:
+        self.ensure_dirs()
+        path = self.state_dir / "rollback.sh"
+        script = f"""#!/usr/bin/env bash
+# Generated by machine migrate — restore pre-chezmoi layout.
+set -euo pipefail
+REPO={self.repo!s}
+OLD_SHA={old_sha!s}
+cd "$REPO"
+git checkout "$OLD_SHA"
+python3 "$REPO/install.py" --update --force
+echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
+"""
+        path.write_text(script, encoding="utf-8")
+        path.chmod(0o700)
+        return path
+
+    def backup_migration_state(self, old_sha: str) -> Path:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = self.state_dir / "migration" / stamp
+        backup.mkdir(parents=True, exist_ok=True)
+        meta = {
+            "old_sha": old_sha,
+            "hostname": hostname_short(),
+            "links": {},
+        }
+        for name in OLD_ROOT_LINK_NAMES + [".zsh"]:
+            target = self.home / name
+            if target.is_symlink():
+                meta["links"][name] = os.readlink(target)
+            elif target.is_file() and not target.is_symlink():
+                dest = backup / name.lstrip(".")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, dest)
+                meta["links"][name] = f"file:{dest}"
+        (backup / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        return backup
+
+    def clear_stale_root_links(self) -> None:
+        for name in OLD_ROOT_LINK_NAMES + [".zsh"]:
+            target = self.home / name
+            if not target.is_symlink():
+                continue
+            raw = os.readlink(target)
+            if "/home/dot_" in raw:
+                continue
+            if "dotfiles" in raw:
+                log(f"removing stale symlink {target} -> {raw}")
+                target.unlink()
+
+    def unlock_bitwarden(self, *, allow_login: bool = False) -> bool:
         if not have("bw"):
             return False
         if not os.environ.get("BW_SESSION"):
             if not is_tty():
                 return False
+            status = run(["bw", "status"], capture=True, check=False)
+            status_text = status.stdout or ""
+            if allow_login and "unauthenticated" in status_text.lower():
+                log("Bitwarden login")
+                run(["bw", "login"], check=False)
             log("unlocking Bitwarden")
             result = run(["bw", "unlock", "--raw"], capture=True, check=False)
             session = (result.stdout or "").strip()
@@ -270,6 +783,19 @@ class Machine:
             os.environ["BW_SESSION"] = session
         run(["bw", "sync"], check=False, capture=True)
         return True
+
+    def maybe_login_bitwarden(self) -> bool:
+        if not have("bw"):
+            return False
+        if os.environ.get("BW_SESSION"):
+            return self.unlock_bitwarden()
+        if not is_tty():
+            log("Bitwarden CLI present; skip login (no TTY)")
+            return False
+        if not prompt_yes_no("Willst du dich jetzt bei Bitwarden einloggen?", False):
+            log("Bitwarden login skipped")
+            return False
+        return self.unlock_bitwarden(allow_login=True)
 
     def load_vault_password(self) -> None:
         if os.environ.get("ANSIBLE_VAULT_PASSWORD"):
@@ -312,14 +838,16 @@ class Machine:
         limit: str = "",
         force_local: bool = False,
         ask_become: bool = True,
+        extra_vars_file: Optional[Path] = None,
     ) -> None:
         playbook = self.ansible_dir / f"{playbook_name}.yml"
         if not playbook.is_file():
             die(f"playbook not found: {playbook}")
         cmd = ["ansible-playbook", str(playbook), *self.ansible_inventory_args()]
         extra: List[str] = []
-        if self.profile_path.is_file():
-            extra.extend(["--extra-vars", f"@{self.profile_path}"])
+        vars_file = extra_vars_file or self.profile_path
+        if vars_file.is_file():
+            extra.extend(["--extra-vars", f"@{vars_file}"])
         if force_local or not limit:
             cmd.extend(["--connection", "local", "--limit", "localhost"])
             extra.extend(["-e", "target_hosts=localhost"])
@@ -378,15 +906,33 @@ class Machine:
                 "Features (space to toggle)",
             ]
             for item in defaults:
-                cmd.append(f"--selected={item}")
+                if item in FEATURES:
+                    cmd.append(f"--selected={item}")
             cmd.extend(FEATURES)
             result = run(cmd, capture=True, check=False)
             if result.returncode == 0 and (result.stdout or "").strip():
                 return result.stdout.split()
             return list(defaults)
-        print(f"Default features: {' '.join(defaults)}", file=sys.stderr)
-        answer = input("Features (space-separated, empty=defaults): ").strip()
+        print("Features (space-separated). Empty keeps defaults.", file=sys.stderr)
+        for name in FEATURES:
+            mark = "*" if name in defaults else " "
+            help_text = FEATURE_HELP.get(name, "")
+            print(f"  [{mark}] {name:20} {help_text}", file=sys.stderr)
+        answer = input(f"Features [{(' '.join(defaults))}]: ").strip()
         return answer.split() if answer else list(defaults)
+
+    def prompt_ssh_allow_from(self, current: Sequence[str]) -> List[str]:
+        default = " ".join(current)
+        if not is_tty():
+            return list(current)
+        print(
+            "Hosts that may SSH into this machine (same class only). Empty = leave authorized_keys alone.",
+            file=sys.stderr,
+        )
+        answer = input(f"ssh_allow_from [{default}]: ").strip()
+        if not answer:
+            return list(current)
+        return answer.split()
 
     def item_to_dotenv(self, item: dict) -> str:
         chunks: List[str] = []
@@ -401,20 +947,184 @@ class Machine:
             chunks.append(f"{name}={value}")
         return "\n".join(chunks)
 
-    def bw_get_item_dotenv(self, name: str) -> Optional[str]:
+    def bw_get_item_raw(self, name: str) -> Optional[dict]:
         result = run(["bw", "get", "item", name, "--raw"], capture=True, check=False)
         if result.returncode != 0 or not (result.stdout or "").strip():
             return None
         try:
-            item = json.loads(result.stdout)
+            return json.loads(result.stdout)
         except json.JSONDecodeError:
             return None
+
+    def bw_get_item_dotenv(self, name: str) -> Optional[str]:
+        item = self.bw_get_item_raw(name)
+        if not item:
+            return None
         return self.item_to_dotenv(item)
+
+    def bw_upsert_ssh_item(
+        self, item_name: str, public_key: str, private_key: Optional[str] = None
+    ) -> bool:
+        if not have("bw") or not os.environ.get("BW_SESSION"):
+            return False
+        existing = self.bw_get_item_raw(item_name)
+        fields = [
+            {"name": "public_key", "value": public_key, "type": 0},
+        ]
+        if private_key:
+            fields.append({"name": "private_key", "value": private_key, "type": 1})
+        if existing:
+            existing["fields"] = fields
+            payload = json.dumps(existing)
+            encoded = run(
+                ["bw", "encode"], capture=True, input_text=payload, check=False
+            )
+            if encoded.returncode != 0:
+                return False
+            result = run(
+                ["bw", "edit", "item", existing["id"]],
+                capture=True,
+                input_text=encoded.stdout,
+                check=False,
+            )
+            return result.returncode == 0
+        template = {
+            "type": 2,
+            "name": item_name,
+            "notes": f"SSH host key for {hostname_short()}",
+            "secureNote": {"type": 0},
+            "fields": fields,
+        }
+        payload = json.dumps(template)
+        encoded = run(["bw", "encode"], capture=True, input_text=payload, check=False)
+        if encoded.returncode != 0:
+            return False
+        result = run(
+            ["bw", "create", "item"],
+            capture=True,
+            input_text=encoded.stdout,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def ensure_host_ssh_key(self, store_private: bool = False) -> Optional[Path]:
+        private, public = self.host_key_paths()
+        ssh_dir = self.home / ".ssh"
+        ssh_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if not private.is_file():
+            log(f"generating {private}")
+            run(
+                [
+                    "ssh-keygen",
+                    "-t",
+                    "ed25519",
+                    "-f",
+                    str(private),
+                    "-N",
+                    "",
+                    "-C",
+                    f"{getpass.getuser()}@{hostname_short()}",
+                ]
+            )
+        if not public.is_file():
+            log(f"missing public key {public}")
+            return None
+        return public
+
+    def publish_ssh_key(self, store_private: bool = False) -> int:
+        klass = self.ssh_class()
+        if not klass:
+            log("container profile: skip SSH Bitwarden publish")
+            return 0
+        public = self.ensure_host_ssh_key(store_private=store_private)
+        if not public:
+            return 1
+        pub_text = public.read_text(encoding="utf-8").strip()
+        private_text = None
+        if store_private:
+            private, _ = self.host_key_paths()
+            private_text = private.read_text(encoding="utf-8")
+        if not self.unlock_bitwarden():
+            log("Bitwarden locked; key kept local (machine ssh publish later)")
+            return 0
+        item = self.ssh_item_name()
+        if self.bw_upsert_ssh_item(item, pub_text, private_text):
+            log(f"published SSH public key to {item}")
+            return 0
+        log(f"failed to publish SSH key to {item}")
+        return 1
+
+    def restore_ssh_key(self) -> int:
+        if not self.unlock_bitwarden(allow_login=is_tty()):
+            die("Bitwarden locked")
+        item = self.bw_get_item_raw(self.ssh_item_name())
+        if not item:
+            die(f"no Bitwarden item {self.ssh_item_name()}")
+        private_value = ""
+        for field in item.get("fields") or []:
+            if field.get("name") == "private_key":
+                private_value = field.get("value") or ""
+        if not private_value:
+            die("item has no private_key field")
+        private, public = self.host_key_paths()
+        private.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private.write_text(private_value, encoding="utf-8")
+        private.chmod(0o600)
+        run(["ssh-keygen", "-y", "-f", str(private)], check=False)
+        pub = run(["ssh-keygen", "-y", "-f", str(private)], capture=True, check=False)
+        if pub.returncode == 0 and pub.stdout:
+            public.write_text(pub.stdout.strip() + "\n", encoding="utf-8")
+            public.chmod(0o644)
+        log(f"restored {private}")
+        return 0
+
+    def apply_authorized_keys_from_bw(self, allow_from: Sequence[str]) -> None:
+        if not allow_from:
+            return
+        klass = self.ssh_class()
+        if not klass or not self.unlock_bitwarden():
+            log("skip authorized_keys (no class or Bitwarden locked)")
+            return
+        keys: List[str] = []
+        for host in allow_from:
+            item = self.bw_get_item_raw(f"ssh/{klass}/hosts/{host}")
+            if not item:
+                log(f"missing ssh/{klass}/hosts/{host}")
+                continue
+            for field in item.get("fields") or []:
+                if field.get("name") == "public_key" and field.get("value"):
+                    keys.append(str(field["value"]).strip())
+        if not keys:
+            return
+        auth = self.home / ".ssh" / "authorized_keys"
+        auth.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        existing = auth.read_text(encoding="utf-8") if auth.is_file() else ""
+        lines = [line for line in existing.splitlines() if line.strip()]
+        for key in keys:
+            if key not in lines:
+                lines.append(key)
+        auth.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        auth.chmod(0o600)
+        log(f"updated {auth} with {len(keys)} key(s)")
+
+    def maybe_tailscale_login(self, features: Sequence[str]) -> None:
+        if "tailscale" not in features:
+            return
+        if not have("tailscale"):
+            log("tailscale feature set; package install via ansible")
+            return
+        if not is_tty():
+            log("run: sudo tailscale up")
+            return
+        if prompt_yes_no("Tailscale jetzt anmelden?", False):
+            run(["sudo", "tailscale", "up"], check=False)
+        else:
+            log("skipped; later: sudo tailscale up")
 
     def cmd_env_status(self) -> int:
         if not have("bw"):
             die("bw CLI not found; install Bitwarden CLI")
-        if not self.unlock_bitwarden():
+        if not self.unlock_bitwarden(allow_login=is_tty()):
             die("Bitwarden is locked")
         print(f"profile: {self.current_profile()}")
         print(f"host: {hostname_short()}")
@@ -464,7 +1174,7 @@ class Machine:
         if got == 0:
             log("no env items in Bitwarden; left ~/.env unchanged")
             return 0
-        backup_dir = self.home / ".local/share/machine/env-backup"
+        backup_dir = self.state_dir / "env-backup"
         backup_dir.mkdir(parents=True, exist_ok=True)
         if env_path.is_file():
             existing = env_path.read_text(encoding="utf-8")
@@ -479,15 +1189,68 @@ class Machine:
         log(f"wrote {env_path} from {got} Bitwarden item(s)")
         return 0
 
+    def handle_layout_gate(self, *, yes: bool, force: bool = False) -> Optional[str]:
+        """Return 'migrate' if caller should run migrate, None to continue, die on abort."""
+        if not self.needs_layout_migration():
+            return None
+        msg = (
+            "Layout has switched to chezmoi under home/. "
+            "A plain update cannot repair HOME links."
+        )
+        log(msg)
+        if yes or force:
+            die(
+                "non-interactive update blocked; run: machine migrate --yes "
+                "(or ./bootstrap)"
+            )
+        if not is_tty():
+            die("layout migration needed; run: machine migrate")
+        if prompt_yes_no("Volles Setup / Migration jetzt ausführen?", True):
+            return "migrate"
+        die("aborted; when ready: machine migrate  or  ./bootstrap")
+        return None
+
+    def cmd_migrate(self, args: argparse.Namespace) -> int:
+        old_sha = self.git_head() or "unknown"
+        backup = self.backup_migration_state(old_sha)
+        rollback = self.write_rollback_script(old_sha)
+        log(f"migration backup: {backup}")
+        log(f"rollback script: {rollback}")
+        self.clear_stale_root_links()
+        # Reuse setup path
+        return self.cmd_setup(args)
+
     def cmd_setup(self, args: argparse.Namespace) -> int:
-        profile = args.profile or os.environ.get("MACHINE_PROFILE_NAME", "")
+        if getattr(args, "command", "") != "migrate" and self.needs_layout_migration():
+            if args.yes:
+                log("layout migration needed; continuing setup after clearing stale links")
+                old_sha = self.git_head() or "unknown"
+                self.backup_migration_state(old_sha)
+                self.write_rollback_script(old_sha)
+                self.clear_stale_root_links()
+            elif is_tty() and prompt_yes_no(
+                "Alte Root-Symlinks erkannt. Migration jetzt?", True
+            ):
+                return self.cmd_migrate(args)
+            elif not is_tty():
+                die("layout migration needed; run: machine migrate --yes")
+
+        profile = (
+            args.profile
+            or os.environ.get("MACHINE_PROFILE_NAME")
+            or os.environ.get("MACHINE_PROFILE")
+            or ""
+        )
+        # MACHINE_PROFILE may be a name from the shell; ignore path-like leftovers
+        if profile and ("/" in profile or profile.endswith(".yml")):
+            profile = ""
         self.ensure_dirs()
+        saved_profile = self.current_profile() if self.profile_path.is_file() else ""
         if not profile:
-            profile = self.current_profile() if self.profile_path.is_file() else ""
-        if not profile and args.yes:
-            profile = "home-laptop"
-        if not profile:
-            profile = self.prompt_profile(profile)
+            if args.yes:
+                profile = saved_profile or "home-laptop"
+            else:
+                profile = self.prompt_profile(saved_profile)
         if not profile:
             die("profile is required")
 
@@ -497,21 +1260,55 @@ class Machine:
             skip_ansible = True
             ask_become = False
 
-        self.ensure_bootstrap_tools(not args.skip_chezmoi, not skip_ansible)
+        need_bw = (
+            profile != "container"
+            and not in_docker()
+            and os.environ.get("MACHINE_SKIP_BW") != "1"
+        )
+        self.ensure_bootstrap_tools(not args.skip_chezmoi, not skip_ansible, need_bw)
 
         features = list(args.features or [])
         if not features:
-            defaults = DEFAULT_FEATURES.get(profile, ["zsh-full"])
+            defaults = self.saved_features() or self.default_features_for(profile)
+            if saved_profile and saved_profile != profile and not self.saved_features():
+                defaults = self.default_features_for(profile)
+            elif not self.saved_features():
+                defaults = self.default_features_for(profile)
+            else:
+                # Re-run: keep saved answers as defaults (copier-style)
+                defaults = self.saved_features()
             features = defaults if args.yes else self.prompt_features(defaults)
 
-        self.write_profile(profile, features)
+        allow_from = self.saved_ssh_allow_from()
+        if not args.yes and is_tty():
+            allow_from = self.prompt_ssh_allow_from(allow_from)
+
+        self.write_profile(profile, features, allow_from)
         self.write_chezmoi_config(profile)
         log(f"wrote {self.profile_path} (profile={profile})")
+
+        self.maybe_persist_host_profile(
+            profile, features, allow_from, yes=args.yes
+        )
+
+        if need_bw:
+            self.maybe_login_bitwarden()
 
         if skip_ansible or profile == "container":
             log("skipping ansible")
         else:
             self.run_ansible(args.playbook, args.limit, args.local, ask_become)
+
+        if "ssh-host-key" in features and profile != "container":
+            store_private = False
+            if is_tty() and not args.yes:
+                store_private = prompt_yes_no(
+                    "Private Key auch in Bitwarden speichern?", False
+                )
+            self.publish_ssh_key(store_private=store_private)
+            self.apply_authorized_keys_from_bw(allow_from)
+
+        self.maybe_tailscale_login(features)
 
         if not args.skip_chezmoi:
             self.run_chezmoi_apply()
@@ -532,18 +1329,176 @@ class Machine:
         log("setup finished")
         return 0
 
+    def cmd_apply(self, args: argparse.Namespace) -> int:
+        """Apply host profile (repo → local) + ansible; revert local profile on fail."""
+        playbook = getattr(args, "playbook", "workstation") or "workstation"
+        ask_become = not getattr(args, "no_become", False)
+        limit = getattr(args, "limit", "") or ""
+
+        if limit:
+            host_file = self.host_profile_path(limit)
+            if not host_file.is_file():
+                die(
+                    f"missing {host_file.relative_to(self.repo)}; "
+                    f"create it or run setup on that host"
+                )
+            log(f"remote apply using {host_file.relative_to(self.repo)}")
+            try:
+                self.run_ansible(
+                    playbook,
+                    limit=limit,
+                    force_local=False,
+                    ask_become=ask_become,
+                    extra_vars_file=host_file,
+                )
+            except subprocess.CalledProcessError:
+                die(
+                    f"remote apply failed for {limit}; "
+                    "fix host profile / playbook, then re-run. "
+                    "No automatic remote revert (edit git and apply again)."
+                )
+            log("remote apply finished")
+            return 0
+
+        # Local apply: backup first, then repo host file wins
+        backup = self.backup_local_profile()
+        self.sync_host_profile_from_repo()
+        if not self.profile_path.is_file():
+            die("no local profile; run machine setup first")
+
+        profile = self.current_profile()
+        if profile == "container":
+            log("container profile: nothing to apply")
+            return 0
+
+        features = self.saved_features()
+        allow_from = self.saved_ssh_allow_from()
+        try:
+            self.ensure_bootstrap_tools(False, True, False)
+            self.run_ansible(playbook, force_local=True, ask_become=ask_become)
+            if "ssh-host-key" in features:
+                self.apply_authorized_keys_from_bw(allow_from)
+            if not self.health_check_after_apply():
+                raise RuntimeError("health check failed")
+        except (subprocess.CalledProcessError, RuntimeError) as exc:
+            log(f"apply failed: {exc}")
+            if backup:
+                self.restore_local_profile(backup)
+                log("re-running ansible with restored profile")
+                try:
+                    self.run_ansible(
+                        playbook, force_local=True, ask_become=ask_become
+                    )
+                except subprocess.CalledProcessError:
+                    log("revert ansible also failed; check the host manually")
+            die("apply aborted and local profile restored where possible")
+        log("apply finished")
+        return 0
+
+    def cmd_rollback(self) -> int:
+        path = self.state_dir / "rollback.sh"
+        if not path.is_file():
+            die(
+                f"missing {path}; only created by machine migrate. "
+                "Manual revert: git checkout <old-sha> && python3 install.py --update --force"
+            )
+        log(f"running {path}")
+        run(["bash", str(path)])
+        return 0
+
+    def cmd_profile(self, args: argparse.Namespace) -> int:
+        if args.action == "show":
+            repo_path = self.host_profile_path()
+            print(f"hostname: {hostname_short()}")
+            print(f"local: {self.profile_path}")
+            if self.profile_path.is_file():
+                print(self.profile_path.read_text(encoding="utf-8"), end="")
+            else:
+                print("(missing)")
+            print(f"repo: {repo_path}")
+            if repo_path.is_file():
+                print(repo_path.read_text(encoding="utf-8"), end="")
+                same = profile_fingerprint(self.profile_path) == profile_fingerprint(
+                    repo_path
+                )
+                print(f"in sync: {same}")
+            else:
+                print("(missing — run: machine profile save)")
+            return 0
+        if args.action == "sync":
+            changed = self.sync_host_profile_from_repo()
+            log("synced" if changed else "already in sync (or no repo host file)")
+            return 0
+        if args.action == "save":
+            if not self.profile_path.is_file():
+                die("no local profile; run machine setup first")
+            self.save_host_profile_to_repo(
+                self.current_profile(),
+                self.saved_features(),
+                self.saved_ssh_allow_from(),
+            )
+            return 0
+        die(f"unknown profile action: {args.action}")
+        return 1
+
     def cmd_update(self, args: argparse.Namespace) -> int:
+        gate = self.handle_layout_gate(yes=False, force=args.force)
+        if gate == "migrate":
+            migrate_args = argparse.Namespace(
+                profile=None,
+                features=None,
+                yes=False,
+                local=False,
+                limit="",
+                playbook="workstation",
+                skip_ansible=False,
+                skip_chezmoi=False,
+                no_become=False,
+                command="migrate",
+            )
+            return self.cmd_migrate(migrate_args)
+
         if self.git_dirty() and not args.force:
             run(["git", "-C", str(self.repo), "status", "--short"])
             die(f"uncommitted changes in {self.repo} (commit/stash, or --force)")
         run(["git", "-C", str(self.repo), "pull", "--ff-only"])
+
+        gate = self.handle_layout_gate(yes=False, force=args.force)
+        if gate == "migrate":
+            migrate_args = argparse.Namespace(
+                profile=None,
+                features=None,
+                yes=False,
+                local=False,
+                limit="",
+                playbook="workstation",
+                skip_ansible=False,
+                skip_chezmoi=False,
+                no_become=False,
+                command="migrate",
+            )
+            return self.cmd_migrate(migrate_args)
+
+        profile_changed = self.sync_host_profile_from_repo()
+
         if self.chezmoi_config.is_file() and have("chezmoi"):
             self.run_chezmoi_apply()
         self.cmd_env_pull()
         if self.update_marker.exists():
             self.update_marker.unlink()
-        if args.system:
-            self.run_ansible("workstation", force_local=True, ask_become=True)
+
+        if profile_changed or args.system:
+            apply_args = argparse.Namespace(
+                limit="",
+                playbook="workstation",
+                no_become=False,
+            )
+            log(
+                "applying system changes"
+                + (" (host profile changed)" if profile_changed else " (--system)")
+            )
+            return self.cmd_apply(apply_args)
+
         log("update finished")
         return 0
 
@@ -557,6 +1512,15 @@ class Machine:
             print("last check: never")
         marker = "set" if self.update_marker.is_file() else "unset"
         print(f"update marker: {marker}")
+        print(f"needs migration: {self.needs_layout_migration()}")
+        repo_host = self.host_profile_path()
+        print(f"repo host profile: {repo_host}")
+        print(f"  exists: {repo_host.is_file()}")
+        if repo_host.is_file() and self.profile_path.is_file():
+            print(
+                "  in sync: "
+                f"{profile_fingerprint(repo_host) == profile_fingerprint(self.profile_path)}"
+            )
         if self.profile_path.is_file():
             print(f"profile file: {self.profile_path}")
             print(self.profile_path.read_text(encoding="utf-8"), end="")
@@ -583,11 +1547,14 @@ class Machine:
         files = [
             "home",
             "ansible",
+            "machine",
             "bootstrap",
             "install.py",
             "Readme.md",
             ".gitignore",
             ".pre-commit-config.yaml",
+            "tests",
+            ".github",
         ]
         run(["git", "-C", str(self.repo), "add", *files])
         commit = ["git", "-C", str(self.repo), "commit"]
@@ -607,6 +1574,17 @@ class Machine:
         run(["ansible-vault", args.action, args.file])
         return 0
 
+    def cmd_ssh(self, args: argparse.Namespace) -> int:
+        if args.action == "publish":
+            store = bool(args.private)
+            if not args.yes and is_tty() and not store:
+                store = prompt_yes_no("Private Key auch speichern?", False)
+            return self.publish_ssh_key(store_private=store)
+        if args.action == "restore":
+            return self.restore_ssh_key()
+        die(f"unknown ssh action: {args.action}")
+        return 1
+
 
 def completion_zsh() -> str:
     profiles = " ".join(PROFILES)
@@ -617,8 +1595,13 @@ _machine() {{
   local -a commands
   commands=(
     'setup:Bootstrap this host or push via --limit'
-    'update:git pull, chezmoi apply, Bitwarden env'
+    'migrate:Backup old layout, write rollback.sh, run setup'
+    'rollback:Undo migrate via ~/.local/share/machine/rollback.sh'
+    'update:git pull, sync host profile, chezmoi, optional apply'
+    'apply:sync host profile and run ansible (revert on fail)'
+    'profile:show/sync/save versioned host profile'
     'env:pull or status for ~/.env from Bitwarden'
+    'ssh:publish or restore host SSH keys'
     'status:git / chezmoi / profile'
     'commit:commit tracked changes'
     'push:git push'
@@ -626,9 +1609,11 @@ _machine() {{
     'completion:print shell completion script'
     'help:show help'
   )
-  local -a env_cmds inventory_cmds shells
+  local -a env_cmds inventory_cmds ssh_cmds profile_cmds shells
   env_cmds=(pull status)
   inventory_cmds=(edit encrypt decrypt view)
+  ssh_cmds=(publish restore)
+  profile_cmds=(show sync save)
   shells=(bash zsh)
 
   _arguments -C \\
@@ -641,7 +1626,7 @@ _machine() {{
       ;;
     args)
       case $words[1] in
-        setup)
+        setup|migrate)
           _arguments \\
             '--profile[machine profile]:profile:({profiles})' \\
             '--features[features]:features:({features})' \\
@@ -656,8 +1641,20 @@ _machine() {{
         update)
           _arguments '--system[run ansible workstation]' '--force[ignore dirty git]'
           ;;
+        apply)
+          _arguments \\
+            '--limit[ansible host]:host:' \\
+            '--playbook[playbook]:playbook:({playbooks})' \\
+            '--no-become'
+          ;;
+        profile)
+          _describe -t profile_cmds 'profile command' profile_cmds
+          ;;
         env)
           _describe -t env_cmds 'env command' env_cmds
+          ;;
+        ssh)
+          _describe -t ssh_cmds 'ssh command' ssh_cmds
           ;;
         inventory)
           if (( CURRENT == 2 )); then
@@ -688,12 +1685,12 @@ def completion_bash() -> str:
   COMPREPLY=()
   cur="${{COMP_WORDS[COMP_CWORD]}}"
   prev="${{COMP_WORDS[COMP_CWORD-1]}}"
-  local commands="setup update env status commit push inventory completion help"
+  local commands="setup migrate rollback update apply profile env ssh status commit push inventory completion help"
   cmd=""
   i=1
   while [[ $i -lt $COMP_CWORD ]]; do
     case "${{COMP_WORDS[i]}}" in
-      setup|update|env|status|commit|push|inventory|completion|help)
+      setup|migrate|rollback|update|apply|profile|env|ssh|status|commit|push|inventory|completion|help)
         cmd="${{COMP_WORDS[i]}}"
         break
         ;;
@@ -705,7 +1702,7 @@ def completion_bash() -> str:
     return 0
   fi
   case "$cmd" in
-    setup)
+    setup|migrate)
       case "$prev" in
         --profile) COMPREPLY=( $(compgen -W "{profiles}" -- "$cur") ) ;;
         --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
@@ -713,7 +1710,15 @@ def completion_bash() -> str:
       esac
       ;;
     update) COMPREPLY=( $(compgen -W "--system --force" -- "$cur") ) ;;
+    apply)
+      case "$prev" in
+        --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
+        *) COMPREPLY=( $(compgen -W "--limit --playbook --no-become" -- "$cur") ) ;;
+      esac
+      ;;
+    profile) COMPREPLY=( $(compgen -W "show sync save" -- "$cur") ) ;;
     env) COMPREPLY=( $(compgen -W "pull status" -- "$cur") ) ;;
+    ssh) COMPREPLY=( $(compgen -W "publish restore" -- "$cur") ) ;;
     inventory)
       if [[ "$prev" == "inventory" ]]; then
         COMPREPLY=( $(compgen -W "edit encrypt decrypt view" -- "$cur") )
@@ -729,6 +1734,18 @@ complete -F _machine machine
 """
 
 
+def _add_setup_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile", choices=PROFILES)
+    parser.add_argument("--features", nargs="*", default=None, choices=FEATURES)
+    parser.add_argument("--yes", "--non-interactive", action="store_true")
+    parser.add_argument("--local", action="store_true")
+    parser.add_argument("--limit", default="")
+    parser.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
+    parser.add_argument("--skip-ansible", action="store_true")
+    parser.add_argument("--skip-chezmoi", action="store_true")
+    parser.add_argument("--no-become", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="machine", description="Dotfiles and host setup"
@@ -736,22 +1753,47 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     setup = sub.add_parser("setup", help="Bootstrap this host or --limit HOST")
-    setup.add_argument("--profile", choices=PROFILES)
-    setup.add_argument("--features", nargs="*", default=None, choices=FEATURES)
-    setup.add_argument("--yes", "--non-interactive", action="store_true")
-    setup.add_argument("--local", action="store_true")
-    setup.add_argument("--limit", default="")
-    setup.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
-    setup.add_argument("--skip-ansible", action="store_true")
-    setup.add_argument("--skip-chezmoi", action="store_true")
-    setup.add_argument("--no-become", action="store_true")
+    _add_setup_flags(setup)
 
-    update = sub.add_parser("update", help="git pull, chezmoi apply, Bitwarden ~/.env")
+    migrate = sub.add_parser(
+        "migrate", help="Backup old layout, write rollback.sh, run setup"
+    )
+    _add_setup_flags(migrate)
+
+    sub.add_parser(
+        "rollback",
+        help="Undo migrate via ~/.local/share/machine/rollback.sh",
+    )
+
+    update = sub.add_parser(
+        "update",
+        help="git pull, sync host profile, chezmoi; apply if profile changed",
+    )
     update.add_argument("--system", action="store_true")
     update.add_argument("--force", action="store_true")
 
+    apply_p = sub.add_parser(
+        "apply",
+        help="Sync host profile + ansible (local revert on fail; --limit for remote)",
+    )
+    apply_p.add_argument("--limit", default="")
+    apply_p.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
+    apply_p.add_argument("--no-become", action="store_true")
+
+    profile_p = sub.add_parser(
+        "profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
+    )
+    profile_p.add_argument(
+        "action", nargs="?", choices=["show", "sync", "save"], default="show"
+    )
+
     env = sub.add_parser("env", help="Bitwarden -> ~/.env")
     env.add_argument("action", nargs="?", choices=["pull", "status"], default="pull")
+
+    ssh = sub.add_parser("ssh", help="publish/restore per-host SSH keys")
+    ssh.add_argument("action", choices=["publish", "restore"])
+    ssh.add_argument("--private", action="store_true", help="also store private key")
+    ssh.add_argument("--yes", action="store_true")
 
     sub.add_parser("status", help="git / chezmoi / profile")
 
@@ -785,12 +1827,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     cli = Machine()
     if args.command == "setup":
         return cli.cmd_setup(args)
+    if args.command == "migrate":
+        return cli.cmd_migrate(args)
+    if args.command == "rollback":
+        return cli.cmd_rollback()
     if args.command == "update":
         return cli.cmd_update(args)
+    if args.command == "apply":
+        return cli.cmd_apply(args)
+    if args.command == "profile":
+        return cli.cmd_profile(args)
     if args.command == "env":
         if args.action == "status":
             return cli.cmd_env_status()
         return cli.cmd_env_pull()
+    if args.command == "ssh":
+        return cli.cmd_ssh(args)
     if args.command == "status":
         return cli.cmd_status()
     if args.command == "commit":
@@ -810,4 +1862,3 @@ if __name__ == "__main__":
         raise SystemExit(130)
     except subprocess.CalledProcessError as exc:
         die(f"command failed: {' '.join(map(str, exc.cmd))} (exit {exc.returncode})")
-

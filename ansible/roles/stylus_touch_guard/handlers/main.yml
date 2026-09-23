@@ -1,0 +1,9 @@
+---
+- name: Restart stylus-touch-guard
+  ansible.builtin.systemd:
+    name: stylus-touch-guard.service
+    state: restarted
+    daemon_reload: true
+  when:
+    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'

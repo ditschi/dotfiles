@@ -14,7 +14,10 @@ RUN apt-get update \
         unzip \
         ansible-core \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsLS get.chezmoi.io | sh -s -- -b /usr/local/bin \
+    && curl -fsSL get.chezmoi.io | sh -s -- -b /usr/local/bin \
+    && mkdir -p /usr/share/ansible/collections \
+    && ansible-galaxy collection install ansible.posix \
+        -p /usr/share/ansible/collections \
     && useradd --create-home --shell /bin/bash tester \
     && echo 'tester ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/tester \
     && chmod 0440 /etc/sudoers.d/tester

@@ -29,11 +29,18 @@ Vom Laptop auf ein erreichbares Gerät:
 | Aktion | Befehl |
 | --- | --- |
 | Alias ändern, für alle Hosts | Datei in `$HOME` editieren (trifft Git), `machine commit -m "..." && machine push` |
-| Andere Hosts nachziehen | `machine update` |
-| Pakete/System | `machine update --system` |
-| Status / Drift | `machine status` |
+| Andere Hosts nachziehen | `machine update` (zieht Host-Profil, apply bei Drift) |
+| Pakete/System | `machine update --system` oder `machine apply` |
+| Host-Profil remote anwenden | `machine apply --limit homeserver` |
+| Volles Setup / Features ändern | `machine setup` (gespeicherte Antworten als Default) |
+| Host-Profil ins Repo | `machine profile save` |
+| Layout von `main` → chezmoi | `machine migrate` |
+| Migration rückgängig | `machine rollback` |
+| Status / Drift | `machine status` / `machine profile show` |
 | Inventar (Vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` aus Bitwarden | `machine env pull` |
+| SSH-Pubkey nach Bitwarden | `machine ssh publish` |
+| Collections installieren | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
 Uncommittete lokale Änderungen blockieren `machine update` (außer `--force`).
 
@@ -44,17 +51,52 @@ Uncommittete lokale Änderungen blockieren `machine update` (außer `--force`).
 ```
 bootstrap                 # ruft machine setup
 home/                     # chezmoi-Source, mode=symlink
+machine/
+  hosts/                  # versionierte Host-Antworten (<hostname>.yml)
+  ssh_keys/               # öffentliche Host-Keys für ssh_allow_from
 ansible/
-  workstation.yml         # Pakete + user tools, local oder SSH
-  homelab.yml             # Server-Stacks (Stub zum Portieren)
+  workstation.yml         # Pakete + user_tools + monitoring + sshd + stylus
+  homelab.yml             # Stub — Stacks leben im Homelab-Repo
+  requirements.yml        # ansible.posix (+ Galaxy-Hinweise)
   inventory/local.yml     # immer localhost
   inventory/hosts.example.yml
   profiles/               # Feature-Defaults pro Profil
+  roles/
+    monitoring/           # Telegraf-Agent-Configs
+    sshd_home/            # Port 5115 + authorized_keys
+    stylus_touch_guard/   # Yoga Stylus/Touch (ex helpers-and-automation)
+    user_tools/           # starship, fonts
+docs/                     # Deprecation-Hinweise u.ä.
+tests/                    # unit + Docker/CI
 ```
 
-Profil liegt in `~/.config/machine/profile.yml` (nicht im Git). Chezmoi-Config: `~/.config/chezmoi/chezmoi.yaml`.
+Profil-Cache: `~/.config/machine/profile.yml` (nicht im Git).  
+**Source of Truth pro Host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — Features und `ssh_allow_from`. Chezmoi-Config: `~/.config/chezmoi/chezmoi.yaml`.
+
+### Host-Profile versionieren und pushen
+
+```bash
+# Auf dem Host einmalig (oder nach Feature-Änderung):
+machine setup                 # interaktiv
+machine profile save          # → machine/hosts/$(hostname -s).yml
+machine commit -m "host profile" && machine push
+
+# Laptop: Server darf jetzt von diesem Laptop SSH
+# edit machine/hosts/homeserver.yml → ssh_allow_from: [dieser-hostname]
+machine commit -m "allow laptop on homeserver" && machine push
+
+# Auf dem Server:
+machine update                # pull → sync profile → apply bei Drift
+
+# Oder vom Laptop ohne Login auf dem Server:
+machine apply --limit homeserver
+```
+
+`machine apply` lokal: bei Ansible-/Health-Fail wird die vorherige `profile.yml` wiederhergestellt und Ansible erneut mit dem alten Stand gefahren. Remote (`--limit`): kein Auto-Revert — Profil im Git korrigieren und erneut apply.
 
 ## Secrets / Bitwarden
+
+Die **CLI** (`bw`) wird beim Setup auf echten Hosts nach `~/.local/bin` installiert (nicht das Snap der GUI). Interaktiv fragt der Wizard nur: „Willst du dich jetzt einloggen?“ Ohne Login bleiben `~/.env` und Key-Uploads aus.
 
 ### Inventar
 
@@ -101,14 +143,88 @@ machine env status    # welche Items existieren
 machine env pull      # ~/.env schreiben
 ```
 
+### SSH-Keys (Home / Work getrennt)
+
+Pro Host optional `~/.ssh/id_ed25519_<hostname>`. Public Key als Textfeld `public_key` in Bitwarden:
+
+- Home: `ssh/home/hosts/<hostname>`
+- Work: `ssh/work/hosts/<hostname>`
+
+In `profile.yml` steuert `ssh_allow_from:` welche Hostnamen (gleiche Klasse) auf **diesen** Rechner sshen dürfen. Ansible/Setup holt nur Public Keys derselben Klasse. Privatschlüssel nur nach expliziter Nachfrage.
+
+```bash
+machine ssh publish           # Public Key hochladen
+machine ssh publish --private # inkl. Privatschlüssel
+machine ssh restore           # Privatschlüssel zurückholen
+```
 
 ## Profile / Features
 
 `work-laptop`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (Auswahl im Bootstrap): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `monitoring`
+Features (Auswahl im Bootstrap, Antworten in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `work-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `sshd-home`
+
+Home-Profile bekommen `monitoring` (Telegraf) defaultmäßig. Config-Namen stehen **nur** in `ansible/group_vars/all.yml` → `monitoring_by_profile` und werden in `tasks/resolve_monitoring.yml` aufgelöst (nicht in der CLI). Bevorzugt Remote-Configs über `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` aus Bitwarden; sonst Dateien unter `ansible/roles/monitoring/files/`.
+
+Yoga/Convertible (L13): Feature `stylus-touch-guard` → Rolle `stylus_touch_guard`. Früher: [helpers-and-automation](https://github.com/ditschi/helpers-and-automation) (**archived / deprecated**).
+
+SSH Home-Fleet: Feature `sshd-home` → Port **5115** (`roles/sshd_home`) + `authorized_keys` aus [`machine/ssh_keys/`](machine/ssh_keys/) für Einträge in `ssh_allow_from`.
+
+### Galaxy vs. lokale Rollen
+
+| Bedarf | Entscheidung |
+| --- | --- |
+| Telegraf | **Lokal** `roles/monitoring` (Influx-Env + `machine/*` Fragmente). Galaxy `dj-wasabi.telegraf` / `boutetnico.telegraf` möglich, aber schwerer und weniger passend. |
+| Docker | **apt** `docker.io` / `compose-v2`. Später optional `geerlingguy.docker` oder Collection `community.docker`. |
+| SSH keys/port | **Lokal** `sshd_home` + Collection `ansible.posix` (`authorized_key`). |
+| Stylus | **Lokal** (ex helpers-and-automation). |
+
+Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
+
+### Architektur (kurz)
+
+| Schicht | Zuständig |
+| --- | --- |
+| `machine/hosts/*.yml` | Gewünschter Zustand (profile, features) |
+| `machine` CLI | Orchestrator, UX, Secrets, Git, chezmoi-Aufruf |
+| chezmoi | Dotfiles |
+| Ansible | apt, `/etc`, Telegraf, user_tools, stylus-touch-guard, sshd-home |
+| Inventory | Nur Erreichbarkeit — keine Features |
 
 Work-Module (`01_work.zsh`) werden nur bei Profil `work-laptop` verlinkt.
+
+## Migration (von altem Root-Layout)
+
+Auf einem Host, der noch `main` mit Symlinks nach `~/dotfiles/.zshrc` hat:
+
+```bash
+cd ~/dotfiles
+git fetch && git checkout feat/machine-setup   # oder main, sobald gemerged
+./bootstrap          # oder: machine migrate
+```
+
+`machine update` erkennt kaputte/alte Root-Symlinks und fragt interaktiv, ob ein volles Setup laufen soll. Nicht-interaktiv bricht es mit dem Hinweis `machine migrate --yes` ab.
+
+Sicherung unter `~/.local/share/machine/migration/<stamp>/`. Rollback:
+
+```bash
+machine rollback
+# oder: ~/.local/share/machine/rollback.sh
+```
+
+Hosts, die **schon** auf dem chezmoi-Layout laufen, brauchen keine zweite Migration — nur `machine update` bzw. bei Feature-Änderungen `machine setup`.
+
+## Revert
+
+```bash
+~/.local/share/machine/rollback.sh
+# oder manuell:
+cd ~/dotfiles
+git checkout <alter-sha>          # steht in rollback.sh / migration meta.json
+python3 install.py --update --force
+```
+
+Das `install.py` **dieses** Commits legt die Root-Symlinks wieder an. Danach läuft der alte Update-Pfad.
 
 ## Alte Befehle
 
@@ -116,18 +232,38 @@ Work-Module (`01_work.zsh`) werden nur bei Profil `work-laptop` verlinkt.
 
 ## Tests
 
-Presets werden in zwei Schichten geprüft, lokal und in CI:
-
-- **Unit (schnell, ohne Docker):** Paketlisten aus `ansible/profiles/*` gegen `group_vars`, CLI-Help/Completion, optional Abgleich mit `ansible-playbook ansible/dump_packages.yml` wenn Ansible installiert ist.
-- **Docker-Matrix:** Container als `home-laptop`, `work-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`. Chezmoi-Symlinks und Ignore-Regeln (Work-Zsh nur auf Work, kein p10k auf Zero). Ein zusätzlicher Job installiert die **rpi-zero**-APT-Pakete.
+### Automatisch
 
 ```bash
 ./tests/run.sh                  # unit + Docker-Smoke (ohne volles APT)
-pytest tests/unit -q            # nur Logik
-pytest tests/integration -m docker and not apt
-pytest tests/integration -m apt # Pi-Zero-Pakete im Container
+pytest tests/unit -q            # Logik inkl. apply-revert, Host-YAML-Schema
+pytest tests/integration -m "docker and not apt and not apt_gnome"
+pytest tests/integration -m apt # rpi-zero APT + machine/hosts/ci-rpi-zero.yml
+pytest tests/integration -m apt_gnome  # home-laptop APT + ci-home-laptop.yml (~10+ min)
+ansible-lint ansible/*.yml      # lokal / CI bei Änderungen unter ansible/ oder machine/hosts/
+ansible-galaxy collection install -r ansible/requirements.yml
 ```
 
-Molecule bleibt sinnvoll für später portierte Homelab-Rollen. Für den ganzen `machine`-Bootstrap (Chezmoi + Profile + CLI) ist **pytest + testinfra + Docker** der bessere Fit: eine Parametrisierung statt eines Molecule-Szenarios pro Profil, gleiche Tests lokal und in GitHub Actions.
+CI (`.github/workflows/verify.yml`):
 
-Pi-Hardware wird nicht emuliert; `rpi-zero` prüft dasselbe Preset auf amd64-Debian/Ubuntu. Bitwarden wird in CI nicht aufgerufen (`bw` fehlt, `~/.env`-Sync wird übersprungen).
+- Unit + Ansible-Syntax (amd64 + arm)
+- Docker-Matrix aller Profile (ohne APT)
+- Clean-Install aus `machine/hosts/ci-container.yml`
+- APT + Ansible aus `machine/hosts/ci-rpi-zero.yml` und `ci-home-laptop.yml`
+- **ansible-lint + Host-YAML-Validierung** nur wenn `ansible/**` oder `machine/hosts/**` (o.ä.) geändert
+
+**Bewusst nicht in CI:** echte Pi-Hardware, Kerberos gegen Work-KDC, Cosmic-Session, echtes `bw login`/2FA, echtes Influx.
+
+### Manuell (Compose)
+
+```bash
+docker compose -f tests/compose.yaml run --rm shell
+# im Container:
+./bootstrap --profile home-laptop          # Fragen
+./bootstrap --profile home-laptop --yes    # still
+machine setup                              # vorherige Antworten vorausgewählt
+machine update                             # nur nachziehen
+
+docker compose -f tests/compose.yaml run --rm migrate
+# präparierte alte Symlinks → Prompt „Setup wechseln?“ / machine migrate
+```

@@ -1,0 +1,54 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: |
+          pip install -r tests/requirements.txt
+          pip install ansible-core
+      - name: Unit tests and CLI smoke
+        run: |
+          python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          pytest tests/unit -q
+      - name: Ansible syntax
+        run: ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml
+
+  presets:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [home-laptop, work-laptop, home-server, rpi, rpi-zero, container]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+      - name: Docker profile smoke
+        run: |
+          pytest -q -m "docker and not apt" \
+            "tests/integration/test_profile_containers.py::test_profile_dotfiles[${{ matrix.profile }}]"
+
+  apt-rpi-zero:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+      - name: Pi Zero package install in container
+        run: pytest tests/integration -q -m apt

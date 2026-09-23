@@ -1,0 +1,13 @@
+---
+- name: Dump resolved package list
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Resolve package list from profile features
+      ansible.builtin.include_tasks: tasks/resolve_packages.yml
+
+    - name: Write package list as JSON
+      ansible.builtin.copy:
+        dest: "{{ dump_path }}"
+        content: "{{ install_packages | default([]) | unique | list | to_nice_json }}"

@@ -176,7 +176,7 @@ if command -v lua >/dev/null 2>&1 || command -v luajit >/dev/null 2>&1; then
     fi
 fi
 
-DOTFILES_DIR="/home/$(whoami)/dotfiles/.zsh/config"
+DOTFILES_DIR="${HOME}/.zsh/config"
 if [ -d "$DOTFILES_DIR" ]; then
     . "$DOTFILES_DIR/00_alias.zsh"
     . "$DOTFILES_DIR/01_env.zsh"
@@ -184,15 +184,25 @@ if [ -d "$DOTFILES_DIR" ]; then
     . "$DOTFILES_DIR/06_history.zsh"
 
     unset WORK_SETUP
-    if [[ $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
+    _machine_profile=""
+    if [ -f "${HOME}/.config/machine/profile.yml" ]; then
+        _machine_profile="$(awk '$1=="profile:" {print $2; exit}' "${HOME}/.config/machine/profile.yml")"
+    fi
+    if [ "$_machine_profile" = "work-laptop" ] || [[ $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
         export WORK_SETUP="true"
         . "$DOTFILES_DIR/01_work_tools.zsh"
         . "$DOTFILES_DIR/01_work.zsh"
     fi
+    unset _machine_profile
 fi
 
 if [ -f "$HOME/.dotfiles-update-available" ]; then
-    echo "Hint: Dotfiles update available (run: dotfiles-update-apply)"
+    echo "Hint: Dotfiles update available (run: machine update)"
+fi
+
+# Tab completion for machine (Python CLI)
+if command -v machine >/dev/null 2>&1; then
+    eval "$(machine completion bash 2>/dev/null)"
 fi
 
 ## <!-- BEGIN ANSIBLE MANAGED BLOCK - update colors -->

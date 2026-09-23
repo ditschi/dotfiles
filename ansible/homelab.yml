@@ -1,0 +1,14 @@
+---
+# Homelab stacks (Traefik, monitoring, Unifi, ...).
+# Port roles from ansible_infrastructure here incrementally.
+# Typical use from a control node:
+#   machine setup --limit homeserver --playbook homelab
+- name: Homelab services
+  hosts: servers
+  gather_facts: true
+  tasks:
+    - name: Homelab playbook is a stub until roles are ported
+      ansible.builtin.debug:
+        msg: >-
+          Homelab role import is not wired yet. Use workstation.yml for
+          machine bootstrap; add roles under ansible/roles and list them here.

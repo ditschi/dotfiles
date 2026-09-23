@@ -166,11 +166,9 @@ sde() {
 #   commandhistory.d/<repo>_zsh - per-repo persistent zsh history
 #   /usr/share/autojump/      - autojump data from host (ro)
 #
-# Setup: install.py handles everything:
-#   1. apt install zsh deps (idempotent, cached debs)
-#   2. backup bind-mounted files to ~/.dotfiles-backup/<timestamp>/ (preserves company configs)
-#   3. symlink dotfiles (full zsh/bash setup from repo)
-#   4. seed zinit cache from host on first run
+# Setup: install.py maps to `machine setup --profile container` inside Docker:
+#   1. ansible workstation packages for zsh (idempotent)
+#   2. chezmoi symlink apply from host-mounted repo
 # ---------------------------------------------------------------------------
 sdx() {
     local repo_name

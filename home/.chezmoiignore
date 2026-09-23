@@ -1,0 +1,18 @@
+{{- /* Patterns match target names, not source names. */ -}}
+__pycache__
+**/*.pyc
+
+{{- if ne .profile "work-laptop" }}
+.zsh/config/01_work.zsh
+.zsh/config/01_work_tools.zsh
+.zsh/config/01_work_ldap_helpers.zsh
+{{- end }}
+
+{{- if or (eq .profile "rpi-zero") (eq .profile "container") }}
+.p10k.zsh
+.config/starship.toml
+{{- end }}
+
+{{- if eq .profile "container" }}
+.config/systemd
+{{- end }}

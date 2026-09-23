@@ -1,0 +1,3 @@
+---
+# Installs user-space tools that apt does not cover well (starship, nerd fonts).
+# Skip when already present so updates stay fast.

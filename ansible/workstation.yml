@@ -1,0 +1,25 @@
+---
+- name: Workstation packages
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [packages]
+  tasks:
+    - name: Resolve package list from profile features
+      ansible.builtin.include_tasks: tasks/resolve_packages.yml
+
+    - name: Install workstation packages
+      ansible.builtin.apt:
+        name: "{{ install_packages | unique }}"
+        state: present
+        cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+      when: ansible_os_family == "Debian" and (install_packages | default([])) | length > 0
+
+- name: User-level tools
+  hosts: "{{ target_hosts | default('all') }}"
+  become: false
+  gather_facts: true
+  tags: [user_tools]
+  roles:
+    - role: user_tools
+      when: profile | default('') != 'container'

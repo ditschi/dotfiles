@@ -1,0 +1,813 @@
+#!/usr/bin/env python3
+"""Unified machine CLI: local setup, control-node push, Bitwarden env sync."""
+from __future__ import annotations
+
+import argparse
+import atexit
+import getpass
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Sequence
+
+PROFILES = [
+    "work-laptop",
+    "home-laptop",
+    "home-server",
+    "rpi",
+    "rpi-zero",
+    "container",
+]
+FEATURES = [
+    "zsh-full",
+    "fonts",
+    "starship",
+    "desktop",
+    "gnome",
+    "cosmic",
+    "docker",
+    "kerberos",
+    "monitoring",
+]
+PLAYBOOKS = ["workstation", "homelab", "site"]
+DEFAULT_FEATURES = {
+    "work-laptop": ["zsh-full", "fonts", "starship", "desktop", "gnome", "kerberos"],
+    "home-laptop": ["zsh-full", "fonts", "starship", "desktop", "gnome"],
+    "home-server": ["zsh-full", "docker"],
+    "rpi": ["zsh-full", "docker"],
+    "rpi-zero": ["zsh-full"],
+    "container": ["zsh-full"],
+}
+ENV_CLASS = {
+    "work-laptop": "work",
+    "rpi": "iot",
+    "rpi-zero": "iot",
+    "container": "",
+}
+
+
+def log(message: str) -> None:
+    print(f"machine: {message}")
+
+
+def die(message: str, code: int = 1) -> None:
+    print(f"machine: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def have(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def is_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def run(
+    args: Sequence[str],
+    *,
+    cwd: Optional[Path] = None,
+    check: bool = True,
+    capture: bool = False,
+    input_text: Optional[str] = None,
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        list(args),
+        cwd=str(cwd) if cwd else None,
+        check=check,
+        text=True,
+        input=input_text,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+    )
+
+
+def detect_repo() -> Path:
+    env = os.environ.get("DOTFILES_REPO")
+    if env:
+        candidate = Path(env).expanduser()
+        if (candidate / ".git").is_dir() and (candidate / "home").is_dir():
+            return candidate
+    here = Path(__file__).resolve()
+    for parent in [here.parent, *here.parents]:
+        if (parent / ".git").is_dir() and (parent / "home").is_dir():
+            return parent
+    fallback = Path.home() / "dotfiles"
+    if (fallback / ".git").is_dir():
+        return fallback
+    die("cannot find dotfiles repository")
+    raise AssertionError
+
+
+def hostname_short() -> str:
+    return socket.gethostname().split(".")[0]
+
+
+def read_profile_value(path: Path, key: str) -> str:
+    if not path.is_file():
+        return ""
+    prefix = f"{key}:"
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith(prefix):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+class Machine:
+    def __init__(self) -> None:
+        self.home = Path.home()
+        self.repo = detect_repo()
+        self.chezmoi_source = self.repo / "home"
+        self.ansible_dir = self.repo / "ansible"
+        self.profile_path = Path(
+            os.environ.get("MACHINE_PROFILE", self.home / ".config/machine/profile.yml")
+        )
+        self.chezmoi_config = Path(
+            os.environ.get("CHEZMOI_CONFIG", self.home / ".config/chezmoi/chezmoi.yaml")
+        )
+        self.update_marker = Path(
+            os.environ.get(
+                "DOTFILES_UPDATE_MARKER", self.home / ".dotfiles-update-available"
+            )
+        )
+        self.update_last_check = Path(
+            os.environ.get(
+                "DOTFILES_UPDATE_LAST_CHECK",
+                self.home / ".dotfiles-update-last-check",
+            )
+        )
+        self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
+        os.environ["DOTFILES_REPO"] = str(self.repo)
+
+    def current_profile(self) -> str:
+        return read_profile_value(self.profile_path, "profile") or "home-laptop"
+
+    def env_item_names(self) -> List[str]:
+        profile = self.current_profile()
+        env_class = ENV_CLASS.get(profile, "home")
+        if not env_class:
+            return []
+        return [
+            f"env/{env_class}-shared",
+            f"env/profiles/{profile}",
+            f"env/hosts/{hostname_short()}",
+        ]
+
+    def ensure_dirs(self) -> None:
+        (self.home / ".config/machine").mkdir(parents=True, exist_ok=True)
+        (self.home / ".config/chezmoi").mkdir(parents=True, exist_ok=True)
+        (self.home / ".local/bin").mkdir(parents=True, exist_ok=True)
+
+    def write_profile(self, profile: str, features: Sequence[str]) -> None:
+        self.ensure_dirs()
+        feats = list(features) or ["zsh-full"]
+        lines = ["---", f"profile: {profile}", "features:"]
+        lines.extend(f"  - {feat}" for feat in feats)
+        self.profile_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.profile_path.chmod(0o600)
+
+    def write_chezmoi_config(self, profile: str) -> None:
+        self.ensure_dirs()
+        text = (
+            f"sourceDir: {self.chezmoi_source}\n"
+            "mode: symlink\n"
+            "data:\n"
+            f"    profile: {profile}\n"
+        )
+        self.chezmoi_config.write_text(text, encoding="utf-8")
+        self.chezmoi_config.chmod(0o600)
+
+    def git_dirty(self) -> bool:
+        result = run(
+            ["git", "-C", str(self.repo), "status", "--porcelain"],
+            capture=True,
+            check=False,
+        )
+        return bool((result.stdout or "").strip())
+
+    def passwordless_sudo(self) -> bool:
+        if os.geteuid() == 0:
+            return True
+        if not have("sudo"):
+            return False
+        result = run(["sudo", "-n", "true"], check=False, capture=True)
+        return result.returncode == 0
+
+    def install_pkg_if_missing(self, package: str) -> bool:
+        check = run(["dpkg", "-s", package], check=False, capture=True)
+        if check.returncode == 0:
+            return True
+        root = os.geteuid() == 0
+        can_sudo = root or self.passwordless_sudo()
+        if not can_sudo and not is_tty():
+            log(f"missing {package} (no TTY for sudo); skip apt")
+            return False
+        apt = ["apt-get", "update", "-qq"]
+        install = ["apt-get", "install", "-y", "--no-install-recommends", package]
+        if not root:
+            if not have("sudo"):
+                log(f"missing {package} and no sudo; skip")
+                return False
+            prefix = ["sudo"]
+            if can_sudo:
+                prefix.append("-n")
+            apt = [*prefix, *apt]
+            install = [*prefix, *install]
+        try:
+            run(apt)
+            run(install)
+        except subprocess.CalledProcessError:
+            return False
+        return True
+
+    def ensure_bootstrap_tools(self, need_chezmoi: bool, need_ansible: bool) -> None:
+        if not have("git") and not self.install_pkg_if_missing("git"):
+            die("git is required")
+        if not have("python3") and not self.install_pkg_if_missing("python3"):
+            die("python3 is required")
+        if not have("curl"):
+            self.install_pkg_if_missing("curl")
+        local_bin = self.home / ".local/bin"
+        local_bin.mkdir(parents=True, exist_ok=True)
+        os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+        if need_chezmoi and not have("chezmoi"):
+            log("installing chezmoi to ~/.local/bin")
+            script = run(["curl", "-fsLS", "get.chezmoi.io"], capture=True).stdout
+            run(["sh", "-s", "--", "-b", str(local_bin)], input_text=script)
+        if need_ansible and not have("ansible-playbook"):
+            if have("pipx"):
+                log("installing ansible-core via pipx")
+                run(["pipx", "install", "ansible-core"])
+                return
+            if self.install_pkg_if_missing("ansible-core"):
+                return
+            if self.install_pkg_if_missing("ansible"):
+                return
+            self.install_pkg_if_missing("pipx")
+            if have("pipx"):
+                run(["pipx", "install", "ansible-core"])
+            else:
+                die("could not install ansible-core")
+
+    def unlock_bitwarden(self) -> bool:
+        if not have("bw"):
+            return False
+        if not os.environ.get("BW_SESSION"):
+            if not is_tty():
+                return False
+            log("unlocking Bitwarden")
+            result = run(["bw", "unlock", "--raw"], capture=True, check=False)
+            session = (result.stdout or "").strip()
+            if result.returncode != 0 or not session:
+                return False
+            os.environ["BW_SESSION"] = session
+        run(["bw", "sync"], check=False, capture=True)
+        return True
+
+    def load_vault_password(self) -> None:
+        if os.environ.get("ANSIBLE_VAULT_PASSWORD"):
+            return
+        pw_file = os.environ.get("ANSIBLE_VAULT_PASSWORD_FILE")
+        if pw_file and Path(pw_file).is_file():
+            return
+        password = ""
+        if self.unlock_bitwarden():
+            result = run(
+                ["bw", "get", "password", self.vault_item],
+                capture=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                password = (result.stdout or "").strip()
+            else:
+                log(f"Bitwarden item '{self.vault_item}' not found")
+        if not password and is_tty():
+            password = getpass.getpass("Ansible vault password (empty to skip): ")
+        if password:
+            handle = tempfile.NamedTemporaryFile("w", delete=False)
+            handle.write(password)
+            handle.close()
+            os.chmod(handle.name, 0o600)
+            os.environ["ANSIBLE_VAULT_PASSWORD_FILE"] = handle.name
+            atexit.register(lambda: Path(handle.name).unlink(missing_ok=True))
+
+    def ansible_inventory_args(self) -> List[str]:
+        args = ["-i", str(self.ansible_dir / "inventory/local.yml")]
+        hosts = self.ansible_dir / "inventory/hosts.yml"
+        if hosts.is_file():
+            args.extend(["-i", str(hosts)])
+            self.load_vault_password()
+        return args
+
+    def run_ansible(
+        self,
+        playbook_name: str,
+        limit: str = "",
+        force_local: bool = False,
+        ask_become: bool = True,
+    ) -> None:
+        playbook = self.ansible_dir / f"{playbook_name}.yml"
+        if not playbook.is_file():
+            die(f"playbook not found: {playbook}")
+        cmd = ["ansible-playbook", str(playbook), *self.ansible_inventory_args()]
+        extra: List[str] = []
+        if self.profile_path.is_file():
+            extra.extend(["--extra-vars", f"@{self.profile_path}"])
+        if force_local or not limit:
+            cmd.extend(["--connection", "local", "--limit", "localhost"])
+            extra.extend(["-e", "target_hosts=localhost"])
+        else:
+            cmd.extend(["--limit", limit])
+        if ask_become and playbook_name != "homelab" and is_tty():
+            cmd.append("--ask-become-pass")
+        cmd.extend(extra)
+        log(f"ansible-playbook {playbook_name}.yml")
+        run(cmd, cwd=self.ansible_dir)
+
+    def run_chezmoi_apply(self) -> None:
+        if not have("chezmoi"):
+            die("chezmoi is not installed")
+        if not self.chezmoi_config.is_file():
+            die(f"missing {self.chezmoi_config} (run: machine setup)")
+        run(
+            [
+                "chezmoi",
+                "apply",
+                "--source",
+                str(self.chezmoi_source),
+                "--destination",
+                str(self.home),
+                "--config",
+                str(self.chezmoi_config),
+            ]
+        )
+
+    def prompt_profile(self, current: str) -> str:
+        default = current or "home-laptop"
+        if have("gum"):
+            selected = run(
+                [
+                    "gum",
+                    "choose",
+                    "--header",
+                    "Machine profile",
+                    f"--selected={default}",
+                    *PROFILES,
+                ],
+                capture=True,
+            ).stdout.strip()
+            return selected or default
+        print(f"Profiles: {' '.join(PROFILES)}", file=sys.stderr)
+        answer = input(f"Profile [{default}]: ").strip()
+        return answer or default
+
+    def prompt_features(self, defaults: Sequence[str]) -> List[str]:
+        if have("gum"):
+            cmd = [
+                "gum",
+                "choose",
+                "--no-limit",
+                "--header",
+                "Features (space to toggle)",
+            ]
+            for item in defaults:
+                cmd.append(f"--selected={item}")
+            cmd.extend(FEATURES)
+            result = run(cmd, capture=True, check=False)
+            if result.returncode == 0 and (result.stdout or "").strip():
+                return result.stdout.split()
+            return list(defaults)
+        print(f"Default features: {' '.join(defaults)}", file=sys.stderr)
+        answer = input("Features (space-separated, empty=defaults): ").strip()
+        return answer.split() if answer else list(defaults)
+
+    def item_to_dotenv(self, item: dict) -> str:
+        chunks: List[str] = []
+        notes = (item.get("notes") or "").replace("\r\n", "\n").strip("\n")
+        if notes.strip():
+            chunks.append(notes.rstrip())
+        for field in item.get("fields") or []:
+            name = (field.get("name") or "").strip()
+            value = field.get("value")
+            if not name or value in (None, ""):
+                continue
+            chunks.append(f"{name}={value}")
+        return "\n".join(chunks)
+
+    def bw_get_item_dotenv(self, name: str) -> Optional[str]:
+        result = run(["bw", "get", "item", name, "--raw"], capture=True, check=False)
+        if result.returncode != 0 or not (result.stdout or "").strip():
+            return None
+        try:
+            item = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        return self.item_to_dotenv(item)
+
+    def cmd_env_status(self) -> int:
+        if not have("bw"):
+            die("bw CLI not found; install Bitwarden CLI")
+        if not self.unlock_bitwarden():
+            die("Bitwarden is locked")
+        print(f"profile: {self.current_profile()}")
+        print(f"host: {hostname_short()}")
+        found = missing = 0
+        for name in self.env_item_names():
+            result = run(["bw", "get", "item", name], capture=True, check=False)
+            if result.returncode == 0:
+                print(f"found   {name}")
+                found += 1
+            else:
+                print(f"missing {name}")
+                missing += 1
+        print(
+            f"found={found} missing={missing} (missing is ok until you create the item)"
+        )
+        return 0
+
+    def cmd_env_pull(self) -> int:
+        if not have("bw"):
+            log("bw not installed; skip ~/.env sync")
+            return 0
+        if self.current_profile() == "container":
+            log("container profile: skip ~/.env sync")
+            return 0
+        if not self.unlock_bitwarden():
+            log("Bitwarden locked; skip ~/.env sync")
+            return 0
+        run(["bw", "sync"], check=False, capture=True)
+        names = self.env_item_names()
+        chunks = [
+            "# generated by machine env pull — do not commit",
+            "# overlay extra keys in ~/.env.local (not managed)",
+            "# Bitwarden items (later files/fields win):",
+        ]
+        chunks.extend(f"# - {name}" for name in names)
+        chunks.append("")
+        got = 0
+        for name in names:
+            body = self.bw_get_item_dotenv(name)
+            if body:
+                chunks.extend(["", f"# --- {name} ---", body.rstrip("\n")])
+                got += 1
+                log(f"env from {name}")
+            else:
+                log(f"no Bitwarden item {name} (skip)")
+        env_path = self.home / ".env"
+        if got == 0:
+            log("no env items in Bitwarden; left ~/.env unchanged")
+            return 0
+        backup_dir = self.home / ".local/share/machine/env-backup"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        if env_path.is_file():
+            existing = env_path.read_text(encoding="utf-8")
+            header = existing.splitlines()[:3]
+            if "# generated by machine env pull" not in header:
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                bak = backup_dir / f"env.{stamp}"
+                shutil.copy2(env_path, bak)
+                log(f"backed up existing ~/.env to {bak}")
+        env_path.write_text("\n".join(chunks).rstrip() + "\n", encoding="utf-8")
+        env_path.chmod(0o600)
+        log(f"wrote {env_path} from {got} Bitwarden item(s)")
+        return 0
+
+    def cmd_setup(self, args: argparse.Namespace) -> int:
+        profile = args.profile or os.environ.get("MACHINE_PROFILE_NAME", "")
+        self.ensure_dirs()
+        if not profile:
+            profile = self.current_profile() if self.profile_path.is_file() else ""
+        if not profile and args.yes:
+            profile = "home-laptop"
+        if not profile:
+            profile = self.prompt_profile(profile)
+        if not profile:
+            die("profile is required")
+
+        skip_ansible = args.skip_ansible
+        ask_become = not args.no_become
+        if profile == "container":
+            skip_ansible = True
+            ask_become = False
+
+        self.ensure_bootstrap_tools(not args.skip_chezmoi, not skip_ansible)
+
+        features = list(args.features or [])
+        if not features:
+            defaults = DEFAULT_FEATURES.get(profile, ["zsh-full"])
+            features = defaults if args.yes else self.prompt_features(defaults)
+
+        self.write_profile(profile, features)
+        self.write_chezmoi_config(profile)
+        log(f"wrote {self.profile_path} (profile={profile})")
+
+        if skip_ansible or profile == "container":
+            log("skipping ansible")
+        else:
+            self.run_ansible(args.playbook, args.limit, args.local, ask_become)
+
+        if not args.skip_chezmoi:
+            self.run_chezmoi_apply()
+            if have("systemctl") and profile != "container":
+                run(["systemctl", "--user", "daemon-reload"], check=False, capture=True)
+                run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "enable",
+                        "--now",
+                        "dotfiles-update-check.timer",
+                    ],
+                    check=False,
+                    capture=True,
+                )
+            self.cmd_env_pull()
+        log("setup finished")
+        return 0
+
+    def cmd_update(self, args: argparse.Namespace) -> int:
+        if self.git_dirty() and not args.force:
+            run(["git", "-C", str(self.repo), "status", "--short"])
+            die(f"uncommitted changes in {self.repo} (commit/stash, or --force)")
+        run(["git", "-C", str(self.repo), "pull", "--ff-only"])
+        if self.chezmoi_config.is_file() and have("chezmoi"):
+            self.run_chezmoi_apply()
+        self.cmd_env_pull()
+        if self.update_marker.exists():
+            self.update_marker.unlink()
+        if args.system:
+            self.run_ansible("workstation", force_local=True, ask_become=True)
+        log("update finished")
+        return 0
+
+    def cmd_status(self) -> int:
+        print(f"repo: {self.repo}")
+        run(["git", "-C", str(self.repo), "status", "-sb"])
+        if self.update_last_check.is_file():
+            stamp = self.update_last_check.read_text(encoding="utf-8").strip()
+            print(f"last check: {stamp}")
+        else:
+            print("last check: never")
+        marker = "set" if self.update_marker.is_file() else "unset"
+        print(f"update marker: {marker}")
+        if self.profile_path.is_file():
+            print(f"profile file: {self.profile_path}")
+            print(self.profile_path.read_text(encoding="utf-8"), end="")
+        else:
+            print("profile file: missing")
+        if have("chezmoi") and self.chezmoi_config.is_file():
+            print("chezmoi status:")
+            run(
+                [
+                    "chezmoi",
+                    "status",
+                    "--source",
+                    str(self.chezmoi_source),
+                    "--destination",
+                    str(self.home),
+                    "--config",
+                    str(self.chezmoi_config),
+                ],
+                check=False,
+            )
+        return 0
+
+    def cmd_commit(self, args: argparse.Namespace) -> int:
+        files = [
+            "home",
+            "ansible",
+            "bootstrap",
+            "install.py",
+            "Readme.md",
+            ".gitignore",
+            ".pre-commit-config.yaml",
+        ]
+        run(["git", "-C", str(self.repo), "add", *files])
+        commit = ["git", "-C", str(self.repo), "commit"]
+        if args.message:
+            commit.extend(["-m", args.message])
+        run(commit)
+        return 0
+
+    def cmd_push(self) -> int:
+        run(["git", "-C", str(self.repo), "push"])
+        return 0
+
+    def cmd_inventory(self, args: argparse.Namespace) -> int:
+        if not have("ansible-vault"):
+            die("ansible-vault not found")
+        self.load_vault_password()
+        run(["ansible-vault", args.action, args.file])
+        return 0
+
+
+def completion_zsh() -> str:
+    profiles = " ".join(PROFILES)
+    features = " ".join(FEATURES)
+    playbooks = " ".join(PLAYBOOKS)
+    return f"""#compdef machine
+_machine() {{
+  local -a commands
+  commands=(
+    'setup:Bootstrap this host or push via --limit'
+    'update:git pull, chezmoi apply, Bitwarden env'
+    'env:pull or status for ~/.env from Bitwarden'
+    'status:git / chezmoi / profile'
+    'commit:commit tracked changes'
+    'push:git push'
+    'inventory:ansible-vault edit/encrypt'
+    'completion:print shell completion script'
+    'help:show help'
+  )
+  local -a env_cmds inventory_cmds shells
+  env_cmds=(pull status)
+  inventory_cmds=(edit encrypt decrypt view)
+  shells=(bash zsh)
+
+  _arguments -C \\
+    '1: :->command' \\
+    '*:: :->args'
+
+  case $state in
+    command)
+      _describe -t commands 'command' commands
+      ;;
+    args)
+      case $words[1] in
+        setup)
+          _arguments \\
+            '--profile[machine profile]:profile:({profiles})' \\
+            '--features[features]:features:({features})' \\
+            '--yes[non-interactive]' \\
+            '--local[force local connection]' \\
+            '--limit[ansible host]:host:' \\
+            '--playbook[playbook]:playbook:({playbooks})' \\
+            '--skip-ansible' \\
+            '--skip-chezmoi' \\
+            '--no-become'
+          ;;
+        update)
+          _arguments '--system[run ansible workstation]' '--force[ignore dirty git]'
+          ;;
+        env)
+          _describe -t env_cmds 'env command' env_cmds
+          ;;
+        inventory)
+          if (( CURRENT == 2 )); then
+            _describe -t inventory_cmds 'inventory action' inventory_cmds
+          else
+            _files
+          fi
+          ;;
+        commit)
+          _arguments '-m[message]:message:'
+          ;;
+        completion)
+          _describe -t shells 'shell' shells
+          ;;
+      esac
+      ;;
+  esac
+}}
+compdef _machine machine
+"""
+
+
+def completion_bash() -> str:
+    profiles = " ".join(PROFILES)
+    playbooks = " ".join(PLAYBOOKS)
+    return f"""_machine() {{
+  local cur prev cmd i
+  COMPREPLY=()
+  cur="${{COMP_WORDS[COMP_CWORD]}}"
+  prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+  local commands="setup update env status commit push inventory completion help"
+  cmd=""
+  i=1
+  while [[ $i -lt $COMP_CWORD ]]; do
+    case "${{COMP_WORDS[i]}}" in
+      setup|update|env|status|commit|push|inventory|completion|help)
+        cmd="${{COMP_WORDS[i]}}"
+        break
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  if [[ -z "$cmd" ]]; then
+    COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    return 0
+  fi
+  case "$cmd" in
+    setup)
+      case "$prev" in
+        --profile) COMPREPLY=( $(compgen -W "{profiles}" -- "$cur") ) ;;
+        --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
+        *) COMPREPLY=( $(compgen -W "--profile --features --yes --local --limit --playbook --skip-ansible --skip-chezmoi --no-become" -- "$cur") ) ;;
+      esac
+      ;;
+    update) COMPREPLY=( $(compgen -W "--system --force" -- "$cur") ) ;;
+    env) COMPREPLY=( $(compgen -W "pull status" -- "$cur") ) ;;
+    inventory)
+      if [[ "$prev" == "inventory" ]]; then
+        COMPREPLY=( $(compgen -W "edit encrypt decrypt view" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -f -- "$cur") )
+      fi
+      ;;
+    commit) COMPREPLY=( $(compgen -W "-m" -- "$cur") ) ;;
+    completion) COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") ) ;;
+  esac
+}}
+complete -F _machine machine
+"""
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="machine", description="Dotfiles and host setup"
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    setup = sub.add_parser("setup", help="Bootstrap this host or --limit HOST")
+    setup.add_argument("--profile", choices=PROFILES)
+    setup.add_argument("--features", nargs="*", default=None, choices=FEATURES)
+    setup.add_argument("--yes", "--non-interactive", action="store_true")
+    setup.add_argument("--local", action="store_true")
+    setup.add_argument("--limit", default="")
+    setup.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
+    setup.add_argument("--skip-ansible", action="store_true")
+    setup.add_argument("--skip-chezmoi", action="store_true")
+    setup.add_argument("--no-become", action="store_true")
+
+    update = sub.add_parser("update", help="git pull, chezmoi apply, Bitwarden ~/.env")
+    update.add_argument("--system", action="store_true")
+    update.add_argument("--force", action="store_true")
+
+    env = sub.add_parser("env", help="Bitwarden -> ~/.env")
+    env.add_argument("action", nargs="?", choices=["pull", "status"], default="pull")
+
+    sub.add_parser("status", help="git / chezmoi / profile")
+
+    commit = sub.add_parser("commit", help="commit tracked changes")
+    commit.add_argument("-m", "--message")
+
+    sub.add_parser("push", help="git push")
+
+    inventory = sub.add_parser("inventory", help="ansible-vault helpers")
+    inventory.add_argument("action", choices=["edit", "encrypt", "decrypt", "view"])
+    inventory.add_argument("file")
+
+    completion = sub.add_parser("completion", help="print bash/zsh completion")
+    completion.add_argument("shell", choices=["bash", "zsh"])
+
+    sub.add_parser("help", help="show help")
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.command or args.command == "help":
+        parser.print_help()
+        return 0
+    if args.command == "completion":
+        script = completion_zsh() if args.shell == "zsh" else completion_bash()
+        print(script, end="")
+        return 0
+
+    cli = Machine()
+    if args.command == "setup":
+        return cli.cmd_setup(args)
+    if args.command == "update":
+        return cli.cmd_update(args)
+    if args.command == "env":
+        if args.action == "status":
+            return cli.cmd_env_status()
+        return cli.cmd_env_pull()
+    if args.command == "status":
+        return cli.cmd_status()
+    if args.command == "commit":
+        return cli.cmd_commit(args)
+    if args.command == "push":
+        return cli.cmd_push()
+    if args.command == "inventory":
+        return cli.cmd_inventory(args)
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except subprocess.CalledProcessError as exc:
+        die(f"command failed: {' '.join(map(str, exc.cmd))} (exit {exc.returncode})")
+

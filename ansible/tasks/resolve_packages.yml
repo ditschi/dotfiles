@@ -1,0 +1,35 @@
+---
+- name: Start from slim Pi Zero package set
+  ansible.builtin.set_fact:
+    install_packages: "{{ packages_rpi_zero }}"
+  when: profile | default('') == 'rpi-zero'
+
+- name: Start from base package set
+  ansible.builtin.set_fact:
+    install_packages: "{{ packages_base }}"
+  when: profile | default('') != 'rpi-zero'
+
+- name: Add zsh packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_zsh }}"
+  when: "'zsh-full' in (features | default([]))"
+
+- name: Add host packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_host }}"
+  when: profile | default('') not in ['rpi-zero', 'container']
+
+- name: Add desktop packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_desktop }}"
+  when: "'desktop' in (features | default([]))"
+
+- name: Add GNOME packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_gnome }}"
+  when: "'gnome' in (features | default([]))"
+
+- name: Add work packages
+  ansible.builtin.set_fact:
+    install_packages: "{{ install_packages + packages_work }}"
+  when: profile | default('') == 'work-laptop'

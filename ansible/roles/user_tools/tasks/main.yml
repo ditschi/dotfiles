@@ -1,0 +1,59 @@
+---
+- name: Ensure ~/.local/bin exists
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin"
+    state: directory
+    mode: "0755"
+
+- name: Check starship
+  ansible.builtin.command: starship --version
+  register: starship_version
+  changed_when: false
+  failed_when: false
+
+- name: Install starship into ~/.local/bin
+  ansible.builtin.shell: |
+    curl -fsSL https://starship.rs/install.sh | sh -s -- -y --bin-dir "{{ ansible_env.HOME }}/.local/bin"
+  args:
+    executable: /bin/bash
+  when:
+    - "'starship' in (features | default([]))"
+    - starship_version.rc != 0
+
+- name: Ensure user font directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts"
+    state: directory
+    mode: "0755"
+  when: "'fonts' in (features | default([]))"
+
+- name: Check MesloLGS NF
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts/MesloLGS NF Regular.ttf"
+  register: meslo_font
+  when: "'fonts' in (features | default([]))"
+
+- name: Download MesloLGS NF for p10k
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ ansible_env.HOME }}/.local/share/fonts/{{ item.name }}"
+    mode: "0644"
+  loop:
+    - name: MesloLGS NF Regular.ttf
+      url: https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf
+    - name: MesloLGS NF Bold.ttf
+      url: https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf
+    - name: MesloLGS NF Italic.ttf
+      url: https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf
+    - name: MesloLGS NF Bold Italic.ttf
+      url: https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf
+  when:
+    - "'fonts' in (features | default([]))"
+    - not (meslo_font.stat.exists | default(false))
+
+- name: Rebuild font cache
+  ansible.builtin.command: fc-cache -f
+  changed_when: false
+  when:
+    - "'fonts' in (features | default([]))"
+    - not (meslo_font.stat.exists | default(false))

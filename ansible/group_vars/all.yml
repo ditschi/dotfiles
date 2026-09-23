@@ -1,0 +1,48 @@
+---
+packages_base:
+  - curl
+  - git
+  - wget
+  - tmux
+  - tree
+  - htop
+  - python3
+  - python3-venv
+  - python-is-python3
+
+packages_zsh:
+  - autojump
+  - fzf
+  - jq
+  - luajit
+  - tmux
+  - zsh
+
+packages_host:
+  - eza
+  - fonts-firacode
+  - fonts-powerline
+  - git-lfs
+  - gnupg
+  - libsecret-tools
+  - pipx
+
+packages_desktop: []
+
+packages_gnome:
+  - flameshot
+  - gnome-shell-extension-manager
+  - gnome-shell-extension-prefs
+  - guake
+
+packages_work:
+  - ldap-utils
+
+packages_rpi_zero:
+  - curl
+  - git
+  - tmux
+  - zsh
+  - fzf
+
+apt_cache_valid_time: 3600

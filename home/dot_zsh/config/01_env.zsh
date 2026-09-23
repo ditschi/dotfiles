@@ -5,6 +5,8 @@ export PATH="$PATH:$HOME/.local/bin"
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 
+# ~/.env is generated from Bitwarden (`machine env pull`).
+# Host-only extras: ~/.env.local (not overwritten).
 # load customization
 # enable nullglob in a shell-agnostic way
 [[ -n "$ZSH_VERSION" ]] && setopt nullglob || shopt -s nullglob

@@ -1,0 +1,8 @@
+---
+profile: home-laptop
+features:
+  - zsh-full
+  - fonts
+  - starship
+  - desktop
+  - gnome

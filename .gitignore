@@ -1,3 +1,11 @@
 venv/
+tests/.venv/
+.pytest_cache/
 *.orig
 __pycache__/
+.vaultPW
+.vault-pass
+*.retry
+ansible/inventory/hosts.yml
+ansible/inventory/hosts.local.yml
+ansible/group_vars/**/vault.yml

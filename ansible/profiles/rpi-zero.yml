@@ -1,0 +1,4 @@
+---
+profile: rpi-zero
+features:
+  - zsh-full

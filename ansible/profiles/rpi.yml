@@ -1,0 +1,5 @@
+---
+profile: rpi
+features:
+  - zsh-full
+  - docker

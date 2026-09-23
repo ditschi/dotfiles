@@ -11,7 +11,7 @@ dotfiles-setup() {
         return 1
     fi
     if ! command -v python3 >/dev/null 2>&1; then
-        echo "python3 not found; cannot run install.py"
+        echo "python3 not found; cannot run machine setup"
         return 1
     fi
 
@@ -22,8 +22,7 @@ dotfiles-setup() {
             return 1
         fi
     fi
-
-    python3 "$DOTFILES_REPO/install.py" --new-host "$@"
+    "$DOTFILES_REPO/bootstrap" "$@"
 }
 
 dotfiles-update-check() {
@@ -71,41 +70,18 @@ dotfiles-update-status() {
 }
 
 dotfiles-update() {
-    if [ ! -d "$DOTFILES_REPO/.git" ]; then
-        echo "Dotfiles repo not found at: $DOTFILES_REPO"
+    if command -v machine >/dev/null 2>&1; then
+        machine update "$@"
+    elif [ -x "$DOTFILES_REPO/home/dot_local/bin/executable_machine" ]; then
+        "$DOTFILES_REPO/home/dot_local/bin/executable_machine" update "$@"
+    else
+        echo "machine helper not found; run $DOTFILES_REPO/bootstrap"
         return 1
     fi
-
-    pull_output=$(git -C "$DOTFILES_REPO" pull --ff-only 2>&1)
-    pull_exit=$?
-    echo "$pull_output"
-    if [ $pull_exit -ne 0 ]; then
-        echo "Dotfiles pull failed."
-        return 1
-    fi
-
-    if echo "$pull_output" | grep -q "Already up to date"; then
-        rm -f "$DOTFILES_UPDATE_MARKER"
-        echo "Dotfiles already up to date. Skipping install step."
-        return 0
-    fi
-
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "python3 not found; cannot run install.py"
-        return 1
-    fi
-
-    if python3 "$DOTFILES_REPO/install.py" --update --non-interactive; then
-        rm -f "$DOTFILES_UPDATE_MARKER"
-        echo "Dotfiles updated and re-linked successfully. Restarting shell..."
-        exec "$(ps -p $$ -o comm= | tr -d ' ')"
-    fi
-
-    echo "Dotfiles install step failed."
-    return 1
 }
 
 alias update-dotfiles="dotfiles-update"
+alias machine-setup="dotfiles-setup"
 alias update-system="get-password | sudo -S apt update && sudo apt upgrade -y"
 
 alias docker-compose='docker compose'

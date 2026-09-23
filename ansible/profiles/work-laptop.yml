@@ -1,0 +1,9 @@
+---
+profile: work-laptop
+features:
+  - zsh-full
+  - fonts
+  - starship
+  - desktop
+  - gnome
+  - kerberos

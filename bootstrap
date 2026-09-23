@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# One-command bootstrap. Run on the new host, or with --limit from a control node.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MACHINE="$ROOT/home/dot_local/bin/executable_machine"
+
+if [[ ! -x "$MACHINE" ]]; then
+    chmod +x "$MACHINE"
+fi
+
+exec "$MACHINE" setup "$@"

@@ -28,24 +28,11 @@ autoload -Uz _zinit
 ### End of Zinit's installer chunk
 
 
-# cheheck for dofile update
-if [ -d ~/dotfiles ]; then
-    pushd ~/dotfiles > /dev/null
-    current_branch=$(git rev-parse --abbrev-ref HEAD)
-    git fetch
-    if [ $(git rev-list --count HEAD..origin/$current_branch) -gt 0 ]; then
-        echo "Hint: There are updates for dotfiles available."
-    fi
-    popd > /dev/null
-fi
-
 export ZSH=~/.zsh
-# Requirements:
-#  sudo apt install zsh git wget autojump fzf fonts-powerline fonts-firacode
 source $ZSH/config/00_LOADER.zsh
 
 if [ -f "$HOME/.dotfiles-update-available" ]; then
-    echo "Hint: Dotfiles update available (run: dotfiles-update-apply)"
+    echo "Hint: Dotfiles update available (run: machine update)"
 fi
 
 # Local zshrc extension point

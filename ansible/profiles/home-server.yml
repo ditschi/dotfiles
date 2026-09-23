@@ -1,0 +1,5 @@
+---
+profile: home-server
+features:
+  - zsh-full
+  - docker

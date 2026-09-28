@@ -39,11 +39,11 @@
     sui = submodule update --init --recursive
     ssr = submodule status --recursive
     # removes a submodule and makes the files native in the repo
-    rmsm = !sh -c 'd="$1"; mv -- "$d" "${d}_tmp" && git submodule deinit -- "$d" && git rm --cached -- "$d" && mv -- "${d}_tmp" "$d" && git add -- "$d"' -
+    rmsm = "!f() { d=\"$1\"; mv -- \"$d\" \"${d}_tmp\" && git submodule deinit -- \"$d\" && git rm --cached -- \"$d\" && mv -- \"${d}_tmp\" \"$d\" && git add -- \"$d\"; }; f"
 
     ca = commit --amend -C HEAD
     # Amend and add back the files that were part of HEAD, forwarding args; works in sh/bash/zsh
-    caa = !sh -c 'git diff-tree --no-commit-id --name-only -z -r HEAD | xargs -0 -I{} git add -- "{}"; git commit --amend "$@" -C HEAD' -
+    caa = "!f() { git diff-tree --root --no-commit-id --name-only -z -r HEAD | xargs -0 -I{} git add -- \"{}\"; git commit --amend \"$@\" -C HEAD; }; f"
     caaa = commit -a --amend -C HEAD
     # "p" variants reuse the base alias and then push with --force-with-lease
     cap = !sh -c 'git ca "$@" && git push --force-with-lease' -
@@ -59,24 +59,25 @@
     unstage = "reset HEAD"
     lol = "log --graph --decorate --pretty=oneline --abbrev-commit --all"
     cob = !sh -c 'git fetch -q && git checkout -b "$1" origin/"$1"' -
-    coc = !sh -c 'git checkout -f -- "$1" && git pull origin && git submodule update --init --recursive && git clean -df -f && git submodule foreach "git clean -df -f" --recursive && git status' - # CheckOut Clean
-    tidy = !git checkout -f ; git clean -dff ; git submodule foreach 'git checkout -f && git clean -dff' ; git submodule update --init --recursive ; git clean -dff ; git status
-    fresh = !git reset --hard ; git clean -dff ; git submodule foreach 'git reset --hard && git clean -dff' ; git submodule update --init --recursive ;
+    # CheckOut Clean
+    coc = "!f() { git checkout -f -- \"$1\" && git pull origin && git submodule update --init --recursive && git clean -df -f && git submodule foreach --recursive 'git clean -df -f' && git status; }; f"
+    tidy = "!git checkout -f; git clean -dff; git submodule foreach 'git checkout -f && git clean -dff'; git submodule update --init --recursive; git clean -dff; git status"
+    fresh = "!git reset --hard; git clean -dff; git submodule foreach 'git reset --hard && git clean -dff'; git submodule update --init --recursive"
     # update branch from origin -- no need to check out
     u2d = !sh -c 'git fetch origin -u "$1":"$1"' -
     # updates all branches from remote (faster: fetch all and prune)
     uab = !sh -c 'git fetch --all --prune' -
     # deletes all local branches not on server
-    clean-branches = !sh -c 'git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format="%(refname:short)|%(upstream:track)" refs/heads/ | while IFS="|" read -r name track; do case "$track" in *gone*) echo "$name";; esac; done); if [ -n "$TODELETE" ]; then echo "$TODELETE" | xargs git branch -d; fi' -
+    clean-branches = "!f() { git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format='%(refname:short)|%(upstream:track)' refs/heads/ | while IFS='|' read -r name track; do case \"$track\" in *gone*) echo \"$name\";; esac; done); if [ -n \"$TODELETE\" ]; then echo \"$TODELETE\" | xargs git branch -d; fi; }; f"
     clb = clean-branches
     # deletes all local tags and re-fetches from origin (safe loop to handle spaces)
-    clean-tags = !sh -c 'git tag -l | while IFS= read -r t; do [ -n "$t" ] && git tag -d "$t"; done; git fetch --tags' -
+    clean-tags = "!f() { git tag -l | while IFS= read -r t; do [ -n \"$t\" ] && git tag -d \"$t\"; done; git fetch --tags; }; f"
     clt = clean-tags
-    reset-to-origin = !git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
+    reset-to-origin = "!git fetch origin && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
     # rework-commit-messages: replace leading issue IDs in commit messages by rebasing.
     # Usage: git rework-commit-messages [BASE_BRANCH]
     rework-commit-messages = "!bash -c 'BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E \\\"s/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/\\\"); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" \"$BASE_BRANCH\"' -"
-    branch-change-issue-id = !sh -c 'NEW_ISSUE_ID="$1"; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE "[A-Z]{2,}-[0-9]+"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E "s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/"); git checkout -b "$NEW_BRANCH_NAME"' -
+    branch-change-issue-id = "!f() { NEW_ISSUE_ID=\"$1\"; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE '[A-Z]{2,}-[0-9]+'); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E \"s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/\"); git checkout -b \"$NEW_BRANCH_NAME\"; }; f"
 
     smlog = log --full-diff -p
     slmog = smlog
@@ -88,7 +89,7 @@
     le = log --oneline --decorate
     filelog = log -u
     fl = log -u
-    bclean = !sh -c 'BR=${1:-develop}; LIST=$(git branch --merged "$BR" | awk '\''{$1=$1; print}'\'' | grep -v "^$BR$"); if [ -n "$LIST" ]; then echo "$LIST" | xargs git branch -d; fi' -
+    bclean = "!f() { BR=${1:-develop}; LIST=$(git branch --merged \"$BR\" --format='%(refname:short)' | grep -vx -e \"$BR\" -e \"$(git branch --show-current)\"); if [ -n \"$LIST\" ]; then echo \"$LIST\" | xargs git branch -d; fi; }; f"
 
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 

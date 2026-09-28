@@ -404,17 +404,10 @@ class Machine:
 
     def health_check_after_apply(self) -> bool:
         ok = True
-        if have("sshd"):
-            result = run(["sshd", "-t"], check=False, capture=True)
-            if result.returncode != 0:
-                # try with sudo
-                if have("sudo"):
-                    result = run(
-                        ["sudo", "-n", "sshd", "-t"], check=False, capture=True
-                    )
-                if result.returncode != 0:
-                    log("health check: sshd -t failed")
-                    ok = False
+        # sshd config is validated as root inside the playbook (role sshd_home,
+        # "Validate sshd configuration"). Here as a normal user `sshd -t` always
+        # fails (host keys unreadable) and `sudo -n` fails without cached
+        # credentials, which rolled back every successful apply.
         if "monitoring" in self.saved_features() and have("systemctl"):
             result = run(
                 ["systemctl", "is-active", "telegraf"],

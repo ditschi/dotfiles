@@ -134,6 +134,10 @@ def detect_repo() -> Path:
         candidate = Path(env).expanduser()
         if (candidate / ".git").is_dir() and (candidate / "home").is_dir():
             return candidate
+        print(
+            f"machine: DOTFILES_REPO={env} is not a dotfiles checkout; searching elsewhere",
+            file=sys.stderr,
+        )
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
         if (parent / ".git").is_dir() and (parent / "home").is_dir():

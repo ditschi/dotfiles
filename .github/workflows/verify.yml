@@ -38,6 +38,10 @@ jobs:
       - name: Install test deps
         run: |
           pip install -r tests/requirements.txt
+      - name: Install chezmoi
+        run: |
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and CLI smoke
         run: |
           python3 -m py_compile home/dot_local/bin/executable_machine install.py
@@ -74,6 +78,15 @@ jobs:
           print("host profiles ok")
           PY
 
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
+
   presets:
     runs-on: ubuntu-latest
     strategy:
@@ -90,7 +103,8 @@ jobs:
       - name: Docker profile smoke
         run: |
           pytest -q -m "docker and not apt" \
-            "tests/integration/test_profile_containers.py::test_profile_dotfiles[${{ matrix.profile }}]"
+            "tests/integration/test_profile_containers.py::test_profile_dotfiles[${{ matrix.profile }}]" \
+            "tests/integration/test_profile_containers.py::test_shells_start_cleanly[${{ matrix.profile }}]"
 
   host-yaml-container:
     runs-on: ubuntu-latest
@@ -104,6 +118,8 @@ jobs:
       - name: Clean install from machine/hosts/ci-container.yml
         run: |
           pytest -q tests/integration/test_host_yaml_install.py::test_clean_install_from_versioned_host_yaml_container
+      - name: Migration from old root layout
+        run: pytest -q tests/integration/test_migrate.py
 
   apt-rpi-zero:
     runs-on: ubuntu-latest
@@ -140,6 +156,10 @@ jobs:
           python-version: "3.12"
       - name: Install test deps
         run: pip install -r tests/requirements.txt
+      - name: Install chezmoi
+        run: |
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and Ansible syntax on ARM
         run: |
           python3 -m py_compile home/dot_local/bin/executable_machine install.py

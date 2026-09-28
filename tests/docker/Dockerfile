@@ -10,6 +10,7 @@ RUN apt-get update \
         git \
         python3 \
         python3-venv \
+        zsh \
         sudo \
         unzip \
         ansible-core \

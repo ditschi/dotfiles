@@ -4,6 +4,23 @@ import pytest
 
 PROFILES = ["home-laptop", "work-laptop", "home-server", "rpi", "rpi-zero", "container"]
 
+# zinit clones ~10 plugins from GitHub on first start. A no-op stub keeps the
+# startup test offline and deterministic while all of our own config still runs.
+ZINIT_STUB = r"""
+stub="$HOME/.cache/zinit-stub"
+mkdir -p "$stub/zinit/zinit.git/.git"
+cat > "$stub/zinit/zinit.git/zinit.zsh" <<'Z'
+zinit() { :; }; zplugin() { :; }; zi() { :; }
+zicompinit() { autoload -Uz compinit && compinit -u -d "$HOME/.cache/zcompdump"; }
+zicdreplay() { :; }
+Z
+"""
+# bash -i without a TTY always prints these; they are not from our config
+BASH_TTY_NOISE = (
+    "cannot set terminal process group",
+    "no job control in this shell",
+)
+
 
 @pytest.mark.docker
 @pytest.mark.parametrize("profile_env", PROFILES, indirect=True)
@@ -43,6 +60,38 @@ def test_profile_dotfiles(profile_env):
     profile_file = host.file("/home/tester/.config/machine/profile.yml")
     assert profile_file.exists
     assert f"profile: {profile}" in profile_file.content_string
+
+    assert host.file("/home/tester/.gitconfig").is_symlink
+    local = host.file("/home/tester/.gitconfig.local")
+    assert local.exists and not local.is_symlink
+    expected = "dci2lr@bosch.com" if profile == "work-laptop" else "chris@ditscher.me"
+    assert host.check_output("git -C /tmp config user.email") == expected
+
+
+@pytest.mark.docker
+@pytest.mark.parametrize("profile_env", PROFILES, indirect=True)
+def test_shells_start_cleanly(profile_env):
+    host, profile = profile_env
+    work = "true" if profile == "work-laptop" else ""
+    host.run_test(ZINIT_STUB)
+
+    zsh = host.run(
+        'XDG_DATA_HOME="$HOME/.cache/zinit-stub" TERM=xterm zsh -i -c '
+        "'print -r -- \"$MACHINE_PROFILE|${WORK_SETUP:-}|$(alias g)\"'"
+    )
+    assert zsh.rc == 0, zsh.stderr
+    assert zsh.stderr == "", f"zsh startup wrote to stderr:\n{zsh.stderr}"
+    assert zsh.stdout.strip().splitlines()[-1] == f"{profile}|{work}|g=git"
+
+    bash = host.run("TERM=xterm bash -i -c " "'echo \"${WORK_SETUP:-}|$(alias g)\"'")
+    assert bash.rc == 0, bash.stderr
+    errors = [
+        line
+        for line in bash.stderr.splitlines()
+        if not any(noise in line for noise in BASH_TTY_NOISE)
+    ]
+    assert errors == [], "bash startup wrote to stderr:\n" + "\n".join(errors)
+    assert bash.stdout.strip().splitlines()[-1] == f"{work}|alias g='git'"
 
 
 @pytest.mark.docker

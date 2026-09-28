@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import textwrap
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -285,3 +286,18 @@ def test_repo_host_yamls_are_valid():
             assert feat in cli.FEATURES, f"{path.name}: unknown feature {feat}"
         allow = data.get("ssh_allow_from") or []
         assert isinstance(allow, list)
+
+
+def test_health_check_ignores_sshd_without_root(tmp_path: Path, monkeypatch):
+    # As a normal user `sshd -t` fails (host keys unreadable) and `sudo -n`
+    # fails without cached credentials; that must not roll back an apply.
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name in ("sshd", "sudo"):
+        stub = bin_dir / name
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    machine.write_profile("home-laptop", ["zsh-full", "sshd-home"], [])
+    assert machine.health_check_after_apply() is True

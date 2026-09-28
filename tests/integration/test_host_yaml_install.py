@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import uuid
 
@@ -110,6 +111,25 @@ def host_yaml_container(docker_image, request):
         )
 
 
+def assert_second_apply_is_idempotent(host) -> None:
+    """A second `machine apply` must not change anything (changed=0 in the recap)."""
+    result = host.run(
+        "cd /dotfiles && home/dot_local/bin/executable_machine apply --no-become 2>&1"
+    )
+    assert result.rc == 0, result.stdout
+    recap = result.stdout.split("PLAY RECAP", 1)
+    assert len(recap) == 2, f"no PLAY RECAP in output:\n{result.stdout[-3000:]}"
+    changed = re.findall(r"changed=(\d+)", recap[1])
+    assert changed and all(n == "0" for n in changed), (
+        "not idempotent, tasks reported changed on the second run:\n"
+        + "\n".join(
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith(("changed:", "TASK ["))
+        )[-4000:]
+    )
+
+
 @pytest.mark.docker
 @pytest.mark.parametrize("host_yaml_container", ["ci-container"], indirect=True)
 def test_clean_install_from_versioned_host_yaml_container(host_yaml_container):
@@ -147,6 +167,7 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert main_conf.exists
     pi_conf = host.file("/etc/telegraf/telegraf.d/machine_pi.conf")
     assert pi_conf.exists
+    assert_second_apply_is_idempotent(host)
 
 
 @pytest.mark.docker
@@ -175,3 +196,4 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
         "Port 5115"
         in host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").content_string
     )
+    assert_second_apply_is_idempotent(host)

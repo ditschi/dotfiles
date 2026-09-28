@@ -28,6 +28,18 @@ repos:
           - --simplify
           - --write
         exclude: '\.bashrc'
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      # SC1090/SC1091: sourced files are resolved at runtime, not in the repo
+      - id: shellcheck
+        args: [-e, SC1090, -e, SC1091]
+        exclude_types: [zsh]
+      - id: shellcheck
+        name: shellcheck (rc files without shebang)
+        args: [-e, SC1090, -e, SC1091]
+        files: ^home/dot_(bashrc|profile)$
+        types: [text]
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:

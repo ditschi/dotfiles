@@ -44,6 +44,15 @@ repos:
           - --ignore-words=.codespellignore
           - --quiet-level=2
           # - --write-changes
+  - repo: local
+    hooks:
+      - id: gitconfig-no-host-settings
+        name: no host-only settings in shared gitconfig (move them to ~/.gitconfig.local)
+        entry: >-
+          sh -c '! git config -f home/dot_gitconfig --no-includes --get-regexp "^(user\.(name|email|signingkey)|gpg\.|commit\.gpgsign|tag\.gpgsign|safe\.|credential\.|https?\.|core\.sshcommand)"'
+        language: system
+        files: ^home/dot_gitconfig$
+        pass_filenames: false
   - repo: https://github.com/pycqa/flake8
     rev: '7.1.1'
     hooks:

@@ -58,14 +58,27 @@ def test_migrate_clears_old_root_symlinks(tmp_path: Path):
     try:
         exec_cmd = ["docker", "exec", "-u", "tester", "-w", "/dotfiles", name]
         subprocess.run(
-            [*exec_cmd, "git", "config", "--global", "--add", "safe.directory", "/dotfiles"],
+            [
+                *exec_cmd,
+                "git",
+                "config",
+                "--global",
+                "--add",
+                "safe.directory",
+                "/dotfiles",
+            ],
             check=False,
             capture_output=True,
             text=True,
         )
         # Old-style links into repo root (targets need not exist)
         subprocess.run(
-            [*exec_cmd, "bash", "-lc", "ln -sfn /dotfiles/.zshrc $HOME/.zshrc && ln -sfn /dotfiles/.zsh $HOME/.zsh"],
+            [
+                *exec_cmd,
+                "bash",
+                "-lc",
+                "ln -sfn /dotfiles/.zshrc $HOME/.zshrc && ln -sfn /dotfiles/.zsh $HOME/.zsh",
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -97,7 +110,12 @@ def test_migrate_clears_old_root_symlinks(tmp_path: Path):
         ).stdout.strip()
         assert "home/dot_zshrc" in link or "home/dot_zshrc" in link.replace("\\", "/")
         rollback = subprocess.run(
-            [*exec_cmd, "bash", "-lc", "test -x $HOME/.local/share/machine/rollback.sh"],
+            [
+                *exec_cmd,
+                "bash",
+                "-lc",
+                "test -x $HOME/.local/share/machine/rollback.sh",
+            ],
             check=False,
             capture_output=True,
             text=True,

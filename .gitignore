@@ -11,3 +11,4 @@ __pycache__/
 ansible/inventory/hosts.yml
 ansible/inventory/hosts.local.yml
 ansible/group_vars/**/vault.yml
+.coverage

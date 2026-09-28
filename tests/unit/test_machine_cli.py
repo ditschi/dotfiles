@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import textwrap
 from importlib.machinery import SourceFileLoader
@@ -142,7 +141,9 @@ def test_needs_layout_migration_detects_old_root_symlink(tmp_path: Path, monkeyp
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
     machine = cli_mod.Machine()
@@ -160,7 +161,9 @@ def test_write_rollback_script(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
 
     machine = cli_mod.Machine()
     path = machine.write_rollback_script("abc123")

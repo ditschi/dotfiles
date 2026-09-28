@@ -70,7 +70,15 @@ def profile_env(docker_image, request):
     try:
         exec_cmd = ["docker", "exec", "-u", "tester", "-w", "/dotfiles", name]
         subprocess.run(
-            [*exec_cmd, "git", "config", "--global", "--add", "safe.directory", "/dotfiles"],
+            [
+                *exec_cmd,
+                "git",
+                "config",
+                "--global",
+                "--add",
+                "safe.directory",
+                "/dotfiles",
+            ],
             check=False,
             capture_output=True,
             text=True,

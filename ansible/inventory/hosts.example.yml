@@ -12,10 +12,10 @@ all:
       hosts:
         ditschi-ThinkPad-L13-Yoga-Gen-2:
           ansible_connection: local
-        # Second ThinkPad: copy _example-thinkpad-copy.yml → <hostname -s>.yml
-        # other-thinkpad:
-        #   ansible_host: 192.168.1.x
-        #   ansible_user: ditschi
+          # Second ThinkPad: copy _example-thinkpad-copy.yml → <hostname -s>.yml
+          # other-thinkpad:
+          #   ansible_host: 192.168.1.x
+          #   ansible_user: ditschi
     servers:
       hosts:
         homeserver:

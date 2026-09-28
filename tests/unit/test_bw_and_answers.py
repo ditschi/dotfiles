@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import stat
-import subprocess
 import textwrap
 from pathlib import Path
 
@@ -96,7 +95,9 @@ def test_fake_bw_publish_ssh_public_key(tmp_path: Path, fake_bw, monkeypatch):
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
     monkeypatch.setenv("PATH", f"{bw.parent}:{os.environ.get('PATH', '')}")
     monkeypatch.setenv("BW_SESSION", "fake-session")
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 

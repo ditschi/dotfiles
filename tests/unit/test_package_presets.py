@@ -73,8 +73,12 @@ def test_expected_package_invariants(name: str):
         assert "ldap-utils" not in packages
 
 
-@pytest.mark.skipif(shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed")
-@pytest.mark.parametrize("name", ["home-laptop", "work-laptop", "rpi-zero", "container"])
+@pytest.mark.skipif(
+    shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed"
+)
+@pytest.mark.parametrize(
+    "name", ["home-laptop", "work-laptop", "rpi-zero", "container"]
+)
 def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
     dump_path = tmp_path / "packages.json"
     playbook = ANSIBLE / "dump_packages.yml"
@@ -91,10 +95,14 @@ def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
     subprocess.run(cmd, check=True, cwd=ANSIBLE)
     ansible_packages = sorted(json.loads(dump_path.read_text()))
     data = load_profile(name)
-    assert ansible_packages == resolve_packages(data["profile"], data["features"], load_group_vars())
+    assert ansible_packages == resolve_packages(
+        data["profile"], data["features"], load_group_vars()
+    )
 
 
-@pytest.mark.skipif(shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed")
+@pytest.mark.skipif(
+    shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed"
+)
 @pytest.mark.parametrize(
     "name,features",
     [

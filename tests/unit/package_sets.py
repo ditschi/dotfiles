@@ -1,4 +1,5 @@
 """Resolve apt package sets the same way as ansible/tasks/resolve_packages.yml."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +20,9 @@ def load_profile(name: str) -> dict:
     return yaml.safe_load(path.read_text())
 
 
-def resolve_packages(profile: str, features: Iterable[str], variables: dict | None = None) -> List[str]:
+def resolve_packages(
+    profile: str, features: Iterable[str], variables: dict | None = None
+) -> List[str]:
     variables = variables or load_group_vars()
     features_set: Set[str] = set(features)
     if profile == "rpi-zero":

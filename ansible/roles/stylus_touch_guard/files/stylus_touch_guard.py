@@ -7,7 +7,6 @@ Device nodes are resolved by name so /dev/input/eventN renumbering is fine.
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from typing import Optional
 
@@ -32,7 +31,9 @@ def _name_matches(name: str, hints: tuple[str, ...]) -> bool:
     return any(h in lower for h in hints)
 
 
-def find_device(hints: tuple[str, ...], prefer_wacom: bool = True) -> Optional[InputDevice]:
+def find_device(
+    hints: tuple[str, ...], prefer_wacom: bool = True
+) -> Optional[InputDevice]:
     candidates: list[InputDevice] = []
     for path in list_devices():
         try:
@@ -112,11 +113,13 @@ def resolve_devices(debug: bool = False) -> tuple[InputDevice, str]:
             "Could not find stylus/touch devices. "
             f"stylus={getattr(stylus, 'name', None)!r} "
             f"touch={getattr(touch, 'name', None)!r}. "
-            "Check: python3 -c \"from evdev import list_devices, InputDevice; "
-            "[print(InputDevice(p).name, p) for p in list_devices()]\""
+            'Check: python3 -c "from evdev import list_devices, InputDevice; '
+            '[print(InputDevice(p).name, p) for p in list_devices()]"'
         )
     if stylus.path == touch.path:
-        raise RuntimeError(f"Stylus and touch resolved to the same device: {stylus.path}")
+        raise RuntimeError(
+            f"Stylus and touch resolved to the same device: {stylus.path}"
+        )
     if debug:
         log(f"Stylus: {stylus.name} ({stylus.path})")
         log(f"Touch:  {touch.name} ({touch.path})")

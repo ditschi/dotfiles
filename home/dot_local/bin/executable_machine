@@ -262,9 +262,7 @@ class Machine:
             )
         )
         self.state_dir = Path(
-            os.environ.get(
-                "MACHINE_STATE_DIR", self.home / ".local/share/machine"
-            )
+            os.environ.get("MACHINE_STATE_DIR", self.home / ".local/share/machine")
         )
         self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
         os.environ["DOTFILES_REPO"] = str(self.repo)
@@ -407,7 +405,9 @@ class Machine:
             if result.returncode != 0:
                 # try with sudo
                 if have("sudo"):
-                    result = run(["sudo", "-n", "sshd", "-t"], check=False, capture=True)
+                    result = run(
+                        ["sudo", "-n", "sshd", "-t"], check=False, capture=True
+                    )
                 if result.returncode != 0:
                     log("health check: sshd -t failed")
                     ok = False
@@ -441,17 +441,14 @@ class Machine:
             if yes:
                 return
             if not is_tty() or not prompt_yes_no(
-                f"Repo-Host-Profil {path.relative_to(self.repo)} überschreiben?",
+                f"Overwrite repo host profile {path.relative_to(self.repo)}?",
                 False,
             ):
-                log(
-                    "left repo host profile unchanged; "
-                    "run: machine profile save"
-                )
+                log("left repo host profile unchanged; " "run: machine profile save")
                 return
         elif not yes and is_tty():
             if not prompt_yes_no(
-                f"Host-Profil nach {path.relative_to(self.repo)} schreiben?",
+                f"Write host profile to {path.relative_to(self.repo)}?",
                 True,
             ):
                 return
@@ -459,8 +456,10 @@ class Machine:
             # non-interactive first setup: always create so fleet can version it
             pass
         self.save_host_profile_to_repo(profile, features, allow_from)
-        if is_tty() and not yes and prompt_yes_no(
-            "Jetzt committen (machine commit)?", False
+        if (
+            is_tty()
+            and not yes
+            and prompt_yes_no("Commit now (machine commit)?", False)
         ):
             run(
                 [
@@ -708,7 +707,10 @@ class Machine:
                             if not target.is_symlink():
                                 continue
                             raw = os.readlink(target)
-                            if "/home/dot_" in raw or "/home/" in raw.split("dotfiles", 1)[-1]:
+                            if (
+                                "/home/dot_" in raw
+                                or "/home/" in raw.split("dotfiles", 1)[-1]
+                            ):
                                 continue
                             if "dotfiles" in raw:
                                 return True
@@ -749,7 +751,9 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target, dest)
                 meta["links"][name] = f"file:{dest}"
-        (backup / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        (backup / "meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+        )
         return backup
 
     def clear_stale_root_links(self) -> None:
@@ -792,7 +796,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         if not is_tty():
             log("Bitwarden CLI present; skip login (no TTY)")
             return False
-        if not prompt_yes_no("Willst du dich jetzt bei Bitwarden einloggen?", False):
+        if not prompt_yes_no("Log in to Bitwarden now?", False):
             log("Bitwarden login skipped")
             return False
         return self.unlock_bitwarden(allow_login=True)
@@ -1116,7 +1120,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         if not is_tty():
             log("run: sudo tailscale up")
             return
-        if prompt_yes_no("Tailscale jetzt anmelden?", False):
+        if prompt_yes_no("Log in to Tailscale now?", False):
             run(["sudo", "tailscale", "up"], check=False)
         else:
             log("skipped; later: sudo tailscale up")
@@ -1205,7 +1209,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             )
         if not is_tty():
             die("layout migration needed; run: machine migrate")
-        if prompt_yes_no("Volles Setup / Migration jetzt ausführen?", True):
+        if prompt_yes_no("Run full setup / migration now?", True):
             return "migrate"
         die("aborted; when ready: machine migrate  or  ./bootstrap")
         return None
@@ -1223,13 +1227,15 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
     def cmd_setup(self, args: argparse.Namespace) -> int:
         if getattr(args, "command", "") != "migrate" and self.needs_layout_migration():
             if args.yes:
-                log("layout migration needed; continuing setup after clearing stale links")
+                log(
+                    "layout migration needed; continuing setup after clearing stale links"
+                )
                 old_sha = self.git_head() or "unknown"
                 self.backup_migration_state(old_sha)
                 self.write_rollback_script(old_sha)
                 self.clear_stale_root_links()
             elif is_tty() and prompt_yes_no(
-                "Alte Root-Symlinks erkannt. Migration jetzt?", True
+                "Old root symlinks detected. Migrate now?", True
             ):
                 return self.cmd_migrate(args)
             elif not is_tty():
@@ -1287,9 +1293,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         self.write_chezmoi_config(profile)
         log(f"wrote {self.profile_path} (profile={profile})")
 
-        self.maybe_persist_host_profile(
-            profile, features, allow_from, yes=args.yes
-        )
+        self.maybe_persist_host_profile(profile, features, allow_from, yes=args.yes)
 
         if need_bw:
             self.maybe_login_bitwarden()
@@ -1303,7 +1307,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             store_private = False
             if is_tty() and not args.yes:
                 store_private = prompt_yes_no(
-                    "Private Key auch in Bitwarden speichern?", False
+                    "Also store the private key in Bitwarden?", False
                 )
             self.publish_ssh_key(store_private=store_private)
             self.apply_authorized_keys_from_bw(allow_from)
@@ -1386,9 +1390,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
                 self.restore_local_profile(backup)
                 log("re-running ansible with restored profile")
                 try:
-                    self.run_ansible(
-                        playbook, force_local=True, ask_become=ask_become
-                    )
+                    self.run_ansible(playbook, force_local=True, ask_become=ask_become)
                 except subprocess.CalledProcessError:
                     log("revert ansible also failed; check the host manually")
             die("apply aborted and local profile restored where possible")
@@ -1578,7 +1580,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         if args.action == "publish":
             store = bool(args.private)
             if not args.yes and is_tty() and not store:
-                store = prompt_yes_no("Private Key auch speichern?", False)
+                store = prompt_yes_no("Also store the private key?", False)
             return self.publish_ssh_key(store_private=store)
         if args.action == "restore":
             return self.restore_ssh_key()
@@ -1706,7 +1708,10 @@ def completion_bash() -> str:
       case "$prev" in
         --profile) COMPREPLY=( $(compgen -W "{profiles}" -- "$cur") ) ;;
         --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
-        *) COMPREPLY=( $(compgen -W "--profile --features --yes --local --limit --playbook --skip-ansible --skip-chezmoi --no-become" -- "$cur") ) ;;
+        *)
+          local opts="--profile --features --yes --local --limit --playbook"
+          opts+=" --skip-ansible --skip-chezmoi --no-become"
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") ) ;;
       esac
       ;;
     update) COMPREPLY=( $(compgen -W "--system --force" -- "$cur") ) ;;

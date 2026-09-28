@@ -1,3 +1,9 @@
+# Shared git config — tracked in dotfiles, identical on every host.
+# `git config --global ...` writes here (symlink into the repo), so new aliases get shared.
+# Host-only settings (user, signing, safe.directory, credentials, proxy) belong in
+# ~/.gitconfig.local (created once by chezmoi, never overwritten). A pre-commit hook
+# rejects them in this file.
+
 [color]
     ui = true
     branch = auto
@@ -18,11 +24,8 @@
     changed = yellow
     untracked = cyan
 
-[push]
-    default = current
-[pull]
-    default = current
 [user]
+    # never guess name/email from hostname; the default comes from ~/.gitconfig.local
     useConfigOnly = true
 [alias]
     st = status
@@ -46,9 +49,9 @@
     cap = !sh -c 'git ca "$@" && git push --force-with-lease' -
     caap = !sh -c 'git caa "$@" && git push --force-with-lease' -
     caaap = !sh -c 'git caaa "$@" && git push --force-with-lease' -
-    redo = !sh -c 'git caaa "$@" && git push --force-with-lease' -
+    redo = caaap
 
-    # shows all chages which will be included in next commit (staged changes)
+    # shows all changes which will be included in next commit (staged changes)
     curr-diff = diff --cached
     cdiff = diff --cached
     undo = !sh -c 'git stash push --keep-index -m "undo-temp" && git stash drop -q' -
@@ -59,29 +62,29 @@
     coc = !sh -c 'git checkout -f -- "$1" && git pull origin && git submodule update --init --recursive && git clean -df -f && git submodule foreach "git clean -df -f" --recursive && git status' - # CheckOut Clean
     tidy = !git checkout -f ; git clean -dff ; git submodule foreach 'git checkout -f && git clean -dff' ; git submodule update --init --recursive ; git clean -dff ; git status
     fresh = !git reset --hard ; git clean -dff ; git submodule foreach 'git reset --hard && git clean -dff' ; git submodule update --init --recursive ;
-    # update branch from origin -- no need to ckeck out
+    # update branch from origin -- no need to check out
     u2d = !sh -c 'git fetch origin -u "$1":"$1"' -
     # updates all branches from remote (faster: fetch all and prune)
     uab = !sh -c 'git fetch --all --prune' -
     # deletes all local branches not on server
     clean-branches = !sh -c 'git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format="%(refname:short)|%(upstream:track)" refs/heads/ | while IFS="|" read -r name track; do case "$track" in *gone*) echo "$name";; esac; done); if [ -n "$TODELETE" ]; then echo "$TODELETE" | xargs git branch -d; fi' -
-    clb = !sh -c 'git checkout -q develop && git fetch -q --prune; TODELETE=$(git for-each-ref --format="%(refname:short)|%(upstream:track)" refs/heads/ | while IFS="|" read -r name track; do case "$track" in *gone*) echo "$name";; esac; done); if [ -n "$TODELETE" ]; then echo "$TODELETE" | xargs git branch -d; fi' -
+    clb = clean-branches
     # deletes all local tags and re-fetches from origin (safe loop to handle spaces)
     clean-tags = !sh -c 'git tag -l | while IFS= read -r t; do [ -n "$t" ] && git tag -d "$t"; done; git fetch --tags' -
-    clt = !sh -c 'git tag -l | while IFS= read -r t; do [ -n "$t" ] && git tag -d "$t"; done; git fetch --tags' -
+    clt = clean-tags
     reset-to-origin = !git fetch origin ; git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
     # rework-commit-messages: replace leading issue IDs in commit messages by rebasing.
     # Usage: git rework-commit-messages [BASE_BRANCH]
     rework-commit-messages = "!bash -c 'BASE_BRANCH=${1:-$(git symbolic-ref refs/remotes/origin/HEAD)}; NEW_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE \"[A-Z]{2,}-[0-9]+\"); git rebase --exec \"CURRENT_MESSAGE=\\$(git show -s --format=%B); NEW_MESSAGE=\\$(echo \\\"\\$CURRENT_MESSAGE\\\" | sed -E \\\"s/^[A-Z]{2,}-[0-9]+/$NEW_ISSUE_ID/\\\"); git commit --amend -m \\\"\\$NEW_MESSAGE\\\"\" \"$BASE_BRANCH\"' -"
     branch-change-issue-id = !sh -c 'NEW_ISSUE_ID="$1"; OLD_ISSUE_ID=$(git rev-parse --abbrev-ref HEAD | grep -oE "[A-Z]{2,}-[0-9]+"); NEW_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed -E "s/$OLD_ISSUE_ID/$NEW_ISSUE_ID/"); git checkout -b "$NEW_BRANCH_NAME"' -
 
-    slmog = log --full-diff -p
     smlog = log --full-diff -p
+    slmog = smlog
     ldiff = diff HEAD^ HEAD
 
     ls = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate
     ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
-    lf = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+    lf = ll
     le = log --oneline --decorate
     filelog = log -u
     fl = log -u
@@ -89,26 +92,26 @@
 
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
-    # set the user based on the remote url
+    # identity: default per host comes from ~/.gitconfig.local; these override one repo
     user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'dci2lr@bosch.com'
     user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
-    user-setup = !sh -c 'url=$(git remote get-url origin 2>/dev/null || true); if echo "$url" | grep -Eiq "bosch|boschdevcloud|sourcecode.*bosch"; then git user-work; else git user-private; fi; git config --get user.name; git config --get user.email' -
-    user-show = !sh -c 'echo "local : $(git config --local --get user.name 2>/dev/null || echo -) <$(git config --local --get user.email 2>/dev/null || echo -)>"; echo "global: $(git config --global --get user.name 2>/dev/null || echo -) <$(git config --global --get user.email 2>/dev/null || echo -)>"; echo "active: $(git config --get user.name 2>/dev/null || echo -) <$(git config --get user.email 2>/dev/null || echo -)>"' -
+    user-show = "!f() { echo \"repo  : $(git config --local user.name) <$(git config --local user.email)>\"; echo \"host  : $(git config -f ~/.gitconfig.local user.name) <$(git config -f ~/.gitconfig.local user.email)>\"; echo \"active: $(git config user.name) <$(git config user.email)>\"; }; f"
     user-unset-local = !git config --local --unset-all user.name && git config --local --unset-all user.email || true
 
     # conflict/merges
     ours = !sh -c 'git checkout --ours "$@" && git add -- "$@"' -
     theirs = !sh -c 'git checkout --theirs "$@" && git add -- "$@"' -
-    store =  config --global credential.helper store
+    # host-only setting -> ~/.gitconfig.local, not the shared file
+    store = !git config --file ~/.gitconfig.local credential.helper store
     root = rev-parse --show-toplevel
     rc = rebase --continue
-    r3 = rebase -i HEAD~3
-    r2 = rebase -i HEAD~2
-    r4 = rebase -i HEAD~4
     ra = rebase --abort
+    r2 = rebase -i HEAD~2
+    r3 = rebase -i HEAD~3
+    r4 = rebase -i HEAD~4
     r5 = rebase -i HEAD~5
-    l1 = log -1
     l = log -1
+    l1 = log -1
     l2 = log -2
     l3 = log -3
     l4 = log -4
@@ -117,27 +120,18 @@
 
 [merge]
     tool = meld
-    #ff = false
 [diff]
     tool = meld
     algorithm = patience
-[diff]
-    tool = meld
 [difftool]
     prompt = false
 [difftool "meld"]
     cmd = meld "$LOCAL" "$REMOTE"
 [mergetool "meld"]
-    # cmd = meld "$LOCAL" "$MERGED" "$REMOTE" --output "$MERGED"
     cmd = meld "$LOCAL" "$BASE" "$REMOTE" --output "$MERGED"
-[mergetool "bc4"]
-    path = C:/Program Files/Beyond Compare 4/BCompare.exe
-[difftool "bc4"]
-    path = C:/Program Files/Beyond Compare 4/BCompare.exe
 
 [core]
     preloadindex = true
-    fscache = true
     autocrlf = input
     # Conditionally set the pager if diff-so-fancy is available
     pager = "sh -c 'command -v diff-so-fancy > /dev/null 2>&1 && diff-so-fancy | less -FXRi || command -v less > /dev/null 2>&1 && less -FXRi || cat'"
@@ -151,8 +145,10 @@
 [status]
     submoduleSummary = false
 [push]
-    recurseSubmodules = on-demand
     default = current
+    recurseSubmodules = on-demand
+[pull]
+    rebase = true
 [fetch]
     recurseSubmodules = no
     prune = true
@@ -167,10 +163,7 @@
     smudge = git-lfs smudge -- %f
     process = git-lfs filter-process
     required = true
-[pull]
-    rebase = true
 
-[credential]
-    helper = store
-[safe]
-	directory = /workspace
+# Must stay last: host-local values override everything above.
+[include]
+    path = ~/.gitconfig.local

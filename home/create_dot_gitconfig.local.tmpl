@@ -1,0 +1,21 @@
+# Host-local git config, included at the end of ~/.gitconfig (so it wins).
+# Created once by chezmoi from the machine profile and never overwritten — edit freely.
+# Put host-only settings here: signingkey/gpg, safe.directory, credential helpers, proxy.
+# Per-repo exceptions: `git user-work` / `git user-private`.
+
+[user]
+{{- if eq .profile "work-laptop" }}
+    name = Ditscher Christian (XC-AS/ESE1)
+    email = dci2lr@bosch.com
+{{- else }}
+    name = Christian Ditscher
+    email = chris@ditscher.me
+{{- end }}
+
+[credential]
+    helper = store
+{{- if eq .profile "container" }}
+
+[safe]
+    directory = /workspace
+{{- end }}

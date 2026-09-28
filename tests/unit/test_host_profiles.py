@@ -55,7 +55,9 @@ def test_sync_host_profile_from_repo(tmp_path: Path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod, "hostname_short", lambda: "testhost")
@@ -77,7 +79,9 @@ def test_save_host_profile_to_repo(tmp_path: Path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod, "hostname_short", lambda: "box1")
@@ -99,7 +103,9 @@ def test_backup_and_restore_profile(tmp_path: Path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
@@ -138,7 +144,9 @@ def _machine_env(tmp_path: Path, monkeypatch, hostname: str = "testhost"):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml"))
+    monkeypatch.setenv(
+        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+    )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod, "hostname_short", lambda: hostname)
@@ -253,7 +261,9 @@ def test_apply_remote_requires_host_file(tmp_path: Path, monkeypatch):
     import argparse
 
     _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
-    args = argparse.Namespace(limit="missing-host", playbook="workstation", no_become=True)
+    args = argparse.Namespace(
+        limit="missing-host", playbook="workstation", no_become=True
+    )
     try:
         machine.cmd_apply(args)
         raise AssertionError("expected SystemExit")

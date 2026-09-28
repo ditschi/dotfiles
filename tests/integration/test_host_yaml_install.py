@@ -171,4 +171,7 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert host.file("/usr/local/lib/machine/stylus_touch_guard.py").exists
     assert host.file("/etc/systemd/system/stylus-touch-guard.service").exists
     assert host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
-    assert "Port 5115" in host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").content_string
+    assert (
+        "Port 5115"
+        in host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").content_string
+    )

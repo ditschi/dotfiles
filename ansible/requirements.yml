@@ -3,9 +3,9 @@
 collections:
   - name: ansible.posix
     version: ">=1.5.0"
-  # Optional later (not pulled automatically):
-  # - name: community.docker
-  # - name: community.general
+    # Optional later (not pulled automatically):
+    # - name: community.docker
+    # - name: community.general
 
 # Galaxy *roles* considered but not vendored (keep thin local roles):
 #   Telegraf: dj-wasabi.telegraf / boutetnico.telegraf / alvistack.telegraf

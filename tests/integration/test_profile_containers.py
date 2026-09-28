@@ -34,9 +34,7 @@ def test_profile_dotfiles(profile_env):
         assert p10k.exists
         assert starship.exists
 
-    timer = host.file(
-        "/home/tester/.config/systemd/user/dotfiles-update-check.timer"
-    )
+    timer = host.file("/home/tester/.config/systemd/user/dotfiles-update-check.timer")
     if profile == "container":
         assert not timer.exists
     else:

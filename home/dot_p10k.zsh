@@ -36,7 +36,7 @@
     vcs                     # git status
     # =========================[ Line #2 ]=========================
     newline                 # \n
-    dockerenv               # custom promt symbol when running in a docker container
+    dockerenv               # custom prompt symbol when running in a docker container
     prompt_char             # prompt symbol
   )
 
@@ -109,7 +109,7 @@
     time                    # current time
     # =========================[ Line #2 ]=========================
     newline
-    dockerenv               # custom promt symbol when running in a docker container
+    dockerenv               # custom prompt symbol when running in a docker container
     # ip                    # ip address and bandwidth usage for a specified network interface
     # public_ip             # public IP address
     # proxy                 # system-wide http/https/ftp proxy

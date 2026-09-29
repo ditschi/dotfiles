@@ -184,17 +184,13 @@ if [ -d "$DOTFILES_DIR" ]; then
     . "$DOTFILES_DIR/05_pyenv.zsh"
     . "$DOTFILES_DIR/06_history.zsh"
 
-    unset WORK_SETUP
-    _machine_profile=""
-    if [ -f "${HOME}/.config/machine/profile.yml" ]; then
-        _machine_profile="$(awk '$1=="profile:" {print $2; exit}' "${HOME}/.config/machine/profile.yml")"
-    fi
-    if [ "$_machine_profile" = "work-laptop" ] || [[ $(whoami) =~ (^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$) ]]; then
-        export WORK_SETUP="true"
+    # MACHINE_PROFILE / WORK_SETUP, shared with zsh
+    . "$HOME/.zsh/machine-profile.sh"
+    # work modules are only linked on work-laptop, not in dev containers
+    if [ "${WORK_SETUP:-}" = "true" ] && [ -f "$DOTFILES_DIR/01_work.zsh" ]; then
         . "$DOTFILES_DIR/01_work_tools.zsh"
         . "$DOTFILES_DIR/01_work.zsh"
     fi
-    unset _machine_profile
 fi
 
 if [ -f "$HOME/.dotfiles-update-available" ]; then

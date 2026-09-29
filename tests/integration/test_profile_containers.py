@@ -83,7 +83,10 @@ def test_shells_start_cleanly(profile_env):
     assert zsh.stderr == "", f"zsh startup wrote to stderr:\n{zsh.stderr}"
     assert zsh.stdout.strip().splitlines()[-1] == f"{profile}|{work}|g=git"
 
-    bash = host.run("TERM=xterm bash -i -c " "'echo \"${WORK_SETUP:-}|$(alias g)\"'")
+    bash = host.run(
+        "TERM=xterm bash -i -c "
+        "'echo \"$MACHINE_PROFILE|${WORK_SETUP:-}|$(alias g)\"'"
+    )
     assert bash.rc == 0, bash.stderr
     errors = [
         line
@@ -91,7 +94,28 @@ def test_shells_start_cleanly(profile_env):
         if not any(noise in line for noise in BASH_TTY_NOISE)
     ]
     assert errors == [], "bash startup wrote to stderr:\n" + "\n".join(errors)
-    assert bash.stdout.strip().splitlines()[-1] == f"{work}|alias g='git'"
+    assert bash.stdout.strip().splitlines()[-1] == f"{profile}|{work}|alias g='git'"
+
+
+@pytest.mark.docker
+@pytest.mark.parametrize("profile_env", ["container"], indirect=True)
+def test_dev_container_with_work_user_starts_cleanly(profile_env):
+    # sdx dev containers run as the Bosch user id: WORK_SETUP is on, but chezmoi
+    # does not link the work modules for the container profile.
+    host, _profile = profile_env
+    host.run_test(ZINIT_STUB)
+    for shell in (
+        'XDG_DATA_HOME="$HOME/.cache/zinit-stub" USER=abc1de TERM=xterm zsh -i -c',
+        "USER=abc1de TERM=xterm bash -i -c",
+    ):
+        res = host.run(f"{shell} 'echo \"$MACHINE_PROFILE|$WORK_SETUP\"'")
+        errors = [
+            line
+            for line in res.stderr.splitlines()
+            if not any(noise in line for noise in BASH_TTY_NOISE)
+        ]
+        assert res.rc == 0 and errors == [], f"{shell}:\n{res.stderr}"
+        assert res.stdout.strip().splitlines()[-1] == "container|true"
 
 
 @pytest.mark.docker

@@ -4,8 +4,11 @@ features:
   - zsh-full
   - fonts
   - starship
+  - yazi
+  - gh-cli
   - desktop
   - gnome
   - kerberos
+  - azure-cli
   - ssh-host-key
 ssh_allow_from: []

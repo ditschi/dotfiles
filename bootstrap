@@ -9,4 +9,10 @@ if [[ ! -x $MACHINE ]]; then
     chmod +x "$MACHINE"
 fi
 
+if ! command -v uv >/dev/null 2>&1; then
+    echo "bootstrap: installing uv (https://astral.sh/uv)"
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 exec "$MACHINE" setup "$@"

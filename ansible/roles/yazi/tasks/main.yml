@@ -1,0 +1,26 @@
+---
+- name: Check installed yazi version
+  ansible.builtin.command: yazi --version
+  register: yazi_installed
+  changed_when: false
+  failed_when: false
+
+- name: Skip yazi on unsupported architecture
+  ansible.builtin.debug:
+    msg: "yazi: no prebuilt package for architecture {{ ansible_architecture }}, skipping"
+  when: ansible_architecture not in ['x86_64', 'aarch64']
+
+- name: Install yazi
+  when:
+    - ansible_architecture in ['x86_64', 'aarch64']
+    - yazi_installed.rc != 0 or yazi_version not in (yazi_installed.stdout | default(''))
+  block:
+    - name: Download yazi .deb
+      ansible.builtin.get_url:
+        url: "https://github.com/sxyazi/yazi/releases/download/v{{ yazi_version }}/yazi-{{ ansible_architecture }}-unknown-linux-gnu.deb"
+        dest: "/tmp/yazi-{{ yazi_version }}-{{ ansible_architecture }}.deb"
+        mode: "0644"
+
+    - name: Install yazi .deb
+      ansible.builtin.apt:
+        deb: "/tmp/yazi-{{ yazi_version }}-{{ ansible_architecture }}.deb"

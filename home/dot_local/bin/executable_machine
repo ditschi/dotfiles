@@ -1,8 +1,19 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     # Pinned exactly: the `completion` subcommand reaches into typer's
+#     # private _completion_classes/_completion_shared modules, which are not
+#     # a stable API across typer releases. Bump deliberately and re-test
+#     # `machine completion bash|zsh` before relaxing this.
+#     "typer==0.27.2",
+#     "rich>=13.9",
+#     "pyyaml>=6.0",
+# ]
+# ///
 """Unified machine CLI: orchestrate chezmoi + ansible; host answers; Bitwarden UX."""
 from __future__ import annotations
 
-import argparse
 import atexit
 import getpass
 import json
@@ -13,10 +24,23 @@ import socket
 import subprocess
 import sys
 import tempfile
+import types
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+
+import typer
+import yaml
+from typer._completion_classes import completion_init
+from typer._completion_shared import get_completion_script
+
+MACHINE_PROG_NAME = "machine"
+
+# Registers the bash/zsh completion classes typer's own shell-completion
+# dispatch needs; normally a side effect of add_completion=True, which we
+# don't want (we expose our own `completion` subcommand instead).
+completion_init()
 
 PROFILES = [
     "work-laptop",
@@ -30,12 +54,14 @@ FEATURES = [
     "zsh-full",
     "fonts",
     "starship",
+    "yazi",
     "desktop",
     "gnome",
     "cosmic",
     "docker",
+    "gh-cli",
     "kerberos",
-    "work-cli",
+    "azure-cli",
     "monitoring",
     "unattended-upgrades",
     "syncthing",
@@ -49,12 +75,14 @@ FEATURE_HELP = {
     "zsh-full": "Shell stack (zsh, fzf, tmux, jq)",
     "fonts": "Meslo / Nerd fonts for prompts",
     "starship": "Starship prompt config",
+    "yazi": "yazi terminal file manager",
     "desktop": "Desktop extras (empty list today)",
     "gnome": "GNOME tools (flameshot, guake, …)",
     "cosmic": "Cosmic desktop packages (Pop OS)",
     "docker": "Docker engine packages",
+    "gh-cli": "GitHub CLI (gh)",
     "kerberos": "krb5-user + ldap-utils (work)",
-    "work-cli": "GitHub CLI / Azure CLI helpers",
+    "azure-cli": "Azure CLI (work)",
     "monitoring": "Telegraf agent (home profiles)",
     "unattended-upgrades": "Automatic security upgrades",
     "syncthing": "Syncthing package",
@@ -163,6 +191,13 @@ def prompt_yes_no(question: str, default: bool = False) -> bool:
     return answer in {"y", "yes"}
 
 
+class _IndentDumper(yaml.SafeDumper):
+    """Indent block-sequence items under their key, matching the repo's existing style."""
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        return super().increase_indent(flow, False)
+
+
 def parse_profile_file(path: Path) -> Dict[str, object]:
     result: Dict[str, object] = {
         "profile": "",
@@ -171,42 +206,10 @@ def parse_profile_file(path: Path) -> Dict[str, object]:
     }
     if not path.is_file():
         return result
-    section = ""
-    features: List[str] = []
-    allow: List[str] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or line == "---":
-            continue
-        if line.startswith("profile:"):
-            result["profile"] = line.split(":", 1)[1].strip()
-            section = ""
-            continue
-        if line.startswith("features:"):
-            rest = line.split(":", 1)[1].strip()
-            section = "features"
-            if rest == "[]":
-                features = []
-                section = ""
-            continue
-        if line.startswith("ssh_allow_from:"):
-            rest = line.split(":", 1)[1].strip()
-            section = "ssh_allow_from"
-            if rest == "[]":
-                allow = []
-                section = ""
-            continue
-        if line.startswith("- "):
-            value = line[2:].strip()
-            if section == "features":
-                features.append(value)
-            elif section == "ssh_allow_from":
-                allow.append(value)
-            continue
-        if ":" in line:
-            section = ""
-    result["features"] = features
-    result["ssh_allow_from"] = allow
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    result["profile"] = str(data.get("profile") or "")
+    result["features"] = [str(x) for x in (data.get("features") or [])]
+    result["ssh_allow_from"] = [str(x) for x in (data.get("ssh_allow_from") or [])]
     return result
 
 
@@ -215,16 +218,14 @@ def format_profile_yaml(
     features: Sequence[str],
     ssh_allow_from: Optional[Sequence[str]] = None,
 ) -> str:
-    feats = list(features) or ["zsh-full"]
-    allow = list(ssh_allow_from or [])
-    lines = ["---", f"profile: {profile}", "features:"]
-    lines.extend(f"  - {feat}" for feat in feats)
-    if allow:
-        lines.append("ssh_allow_from:")
-        lines.extend(f"  - {name}" for name in allow)
-    else:
-        lines.append("ssh_allow_from: []")
-    return "\n".join(lines) + "\n"
+    data = {
+        "profile": profile,
+        "features": list(features) or ["zsh-full"],
+        "ssh_allow_from": list(ssh_allow_from or []),
+    }
+    return "---\n" + yaml.dump(
+        data, Dumper=_IndentDumper, sort_keys=False, default_flow_style=False
+    )
 
 
 def profile_fingerprint(path: Path) -> str:
@@ -604,6 +605,24 @@ class Machine:
             log("could not install Bitwarden CLI")
             return False
 
+    def ensure_uv(self) -> bool:
+        if have("uv"):
+            return True
+        local_bin = self.home / ".local/bin"
+        local_bin.mkdir(parents=True, exist_ok=True)
+        log("installing uv to ~/.local/bin")
+        os.environ["UV_INSTALL_DIR"] = str(local_bin)
+        try:
+            script = run(
+                ["curl", "-LsSf", "https://astral.sh/uv/install.sh"], capture=True
+            ).stdout
+            run(["sh"], input_text=script)
+        except subprocess.CalledProcessError:
+            log("could not install uv")
+            return False
+        os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+        return have("uv")
+
     def ensure_bootstrap_tools(
         self, need_chezmoi: bool, need_ansible: bool, need_bw: bool
     ) -> None:
@@ -624,19 +643,14 @@ class Machine:
             script = run(["curl", "-fsLS", "get.chezmoi.io"], capture=True).stdout
             run(["sh", "-s", "--", "-b", str(local_bin)], input_text=script)
         if need_ansible and not have("ansible-playbook"):
-            if have("pipx"):
-                log("installing ansible-core via pipx")
-                run(["pipx", "install", "ansible-core"])
-            elif self.install_pkg_if_missing("ansible-core"):
-                pass
-            elif self.install_pkg_if_missing("ansible"):
-                pass
-            else:
-                self.install_pkg_if_missing("pipx")
-                if have("pipx"):
-                    run(["pipx", "install", "ansible-core"])
-                else:
-                    die("could not install ansible-core")
+            if self.ensure_uv():
+                log("installing ansible-core via uv tool install")
+                run(["uv", "tool", "install", "ansible-core"], check=False)
+            if not have("ansible-playbook") and not (
+                self.install_pkg_if_missing("ansible-core")
+                or self.install_pkg_if_missing("ansible")
+            ):
+                die("could not install ansible-core (uv and apt both failed)")
         if need_ansible and have("ansible-galaxy"):
             req = self.ansible_dir / "requirements.yml"
             if req.is_file():
@@ -1179,7 +1193,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         backup_dir.mkdir(parents=True, exist_ok=True)
         if env_path.is_file():
             existing = env_path.read_text(encoding="utf-8")
-            header = existing.splitlines()[:3]
+            header = "\n".join(existing.splitlines()[:3])
             if "# generated by machine env pull" not in header:
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 bak = backup_dir / f"env.{stamp}"
@@ -1211,7 +1225,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         die("aborted; when ready: machine migrate  or  ./bootstrap")
         return None
 
-    def cmd_migrate(self, args: argparse.Namespace) -> int:
+    def cmd_migrate(self, args: types.SimpleNamespace) -> int:
         old_sha = self.git_head() or "unknown"
         backup = self.backup_migration_state(old_sha)
         rollback = self.write_rollback_script(old_sha)
@@ -1221,7 +1235,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         # Reuse setup path
         return self.cmd_setup(args)
 
-    def cmd_setup(self, args: argparse.Namespace) -> int:
+    def cmd_setup(self, args: types.SimpleNamespace) -> int:
         if getattr(args, "command", "") != "migrate" and self.needs_layout_migration():
             if args.yes:
                 log(
@@ -1330,7 +1344,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         log("setup finished")
         return 0
 
-    def cmd_apply(self, args: argparse.Namespace) -> int:
+    def cmd_apply(self, args: types.SimpleNamespace) -> int:
         """Apply host profile (repo → local) + ansible; revert local profile on fail."""
         playbook = getattr(args, "playbook", "workstation") or "workstation"
         ask_become = not getattr(args, "no_become", False)
@@ -1405,7 +1419,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         run(["bash", str(path)])
         return 0
 
-    def cmd_profile(self, args: argparse.Namespace) -> int:
+    def cmd_profile(self, args: types.SimpleNamespace) -> int:
         if args.action == "show":
             repo_path = self.host_profile_path()
             print(f"hostname: {hostname_short()}")
@@ -1440,10 +1454,10 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         die(f"unknown profile action: {args.action}")
         return 1
 
-    def cmd_update(self, args: argparse.Namespace) -> int:
+    def cmd_update(self, args: types.SimpleNamespace) -> int:
         gate = self.handle_layout_gate(yes=False, force=args.force)
         if gate == "migrate":
-            migrate_args = argparse.Namespace(
+            migrate_args = types.SimpleNamespace(
                 profile=None,
                 features=None,
                 yes=False,
@@ -1464,7 +1478,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
 
         gate = self.handle_layout_gate(yes=False, force=args.force)
         if gate == "migrate":
-            migrate_args = argparse.Namespace(
+            migrate_args = types.SimpleNamespace(
                 profile=None,
                 features=None,
                 yes=False,
@@ -1487,7 +1501,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             self.update_marker.unlink()
 
         if profile_changed or args.system:
-            apply_args = argparse.Namespace(
+            apply_args = types.SimpleNamespace(
                 limit="",
                 playbook="workstation",
                 no_become=False,
@@ -1542,7 +1556,7 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             )
         return 0
 
-    def cmd_commit(self, args: argparse.Namespace) -> int:
+    def cmd_commit(self, args: types.SimpleNamespace) -> int:
         files = [
             "home",
             "ansible",
@@ -1566,14 +1580,14 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         run(["git", "-C", str(self.repo), "push"])
         return 0
 
-    def cmd_inventory(self, args: argparse.Namespace) -> int:
+    def cmd_inventory(self, args: types.SimpleNamespace) -> int:
         if not have("ansible-vault"):
             die("ansible-vault not found")
         self.load_vault_password()
         run(["ansible-vault", args.action, args.file])
         return 0
 
-    def cmd_ssh(self, args: argparse.Namespace) -> int:
+    def cmd_ssh(self, args: types.SimpleNamespace) -> int:
         if args.action == "publish":
             store = bool(args.private)
             if not args.yes and is_tty() and not store:
@@ -1585,281 +1599,207 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         return 1
 
 
-def completion_zsh() -> str:
-    profiles = " ".join(PROFILES)
-    features = " ".join(FEATURES)
-    playbooks = " ".join(PLAYBOOKS)
-    return f"""#compdef machine
-_machine() {{
-  local -a commands
-  commands=(
-    'setup:Bootstrap this host or push via --limit'
-    'migrate:Backup old layout, write rollback.sh, run setup'
-    'rollback:Undo migrate via ~/.local/share/machine/rollback.sh'
-    'update:git pull, sync host profile, chezmoi, optional apply'
-    'apply:sync host profile and run ansible (revert on fail)'
-    'profile:show/sync/save versioned host profile'
-    'env:pull or status for ~/.env from Bitwarden'
-    'ssh:publish or restore host SSH keys'
-    'status:git / chezmoi / profile'
-    'commit:commit tracked changes'
-    'push:git push'
-    'inventory:ansible-vault edit/encrypt'
-    'completion:print shell completion script'
-    'help:show help'
-  )
-  local -a env_cmds inventory_cmds ssh_cmds profile_cmds shells
-  env_cmds=(pull status)
-  inventory_cmds=(edit encrypt decrypt view)
-  ssh_cmds=(publish restore)
-  profile_cmds=(show sync save)
-  shells=(bash zsh)
-
-  _arguments -C \\
-    '1: :->command' \\
-    '*:: :->args'
-
-  case $state in
-    command)
-      _describe -t commands 'command' commands
-      ;;
-    args)
-      case $words[1] in
-        setup|migrate)
-          _arguments \\
-            '--profile[machine profile]:profile:({profiles})' \\
-            '--features[features]:features:({features})' \\
-            '--yes[non-interactive]' \\
-            '--local[force local connection]' \\
-            '--limit[ansible host]:host:' \\
-            '--playbook[playbook]:playbook:({playbooks})' \\
-            '--skip-ansible' \\
-            '--skip-chezmoi' \\
-            '--no-become'
-          ;;
-        update)
-          _arguments '--system[run ansible workstation]' '--force[ignore dirty git]'
-          ;;
-        apply)
-          _arguments \\
-            '--limit[ansible host]:host:' \\
-            '--playbook[playbook]:playbook:({playbooks})' \\
-            '--no-become'
-          ;;
-        profile)
-          _describe -t profile_cmds 'profile command' profile_cmds
-          ;;
-        env)
-          _describe -t env_cmds 'env command' env_cmds
-          ;;
-        ssh)
-          _describe -t ssh_cmds 'ssh command' ssh_cmds
-          ;;
-        inventory)
-          if (( CURRENT == 2 )); then
-            _describe -t inventory_cmds 'inventory action' inventory_cmds
-          else
-            _files
-          fi
-          ;;
-        commit)
-          _arguments '-m[message]:message:'
-          ;;
-        completion)
-          _describe -t shells 'shell' shells
-          ;;
-      esac
-      ;;
-  esac
-}}
-compdef _machine machine
-"""
+app = typer.Typer(
+    name="machine",
+    help="Dotfiles and host setup",
+    add_completion=False,
+    no_args_is_help=True,
+)
 
 
-def completion_bash() -> str:
-    profiles = " ".join(PROFILES)
-    playbooks = " ".join(PLAYBOOKS)
-    return f"""_machine() {{
-  local cur prev cmd i
-  COMPREPLY=()
-  cur="${{COMP_WORDS[COMP_CWORD]}}"
-  prev="${{COMP_WORDS[COMP_CWORD-1]}}"
-  local commands="setup migrate rollback update apply profile env ssh status commit push inventory completion help"
-  cmd=""
-  i=1
-  while [[ $i -lt $COMP_CWORD ]]; do
-    case "${{COMP_WORDS[i]}}" in
-      setup|migrate|rollback|update|apply|profile|env|ssh|status|commit|push|inventory|completion|help)
-        cmd="${{COMP_WORDS[i]}}"
-        break
-        ;;
-    esac
-    i=$((i + 1))
-  done
-  if [[ -z "$cmd" ]]; then
-    COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
-    return 0
-  fi
-  case "$cmd" in
-    setup|migrate)
-      case "$prev" in
-        --profile) COMPREPLY=( $(compgen -W "{profiles}" -- "$cur") ) ;;
-        --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
-        *)
-          local opts="--profile --features --yes --local --limit --playbook"
-          opts+=" --skip-ansible --skip-chezmoi --no-become"
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") ) ;;
-      esac
-      ;;
-    update) COMPREPLY=( $(compgen -W "--system --force" -- "$cur") ) ;;
-    apply)
-      case "$prev" in
-        --playbook) COMPREPLY=( $(compgen -W "{playbooks}" -- "$cur") ) ;;
-        *) COMPREPLY=( $(compgen -W "--limit --playbook --no-become" -- "$cur") ) ;;
-      esac
-      ;;
-    profile) COMPREPLY=( $(compgen -W "show sync save" -- "$cur") ) ;;
-    env) COMPREPLY=( $(compgen -W "pull status" -- "$cur") ) ;;
-    ssh) COMPREPLY=( $(compgen -W "publish restore" -- "$cur") ) ;;
-    inventory)
-      if [[ "$prev" == "inventory" ]]; then
-        COMPREPLY=( $(compgen -W "edit encrypt decrypt view" -- "$cur") )
-      else
-        COMPREPLY=( $(compgen -f -- "$cur") )
-      fi
-      ;;
-    commit) COMPREPLY=( $(compgen -W "-m" -- "$cur") ) ;;
-    completion) COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") ) ;;
-  esac
-}}
-complete -F _machine machine
-"""
-
-
-def _add_setup_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--profile", choices=PROFILES)
-    parser.add_argument("--features", nargs="*", default=None, choices=FEATURES)
-    parser.add_argument("--yes", "--non-interactive", action="store_true")
-    parser.add_argument("--local", action="store_true")
-    parser.add_argument("--limit", default="")
-    parser.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
-    parser.add_argument("--skip-ansible", action="store_true")
-    parser.add_argument("--skip-chezmoi", action="store_true")
-    parser.add_argument("--no-become", action="store_true")
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="machine", description="Dotfiles and host setup"
-    )
-    sub = parser.add_subparsers(dest="command")
-
-    setup = sub.add_parser("setup", help="Bootstrap this host or --limit HOST")
-    _add_setup_flags(setup)
-
-    migrate = sub.add_parser(
-        "migrate", help="Backup old layout, write rollback.sh, run setup"
-    )
-    _add_setup_flags(migrate)
-
-    sub.add_parser(
-        "rollback",
-        help="Undo migrate via ~/.local/share/machine/rollback.sh",
+def _completion_script(shell: str) -> str:
+    if shell not in ("bash", "zsh"):
+        die(f"unsupported shell: {shell}")
+    complete_var = f"_{MACHINE_PROG_NAME.upper()}_COMPLETE"
+    return get_completion_script(
+        prog_name=MACHINE_PROG_NAME, complete_var=complete_var, shell=shell
     )
 
-    update = sub.add_parser(
-        "update",
-        help="git pull, sync host profile, chezmoi; apply if profile changed",
-    )
-    update.add_argument("--system", action="store_true")
-    update.add_argument("--force", action="store_true")
 
-    apply_p = sub.add_parser(
-        "apply",
-        help="Sync host profile + ansible (local revert on fail; --limit for remote)",
-    )
-    apply_p.add_argument("--limit", default="")
-    apply_p.add_argument("--playbook", choices=PLAYBOOKS, default="workstation")
-    apply_p.add_argument("--no-become", action="store_true")
-
-    profile_p = sub.add_parser(
-        "profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
-    )
-    profile_p.add_argument(
-        "action", nargs="?", choices=["show", "sync", "save"], default="show"
-    )
-
-    env = sub.add_parser("env", help="Bitwarden -> ~/.env")
-    env.add_argument("action", nargs="?", choices=["pull", "status"], default="pull")
-
-    ssh = sub.add_parser("ssh", help="publish/restore per-host SSH keys")
-    ssh.add_argument("action", choices=["publish", "restore"])
-    ssh.add_argument("--private", action="store_true", help="also store private key")
-    ssh.add_argument("--yes", action="store_true")
-
-    sub.add_parser("status", help="git / chezmoi / profile")
-
-    commit = sub.add_parser("commit", help="commit tracked changes")
-    commit.add_argument("-m", "--message")
-
-    sub.add_parser("push", help="git push")
-
-    inventory = sub.add_parser("inventory", help="ansible-vault helpers")
-    inventory.add_argument("action", choices=["edit", "encrypt", "decrypt", "view"])
-    inventory.add_argument("file")
-
-    completion = sub.add_parser("completion", help="print bash/zsh completion")
-    completion.add_argument("shell", choices=["bash", "zsh"])
-
-    sub.add_parser("help", help="show help")
-    return parser
+def _exit(code: int) -> None:
+    if code:
+        raise typer.Exit(code=code)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if not args.command or args.command == "help":
-        parser.print_help()
-        return 0
-    if args.command == "completion":
-        script = completion_zsh() if args.shell == "zsh" else completion_bash()
-        print(script, end="")
-        return 0
+def _check_choice(value: str, choices: Sequence[str], label: str) -> str:
+    if value not in choices:
+        die(f"invalid {label} {value!r} (choices: {', '.join(choices)})")
+    return value
 
+
+def _setup_or_migrate(command: str, args: types.SimpleNamespace) -> None:
+    if args.profile:
+        _check_choice(args.profile, PROFILES, "--profile")
+    for feature in args.features or []:
+        _check_choice(feature, FEATURES, "--features")
+    _check_choice(args.playbook, PLAYBOOKS, "--playbook")
     cli = Machine()
-    if args.command == "setup":
-        return cli.cmd_setup(args)
-    if args.command == "migrate":
-        return cli.cmd_migrate(args)
-    if args.command == "rollback":
-        return cli.cmd_rollback()
-    if args.command == "update":
-        return cli.cmd_update(args)
-    if args.command == "apply":
-        return cli.cmd_apply(args)
-    if args.command == "profile":
-        return cli.cmd_profile(args)
-    if args.command == "env":
-        if args.action == "status":
-            return cli.cmd_env_status()
-        return cli.cmd_env_pull()
-    if args.command == "ssh":
-        return cli.cmd_ssh(args)
-    if args.command == "status":
-        return cli.cmd_status()
-    if args.command == "commit":
-        return cli.cmd_commit(args)
-    if args.command == "push":
-        return cli.cmd_push()
-    if args.command == "inventory":
-        return cli.cmd_inventory(args)
-    parser.print_help()
-    return 1
+    if command == "migrate":
+        _exit(cli.cmd_migrate(args))
+    else:
+        _exit(cli.cmd_setup(args))
+
+
+@app.command(help="Bootstrap this host or --limit HOST")
+def setup(
+    profile: Optional[str] = typer.Option(None, "--profile", help="machine profile"),
+    features: Optional[List[str]] = typer.Option(
+        None, "--features", help="repeat to select several"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "--non-interactive", help="non-interactive"
+    ),
+    local: bool = typer.Option(False, "--local", help="force local connection"),
+    limit: str = typer.Option("", "--limit", help="ansible host"),
+    playbook: str = typer.Option("workstation", "--playbook"),
+    skip_ansible: bool = typer.Option(False, "--skip-ansible"),
+    skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
+    no_become: bool = typer.Option(False, "--no-become"),
+) -> None:
+    args = types.SimpleNamespace(
+        profile=profile,
+        features=features,
+        yes=yes,
+        local=local,
+        limit=limit,
+        playbook=playbook,
+        skip_ansible=skip_ansible,
+        skip_chezmoi=skip_chezmoi,
+        no_become=no_become,
+        command="setup",
+    )
+    _setup_or_migrate("setup", args)
+
+
+@app.command(help="Backup old layout, write rollback.sh, run setup")
+def migrate(
+    profile: Optional[str] = typer.Option(None, "--profile", help="machine profile"),
+    features: Optional[List[str]] = typer.Option(
+        None, "--features", help="repeat to select several"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "--non-interactive", help="non-interactive"
+    ),
+    local: bool = typer.Option(False, "--local", help="force local connection"),
+    limit: str = typer.Option("", "--limit", help="ansible host"),
+    playbook: str = typer.Option("workstation", "--playbook"),
+    skip_ansible: bool = typer.Option(False, "--skip-ansible"),
+    skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
+    no_become: bool = typer.Option(False, "--no-become"),
+) -> None:
+    args = types.SimpleNamespace(
+        profile=profile,
+        features=features,
+        yes=yes,
+        local=local,
+        limit=limit,
+        playbook=playbook,
+        skip_ansible=skip_ansible,
+        skip_chezmoi=skip_chezmoi,
+        no_become=no_become,
+        command="migrate",
+    )
+    _setup_or_migrate("migrate", args)
+
+
+@app.command(help="Undo migrate via ~/.local/share/machine/rollback.sh")
+def rollback() -> None:
+    _exit(Machine().cmd_rollback())
+
+
+@app.command(help="git pull, sync host profile, chezmoi; apply if profile changed")
+def update(
+    system: bool = typer.Option(False, "--system"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    args = types.SimpleNamespace(system=system, force=force)
+    _exit(Machine().cmd_update(args))
+
+
+@app.command(
+    help="Sync host profile + ansible (local revert on fail; --limit for remote)"
+)
+def apply(
+    limit: str = typer.Option("", "--limit", help="ansible host"),
+    playbook: str = typer.Option("workstation", "--playbook"),
+    no_become: bool = typer.Option(False, "--no-become"),
+) -> None:
+    _check_choice(playbook, PLAYBOOKS, "--playbook")
+    args = types.SimpleNamespace(limit=limit, playbook=playbook, no_become=no_become)
+    _exit(Machine().cmd_apply(args))
+
+
+@app.command(
+    name="profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
+)
+def profile_cmd(action: str = typer.Argument("show")) -> None:
+    _check_choice(action, ["show", "sync", "save"], "action")
+    args = types.SimpleNamespace(action=action)
+    _exit(Machine().cmd_profile(args))
+
+
+@app.command(name="env", help="Bitwarden -> ~/.env")
+def env_cmd(action: str = typer.Argument("pull")) -> None:
+    _check_choice(action, ["pull", "status"], "action")
+    cli = Machine()
+    if action == "status":
+        _exit(cli.cmd_env_status())
+    else:
+        _exit(cli.cmd_env_pull())
+
+
+@app.command(name="ssh", help="publish/restore per-host SSH keys")
+def ssh_cmd(
+    action: str = typer.Argument(...),
+    private: bool = typer.Option(False, "--private", help="also store private key"),
+    yes: bool = typer.Option(False, "--yes"),
+) -> None:
+    _check_choice(action, ["publish", "restore"], "action")
+    args = types.SimpleNamespace(action=action, private=private, yes=yes)
+    _exit(Machine().cmd_ssh(args))
+
+
+@app.command(help="git / chezmoi / profile")
+def status() -> None:
+    _exit(Machine().cmd_status())
+
+
+@app.command(help="commit tracked changes")
+def commit(
+    message: Optional[str] = typer.Option(None, "-m", "--message"),
+) -> None:
+    args = types.SimpleNamespace(message=message)
+    _exit(Machine().cmd_commit(args))
+
+
+@app.command(help="git push")
+def push() -> None:
+    _exit(Machine().cmd_push())
+
+
+@app.command(name="inventory", help="ansible-vault helpers")
+def inventory_cmd(
+    action: str = typer.Argument(...),
+    file: str = typer.Argument(...),
+) -> None:
+    _check_choice(action, ["edit", "encrypt", "decrypt", "view"], "action")
+    args = types.SimpleNamespace(action=action, file=file)
+    _exit(Machine().cmd_inventory(args))
+
+
+@app.command(name="completion", help="print bash/zsh completion")
+def completion_cmd(shell: str = typer.Argument(...)) -> None:
+    typer.echo(_completion_script(shell), nl=False)
+
+
+@app.command(name="help", help="show help")
+def help_cmd(ctx: typer.Context) -> None:
+    typer.echo(ctx.parent.get_help() if ctx.parent else ctx.get_help())
 
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        app(prog_name=MACHINE_PROG_NAME)
     except KeyboardInterrupt:
         raise SystemExit(130)
     except subprocess.CalledProcessError as exc:

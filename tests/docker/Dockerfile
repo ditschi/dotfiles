@@ -16,6 +16,7 @@ RUN apt-get update \
         ansible-core \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL get.chezmoi.io | sh -s -- -b /usr/local/bin \
+    && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
     && mkdir -p /usr/share/ansible/collections \
     && ansible-galaxy collection install ansible.posix \
         -p /usr/share/ansible/collections \

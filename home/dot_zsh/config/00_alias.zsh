@@ -126,3 +126,15 @@ get-ipv4() {
 get-ipv6() {
     dig "$1" AAAA +short
 }
+
+if command -v yazi >/dev/null 2>&1; then
+    y() {
+        local tmp cwd
+        tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+        yazi "$@" --cwd-file="$tmp"
+        if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+            builtin cd -- "$cwd" || return
+        fi
+        rm -f -- "$tmp"
+    }
+fi

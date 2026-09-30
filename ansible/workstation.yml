@@ -39,6 +39,33 @@
         - profile | default('') not in ['container', 'work-laptop']
         - (monitoring_configs | default([])) | length > 0
 
+- name: Yazi (terminal file manager)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [yazi]
+  roles:
+    - role: yazi
+      when: "'yazi' in (features | default([]))"
+
+- name: GitHub CLI
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [gh_cli]
+  roles:
+    - role: gh_cli
+      when: "'gh-cli' in (features | default([]))"
+
+- name: Azure CLI (work)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [az_cli]
+  roles:
+    - role: az_cli
+      when: "'azure-cli' in (features | default([]))"
+
 - name: Stylus touch-guard (Yoga / convertible)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

@@ -2,6 +2,7 @@
 profile: home-server
 features:
   - zsh-full
+  - yazi
   - docker
   - monitoring
   - unattended-upgrades

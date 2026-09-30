@@ -3,3 +3,5 @@ pytest-testinfra>=10.0
 PyYAML>=6.0
 ansible-lint>=24.2.0
 ansible-core>=2.16
+typer==0.27.2
+rich>=13.9

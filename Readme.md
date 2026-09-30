@@ -56,7 +56,7 @@ Uncommitted local changes block `machine update` (unless `--force`).
 ## Layout
 
 ```
-bootstrap                 # calls machine setup
+bootstrap                 # installs uv if missing, then calls machine setup
 home/                     # chezmoi source, mode=symlink
 machine/
   hosts/                  # versioned host answers (<hostname>.yml)
@@ -69,13 +69,20 @@ ansible/
   inventory/hosts.example.yml
   profiles/               # feature defaults per profile
   roles/
+    az_cli/               # Azure CLI, work only (official installer)
+    gh_cli/               # GitHub CLI (official apt repo)
     monitoring/           # Telegraf agent configs
     sshd_home/            # port 5115 + authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
     user_tools/           # starship, fonts
-docs/                     # deprecation notes etc.
+    yazi/                 # yazi terminal file manager (.deb release)
 tests/                    # unit + Docker/CI
 ```
+
+`home/dot_local/bin/executable_machine` is a [PEP 723](https://peps.python.org/pep-0723/)
+single-file script (shebang `uv run --script`) — its dependencies (typer, rich,
+PyYAML) are declared inline and resolved by [uv](https://astral.sh/uv) on first
+run, no manual venv. `./bootstrap` installs `uv` itself if it's missing.
 
 Profile cache: `~/.config/machine/profile.yml` (not in git).  
 **Source of truth per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — features and `ssh_allow_from`. chezmoi config: `~/.config/chezmoi/chezmoi.yaml`.
@@ -169,7 +176,7 @@ machine ssh restore           # restore private key
 
 `work-laptop`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `work-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `sshd-home`
+Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 

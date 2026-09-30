@@ -4,6 +4,8 @@ features:
   - zsh-full
   - fonts
   - starship
+  - yazi
+  - gh-cli
   - desktop
   - gnome
   - monitoring

@@ -22,7 +22,7 @@ zinit wait light-mode lucid for \
   zpm-zsh/undollar \
   agkozak/zsh-z \
   paulirish/git-open \
-  atinit"zicompinit; zicdreplay" \
+  atinit"zicompinit; zicdreplay; source \$ZSH/config/07_machine.zsh" \
     @zdharma-continuum/fast-syntax-highlighting \
   atload"_zsh_autosuggest_start" \
   atinit"bindkey '^_' autosuggest-execute;bindkey '^ ' autosuggest-accept;" \

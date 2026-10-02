@@ -5,6 +5,9 @@ export PATH="$PATH:$HOME/.local/bin"
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 
+export GITHUB_API_URL=https://api.github.com
+export GITHUB_GRAPHQL_URL=https://api.github.com/graphql
+
 # ~/.env is generated from Bitwarden (`machine env pull`).
 # Host-only extras: ~/.env.local (not overwritten).
 # load customization

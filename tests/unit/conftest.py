@@ -7,6 +7,23 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def isolate_machine_environment(monkeypatch):
+    for name in (
+        "DOTFILES_UPDATE_MARKER",
+        "DOTFILES_UPDATE_LAST_CHECK",
+        "MACHINE_PROFILE",
+        "MACHINE_PROFILE_NAME",
+        "MACHINE_PROFILE_FILE",
+        "MACHINE_STATE_DIR",
+        "MACHINE_SSH_KEY",
+        "CHEZMOI_CONFIG",
+        "BW_SESSION",
+        "MACHINE_IN_DOCKER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def fake_bw(tmp_path: Path):
     """Minimal bw stub: unlock returns session; get/create/edit items in a JSON store."""

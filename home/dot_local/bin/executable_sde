@@ -1,0 +1,177 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+SDE_SELECTED_SERVICE="${DOCKER_SERVICE:-dev-env}"
+mode="minimal"
+rebuild=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --extended)
+            mode="extended"
+            shift
+            ;;
+        --rebuild)
+            rebuild=true
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *) break ;;
+    esac
+done
+
+interactive=false
+if [[ $# -eq 0 && -t 0 ]]; then
+    interactive=true
+fi
+run_options=(--rm --label "com.ditschi.sde.mode=$mode")
+if ! "$interactive"; then
+    run_options+=(-T)
+fi
+run_options+=(-v "$HOME:/mnt/host_home/")
+dotfiles_mount=""
+
+prepare_extended_setup() {
+    local script_path repo repo_name cache container_home
+    script_path="$(readlink -f "${BASH_SOURCE[0]}")"
+    repo="${DOTFILES_REPO:-$(cd "$(dirname "$script_path")/../../.." && pwd)}"
+    if [[ ! -f "$repo/install.py" ]]; then
+        echo "[SDE] Dotfiles installer not found in $repo" >&2
+        return 1
+    fi
+    repo_name="$(basename "$PWD")"
+    cache="$HOME/.docker-cache"
+    container_home="${SDE_CONTAINER_HOME:-$HOME}"
+    mkdir -p "$cache/zinit" "$cache/apt" "$cache/dotfiles-installer" "$cache/commandhistory.d"
+    touch "$cache/commandhistory.d/${repo_name}_zsh"
+    run_options+=(
+        -v "$repo:/mnt/dotfiles:ro"
+        -v "$cache/zinit:$container_home/.local/share/zinit/"
+        -v "$cache/apt:/var/cache/apt/archives/"
+        -v "$cache/dotfiles-installer:$container_home/.local/share/dotfiles-installer"
+        -v "$cache/commandhistory.d/${repo_name}_zsh:$container_home/.zsh_history"
+    )
+    if [[ -d /usr/share/autojump ]]; then
+        run_options+=(-v /usr/share/autojump/:/usr/share/autojump/:ro)
+    fi
+    dotfiles_mount="/mnt/dotfiles"
+}
+
+source_variables_from_script() {
+    local initialize="./.devcontainer/initialize-command.sh"
+    if [[ -f $initialize ]]; then
+        echo "[SDE] Running $initialize"
+        bash "$initialize" >/dev/null
+    fi
+    if [[ -f .env ]]; then
+        source ./.env
+    fi
+}
+
+docker_compose_build_new_image() {
+    echo "[SDE] Pulling/building the Docker image for $SDE_SELECTED_SERVICE..."
+    docker compose build --pull "$SDE_SELECTED_SERVICE"
+    rebuild=true
+}
+
+check_if_docker_image_exists_or_compose_build() {
+    local image_id choice
+    image_id="$(docker compose images -q "$SDE_SELECTED_SERVICE")"
+    if "$rebuild" || [[ -z $image_id ]]; then
+        docker_compose_build_new_image
+    elif "$interactive"; then
+        echo "[SDE] Found existing image for $SDE_SELECTED_SERVICE ($image_id)."
+        select choice in "Use existing image" "Pull/Rebuild latest image"; do
+            case "$choice" in
+                "Use existing image") return ;;
+                "Pull/Rebuild latest image")
+                    docker_compose_build_new_image
+                    return
+                    ;;
+                *) echo "[SDE] Invalid selection." ;;
+            esac
+        done
+        return 1
+    fi
+}
+
+docker_compose_run_new_container() {
+    docker compose run "${run_options[@]}" "$SDE_SELECTED_SERVICE" bash -c '
+        set -e
+        mode="$1"
+        dotfiles="$2"
+        shift 2
+        if [[ "$mode" == extended ]]; then
+            python3 "$dotfiles/install.py"
+        fi
+        if [[ -f .devcontainer/post-start-command.sh ]]; then
+            bash .devcontainer/post-start-command.sh
+        fi
+        if [[ $# -gt 0 ]]; then
+            exec "$@"
+        elif command -v zsh >/dev/null 2>&1; then
+            exec zsh
+        else
+            exec bash
+        fi
+    ' sde "$mode" "$dotfiles_mount" "$@"
+}
+
+check_if_container_exists_or_start_new_container() {
+    if ! "$interactive" || "$rebuild"; then
+        docker_compose_run_new_container "$@"
+        return
+    fi
+    local containers container container_id status label selection
+    local -a choices=()
+    containers="$(docker compose ps -a --format '{{.ID}}:{{.Names}}:STATUS:{{.Status}}' "$SDE_SELECTED_SERVICE")"
+    while IFS= read -r container; do
+        [[ -n $container ]] || continue
+        container_id="${container%%:*}"
+        if [[ $mode == extended ]]; then
+            label="$(docker inspect --format '{{ index .Config.Labels "com.ditschi.sde.mode" }}' "$container_id")"
+            [[ $label == extended ]] || continue
+        fi
+        choices+=("${container// /_}")
+    done <<<"$containers"
+    if [[ ${#choices[@]} -eq 0 ]]; then
+        docker_compose_run_new_container
+        return
+    fi
+    echo "[SDE] Select a container ($mode mode):"
+    select selection in "${choices[@]}" "Start new container"; do
+        if [[ $selection == "Start new container" ]]; then
+            docker_compose_run_new_container
+            return
+        elif [[ -n $selection ]]; then
+            container_id="${selection%%:*}"
+            status="$(docker inspect --format '{{.State.Status}}' "$container_id")"
+            case "$status" in
+                exited | created) docker start "$container_id" >/dev/null ;;
+                running) ;;
+                *)
+                    echo "[SDE] Cannot attach to container in state $status." >&2
+                    return 1
+                    ;;
+            esac
+            docker attach "$container_id"
+            return
+        fi
+        echo "[SDE] Invalid selection."
+    done
+    return 1
+}
+
+main() {
+    echo "[SDE] Start Docker Environment ($mode mode)"
+    source_variables_from_script
+    if [[ $mode == extended ]]; then
+        prepare_extended_setup
+    fi
+    check_if_docker_image_exists_or_compose_build
+    check_if_container_exists_or_start_new_container "$@"
+}
+
+main "$@"

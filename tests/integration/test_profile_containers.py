@@ -64,7 +64,11 @@ def test_profile_dotfiles(profile_env):
     assert host.file("/home/tester/.gitconfig").is_symlink
     local = host.file("/home/tester/.gitconfig.local")
     assert local.exists and not local.is_symlink
-    expected = "dci2lr@bosch.com" if profile == "work-laptop" else "chris@ditscher.me"
+    expected = (
+        "christian.ditscher@de.bosch.com"
+        if profile == "work-laptop"
+        else "chris@ditscher.me"
+    )
     assert host.check_output("git -C /tmp config user.email") == expected
 
 

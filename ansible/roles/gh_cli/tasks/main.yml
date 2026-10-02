@@ -1,31 +1,68 @@
 ---
-- name: Ensure apt keyrings directory exists
-  ansible.builtin.file:
-    path: /etc/apt/keyrings
-    state: directory
-    mode: "0755"
-
-- name: Add GitHub CLI apt keyring
-  ansible.builtin.get_url:
-    url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
-    dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
-    mode: "0644"
-
-- name: Determine dpkg architecture
-  ansible.builtin.command: dpkg --print-architecture
-  register: gh_cli_dpkg_arch
+- name: Check existing GitHub CLI as the login user
+  ansible.builtin.command: gh --version
+  become: false
+  environment:
+    PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+  register: gh_cli_installed
   changed_when: false
+  failed_when: false
 
-- name: Add GitHub CLI apt repository
-  ansible.builtin.copy:
-    dest: /etc/apt/sources.list.d/github-cli.list
-    mode: "0644"
-    content: |
-      deb [arch={{ gh_cli_dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
-  register: gh_cli_repo_file
-
-- name: Install gh
+- name: Install missing GitHub CLI using configured repositories first
   ansible.builtin.apt:
     name: gh
     state: present
-    update_cache: "{{ gh_cli_repo_file.changed }}"
+    update_cache: true
+    cache_valid_time: 3600
+  register: gh_cli_configured
+  failed_when: false
+  when: gh_cli_installed.rc != 0
+
+- name: Bootstrap official GitHub CLI repository only when needed
+  when:
+    - gh_cli_installed.rc != 0
+    - gh_cli_configured.msg is defined
+  block:
+    - name: Check existing GitHub CLI source files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list.d/github-cli.list
+        - /etc/apt/sources.list.d/github-cli.sources
+      register: gh_cli_sources
+
+    - name: Refuse to overwrite an existing source after installation failure
+      ansible.builtin.assert:
+        that:
+          - gh_cli_sources.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: "Existing GitHub CLI source left intact; fix apt installation manually before retrying."
+
+    - name: Ensure apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add GitHub CLI apt keyring
+      ansible.builtin.get_url:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        mode: "0644"
+
+    - name: Determine dpkg architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: gh_cli_dpkg_arch
+      changed_when: false
+
+    - name: Add GitHub CLI apt repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/github-cli.list
+        mode: "0644"
+        content: |
+          deb [arch={{ gh_cli_dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
+
+    - name: Install gh
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: true

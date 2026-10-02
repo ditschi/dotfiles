@@ -38,6 +38,8 @@ jobs:
       - name: Install test deps
         run: |
           pip install -r tests/requirements.txt
+      - name: Reject committed host-only Git settings
+        run: python3 machine/gitconfig.py --check
       - name: Install chezmoi
         run: |
           sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"

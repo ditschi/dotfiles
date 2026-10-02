@@ -94,7 +94,7 @@
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
     # identity: default per host comes from ~/.gitconfig.local; these override one repo
-    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'dci2lr@bosch.com'
+    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'christian.ditscher@de.bosch.com'
     user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
     user-show = "!f() { echo \"repo  : $(git config --local user.name) <$(git config --local user.email)>\"; echo \"host  : $(git config -f ~/.gitconfig.local user.name) <$(git config -f ~/.gitconfig.local user.email)>\"; echo \"active: $(git config user.name) <$(git config user.email)>\"; }; f"
     user-unset-local = !git config --local --unset-all user.name && git config --local --unset-all user.email || true

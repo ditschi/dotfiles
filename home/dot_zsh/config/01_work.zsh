@@ -80,114 +80,25 @@ groups-list() {
 }
 
 
+export GHES_API_URL=https://github.boschdevcloud.com/api/v3/
+export GHES_GRAPHQL_URL=https://github.boschdevcloud.com/api/graphql
+
 export DOCKER_SERVICE="dev-env"
-# ---------------------------------------------------------------------------
-# _sde_run: helper for sde/sdx that builds a single command string
-#           joined with &&, so it can be passed as a quoted string to the container.
-#           This supports the style where the command is wrapped in double quotes.
-# Usage: _sde_run <shell> <setup_cmd> <extra_volumes...> -- [user command...]
-#   shell:         "bash" or "zsh" (zsh falls back to bash if unavailable)
-#   setup_cmd:     command to run inside container before post-start (empty string to skip)
-#   extra_volumes: additional -v flags (terminated by --)
-#   user command:  optional command args (quotes preserved)
-# ---------------------------------------------------------------------------
-_sde_run() {
-    local shell="$1"; shift
-    local setup_cmd="$1"; shift
-
-    # Collect extra volume flags until we hit "--"
-    local -a extra_vols=()
-    while [[ $# -gt 0 && "$1" != "--" ]]; do
-        extra_vols+=("$1"); shift
-    done
-    [[ "$1" == "--" ]] && shift
-    # $@ now contains user command args with preserved quoting
-
-    # --- Compose file check ---
-    if [ ! -f docker-compose.yml ] && [ ! -f compose.yaml ]; then
-        echo 'Error: No docker-compose.yml or compose.yaml found in this directory. Cannot start devcontainer.'
-        return 1
-    fi
-
-    # --- Host-side: run initialize-command.sh if present ---
-    if [ -f .devcontainer/initialize-command.sh ]; then
-        ./.devcontainer/initialize-command.sh
-    else
-        echo 'Info: .devcontainer/initialize-command.sh not found, skipping initialization.'
-    fi
-
-    # --- Build ---
-    docker compose build $DOCKER_SERVICE
-
-    # --- Build the command string ---
-    post_start_cmd='if [ -f ./.devcontainer/post-start-command.sh ]; then ./.devcontainer/post-start-command.sh; else echo "Info: .devcontainer/post-start-command.sh not found, skipping post-start setup."; fi'
-
-    # --- Determine shell launch logic ---
-    local cmd_str=""
-    if [ $# -le 0 ]; then
-        # interactive shell case, run setup (incl. shell setup), then start shell
-        if [ -n "$setup_cmd" ]; then
-            cmd_str="$setup_cmd && $post_start_cmd && "
-        else
-            cmd_str="$post_start_cmd && "
-        fi
-        [[ "$shell" == "zsh" ]] && cmd_str+='exec zsh || exec bash' || cmd_str+='exec bash'
-    else
-        # user command case - run only post-start, then user command
-        cmd_str="( $post_start_cmd ) && bash -c \"$@\""
-    fi
-
-    echo "[DEBUG] Running in container: $cmd_str"
-    docker compose run --rm \
-        "${extra_vols[@]}" \
-        $DOCKER_SERVICE \
-        "$cmd_str"
-}
-
-# ---------------------------------------------------------------------------
-# sde: start devcontainer with bash (minimal, no dotfiles setup)
-# ---------------------------------------------------------------------------
 sde() {
-    _sde_run bash "" \
-        -v "${HOME}/:/mnt/host_home/" \
-        -- "$@"
+    local script="./.devcontainer/sde.sh"
+    if [[ -f "$script" ]]; then
+        if [[ -x "$script" ]]; then
+            "$script" "$@"
+        else
+            bash "$script" "$@"
+        fi
+        return $?
+    fi
+    command sde -- "$@"
 }
 
-# ---------------------------------------------------------------------------
-# sdx: start devcontainer with EXTENDED setup (zsh/bash + full dotfiles)
-#
-# Both zsh and bash get the better setup from host (all dotfiles, plugins, history).
-#
-# Volumes:
-#   /mnt/host_home/           - host home (rw) for install.py + .gitconfig propagation
-#   dotfiles-zinit-cache      - named volume for zinit (isolated from host)
-#   dotfiles-apt-cache        - named volume caching .deb files across --rm runs
-#   commandhistory.d/<repo>_zsh - per-repo persistent zsh history
-#   /usr/share/autojump/      - autojump data from host (ro)
-#
-# Setup: install.py maps to `machine setup --profile container` inside Docker:
-#   1. ansible workstation packages for zsh (idempotent)
-#   2. chezmoi symlink apply from host-mounted repo
-# ---------------------------------------------------------------------------
 sdx() {
-    local repo_name
-    repo_name="$(basename "$(pwd)")"
-
-    # Ensure zsh history file exists on host (prevent Docker creating it as a directory)
-    mkdir -p "${HOME}/.docker-cache/zinit"
-    mkdir -p "${HOME}/.docker-cache/apt"
-    mkdir -p "${HOME}/.docker-cache/dotfiles-installer"
-    mkdir -p "${HOME}/.docker-cache/commandhistory.d"
-    touch "${HOME}/.docker-cache/commandhistory.d/${repo_name}_zsh"
-
-    _sde_run zsh "python3 /mnt/host_home/dotfiles/install.py" \
-        -v "${HOME}/:/mnt/host_home/" \
-        -v "${HOME}/.docker-cache/zinit:${HOME}/.local/share/zinit/" \
-        -v "${HOME}/.docker-cache/apt:/var/cache/apt/archives/" \
-        -v "${HOME}/.docker-cache/dotfiles-installer:${HOME}/.local/share/dotfiles-installer" \
-        -v "${HOME}/.docker-cache/commandhistory.d/${repo_name}_zsh:${HOME}/.zsh_history" \
-        -v "/usr/share/autojump/:/usr/share/autojump/:ro" \
-        -- "$@"
+    command sde --extended -- "$@"
 }
 
 

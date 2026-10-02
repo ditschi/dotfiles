@@ -10,13 +10,27 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: check-yaml
+      - id: detect-private-key
       - id: end-of-file-fixer
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+        args: [-e, SC1090, -e, SC1091]
+        exclude_types: [zsh]
+      - id: shellcheck
+        name: shellcheck (rc files without shebang)
+        args: [-e, SC1090, -e, SC1091]
+        files: ^home/dot_(bashrc|profile)$
+        types: [text]
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.10.0-2
     hooks:
@@ -28,18 +42,6 @@ repos:
           - --simplify
           - --write
         exclude: '\.bashrc'
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
-    hooks:
-      # SC1090/SC1091: sourced files are resolved at runtime, not in the repo
-      - id: shellcheck
-        args: [-e, SC1090, -e, SC1091]
-        exclude_types: [zsh]
-      - id: shellcheck
-        name: shellcheck (rc files without shebang)
-        args: [-e, SC1090, -e, SC1091]
-        files: ^home/dot_(bashrc|profile)$
-        types: [text]
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
@@ -60,9 +62,8 @@ repos:
   - repo: local
     hooks:
       - id: gitconfig-no-host-settings
-        name: no host-only settings in shared gitconfig (move them to ~/.gitconfig.local)
-        entry: >-
-          sh -c '! git config -f home/dot_gitconfig --no-includes --get-regexp "^(user\.(name|email|signingkey)|gpg\.|commit\.gpgsign|tag\.gpgsign|safe\.|credential\.|https?\.|core\.sshcommand)"'
+        name: move host-only Git settings to ~/.gitconfig.local
+        entry: python3 machine/gitconfig.py
         language: system
         files: ^home/dot_gitconfig$
         pass_filenames: false

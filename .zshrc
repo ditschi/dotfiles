@@ -52,3 +52,7 @@ fi
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local
 
 # Quiet startup: container detection is kept implicit.
+
+fpath+=~/.zfunc; autoload -Uz compinit; compinit
+
+zstyle ':completion:*' menu select

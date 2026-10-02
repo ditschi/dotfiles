@@ -5,6 +5,9 @@ export PATH="$PATH:$HOME/.local/bin"
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 
+export GITHUB_API_URL=https://api.github.com
+export GITHUB_GRAPHQL_URL=https://api.github.com/graphql
+
 # load customization
 # enable nullglob in a shell-agnostic way
 [[ -n "$ZSH_VERSION" ]] && setopt nullglob || shopt -s nullglob

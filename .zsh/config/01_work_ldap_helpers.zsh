@@ -32,7 +32,7 @@ ldap-user-info-full() {
     local nt_user="${1:-$(whoami)}"
     # Wildcard searches are slow on full domain; scope to regional OU.
     # Override LDAP_USER_BASE to search across regions.
-    local base="${LDAP_USER_BASE:-OU=LR,DC=de,DC=bosch,DC=com}"
+    local base="${LDAP_USER_BASE:-DC=de,DC=bosch,DC=com}"
     ldapsearch-bosch \
         -b "$base" \
         "(|(displayName=*${nt_user}*)(samAccountname=*${nt_user}*))"
@@ -40,7 +40,7 @@ ldap-user-info-full() {
 
 ldap-user-info() {
     local nt_user="${1:-$(whoami)}"
-    local base="${LDAP_USER_BASE:-OU=LR,DC=de,DC=bosch,DC=com}"
+    local base="${LDAP_USER_BASE:-DC=de,DC=bosch,DC=com}"
     ldapsearch-bosch \
         -b "$base" \
         -z 1 \

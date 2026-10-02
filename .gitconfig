@@ -90,7 +90,7 @@
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
     # set the user based on the remote url
-    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'dci2lr@bosch.com'
+    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'christian.ditscher@de.bosch.com'
     user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
     user-setup = !sh -c 'url=$(git remote get-url origin 2>/dev/null || true); if echo "$url" | grep -Eiq "bosch|boschdevcloud|sourcecode.*bosch"; then git user-work; else git user-private; fi; git config --get user.name; git config --get user.email' -
     user-show = !sh -c 'echo "local : $(git config --local --get user.name 2>/dev/null || echo -) <$(git config --local --get user.email 2>/dev/null || echo -)>"; echo "global: $(git config --global --get user.name 2>/dev/null || echo -) <$(git config --global --get user.email 2>/dev/null || echo -)>"; echo "active: $(git config --get user.name 2>/dev/null || echo -) <$(git config --get user.email 2>/dev/null || echo -)>"' -
@@ -172,3 +172,5 @@
 
 [credential]
     helper = store
+[safe]
+	directory = /opt/osd/ansible/osd-ansible-custom

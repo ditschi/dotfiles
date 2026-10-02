@@ -80,6 +80,8 @@ groups-list() {
     for i in $(id -G $user); do echo "$(getent group $i | cut -d: -f1)"; done
 }
 
+export GHES_API_URL=https://github.boschdevcloud.com/api/v3/
+export GHES_GRAPHQL_URL=https://github.boschdevcloud.com/api/graphql
 
 export DOCKER_SERVICE="dev-env"
 # ---------------------------------------------------------------------------

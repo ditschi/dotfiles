@@ -1,6 +1,9 @@
 ---
 - name: Check installed yazi version
   ansible.builtin.command: yazi --version
+  become: false
+  environment:
+    PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
   register: yazi_installed
   changed_when: false
   failed_when: false
@@ -10,17 +13,75 @@
     msg: "yazi: no prebuilt package for architecture {{ ansible_architecture }}, skipping"
   when: ansible_architecture not in ['x86_64', 'aarch64']
 
-- name: Install yazi
+- name: Resolve desired Yazi release
   when:
     - ansible_architecture in ['x86_64', 'aarch64']
-    - yazi_installed.rc != 0 or yazi_version not in (yazi_installed.stdout | default(''))
   block:
-    - name: Download yazi .deb
-      ansible.builtin.get_url:
-        url: "https://github.com/sxyazi/yazi/releases/download/v{{ yazi_version }}/yazi-{{ ansible_architecture }}-unknown-linux-gnu.deb"
-        dest: "/tmp/yazi-{{ yazi_version }}-{{ ansible_architecture }}.deb"
-        mode: "0644"
+    - name: Query stable release metadata
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/sxyazi/yazi/releases/{{ 'latest' if yazi_version == 'latest' else 'tags/v' ~ yazi_version }}"
+        return_content: true
+        timeout: 20
+      register: yazi_release
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
-    - name: Install yazi .deb
-      ansible.builtin.apt:
-        deb: "/tmp/yazi-{{ yazi_version }}-{{ ansible_architecture }}.deb"
+    - name: Select architecture-specific GNU package
+      ansible.builtin.set_fact:
+        yazi_assets: "{{ yazi_release.json.assets | default([]) | selectattr('name', 'equalto', 'yazi-' ~ ansible_architecture ~ '-unknown-linux-gnu.deb') | list }}"
+        yazi_target_version: "{{ yazi_release.json.tag_name | default('') | regex_replace('^v', '') }}"
+        yazi_current_version: "{{ (yazi_installed.stdout | default('') | regex_findall('[0-9]+(?:\\.[0-9]+)+') | first) | default('') }}"
+
+    - name: Require release metadata for a missing installation
+      ansible.builtin.assert:
+        that:
+          - yazi_release.status | default(0) == 200
+          - yazi_assets | length == 1
+          - yazi_target_version | length > 0
+        fail_msg: "Yazi release lookup failed or has no matching asset; no existing installation was changed."
+      when: yazi_installed.rc != 0
+
+    - name: Warn when keeping Yazi after failed release lookup
+      ansible.builtin.debug:
+        msg: "Installed Yazi kept unchanged: release lookup/asset unavailable or current version cannot be compared."
+      when: >-
+        yazi_installed.rc == 0 and (yazi_release.status | default(0) != 200
+        or yazi_assets | length != 1 or yazi_current_version | length == 0)
+
+    - name: Install only a needed Yazi upgrade
+      when:
+        - yazi_release.status | default(0) == 200
+        - yazi_assets | length == 1
+        - yazi_target_version | length > 0
+        - >-
+          yazi_installed.rc != 0 or (yazi_current_version | length > 0
+          and yazi_current_version is version(yazi_target_version, '<', version_type='loose'))
+      block:
+        - name: Download selected release asset
+          ansible.builtin.get_url:
+            url: "{{ yazi_assets[0].browser_download_url }}"
+            checksum: "{{ yazi_assets[0].digest | default(omit, true) }}"
+            dest: "/tmp/yazi-{{ yazi_target_version }}-{{ ansible_architecture }}.deb"
+            mode: "0644"
+
+        - name: Install yazi .deb
+          ansible.builtin.apt:
+            deb: "/tmp/yazi-{{ yazi_target_version }}-{{ ansible_architecture }}.deb"
+          when: not ansible_check_mode
+
+        - name: Check effective Yazi after installation
+          ansible.builtin.command: yazi --version
+          become: false
+          environment:
+            PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+          changed_when: false
+          register: yazi_effective
+          when: not ansible_check_mode
+
+        - name: Warn about a user executable shadowing upgraded Yazi
+          ansible.builtin.debug:
+            msg: "A different Yazi remains first on the user PATH; review it before removing or replacing that executable."
+          when:
+            - not ansible_check_mode
+            - yazi_target_version not in yazi_effective.stdout

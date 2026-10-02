@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import textwrap
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
+import pytest
 
 from package_sets import REPO
 
@@ -191,3 +194,338 @@ def test_write_rollback_script(tmp_path: Path, monkeypatch):
     assert "abc123" in text
     assert "install.py" in text
     assert path.stat().st_mode & 0o100
+
+
+def test_migration_uses_verified_legacy_commit_not_checked_out_head(
+    tmp_path, monkeypatch
+):
+    cli = _cli()
+    repo = tmp_path / "dotfiles"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.com")
+    (repo / ".zshrc").write_text("legacy\n")
+    (repo / "install.py").write_text("def create_links_for_directory():\n    pass\n")
+    git("add", ".")
+    git("commit", "-qm", "legacy")
+    old_sha = git("rev-parse", "HEAD")
+    (repo / ".zshrc").unlink()
+    (repo / "home").mkdir()
+    (repo / "home/dot_zshrc").write_text("new\n")
+    (repo / "install.py").write_text("print('new wrapper')\n")
+    git("add", "-A")
+    git("commit", "-qm", "new layout")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("DOTFILES_REPO", str(repo))
+    machine = cli.Machine()
+    assert machine.legacy_rollback_sha() == old_sha
+    assert machine.legacy_rollback_sha(old_sha) == old_sha
+    import pytest
+
+    with pytest.raises(SystemExit):
+        machine.legacy_rollback_sha("HEAD")
+
+
+def test_migration_backs_up_local_settings_and_reinstalls_legacy_dotfiles(
+    tmp_path, monkeypatch
+):
+    import json
+    from test_bw_and_answers import isolated_machine
+
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.com")
+    (repo / ".zshrc").write_text("legacy\n")
+    (repo / "install.py").write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "def create_links_for_directory():\n    pass\n"
+        "assert sys.argv[1:] == ['--update', '--force']\n"
+        "repo = Path(__file__).parent\n"
+        "for name in ('.zshrc', '.zsh/config/custom.zsh'):\n"
+        "    target = Path.home() / name\n"
+        "    target.parent.mkdir(parents=True, exist_ok=True)\n"
+        "    target.unlink(missing_ok=True)\n"
+        "    target.symlink_to(repo / name)\n"
+    )
+    (repo / ".zsh/config").mkdir(parents=True)
+    (repo / ".zsh/config/custom.zsh").write_text("old alias\n")
+    git("add", ".")
+    git("commit", "-qm", "legacy")
+    old_sha = git("rev-parse", "HEAD")
+    git("rm", "-r", ".zsh", ".zshrc")
+    (repo / "home/dot_zsh/config").mkdir(parents=True)
+    (repo / "home/dot_zshrc").write_text("new\n")
+    (repo / "home/dot_zsh/config/custom.zsh").write_text("new alias\n")
+    (repo / "install.py").write_text(
+        "raise RuntimeError('new installer must not run')\n"
+    )
+    git("add", ".")
+    git("commit", "-qm", "new")
+    machine.repo = repo
+    machine.chezmoi_source = repo / "home"
+    nested = tmp_path / ".zsh/config/custom.zsh"
+    nested.parent.mkdir(parents=True)
+    nested.symlink_to(repo / ".zsh/config/custom.zsh")
+    env = tmp_path / ".env"
+    env.write_text("SECRET=keep\n")
+    env.chmod(0o640)
+    backup = machine.backup_migration_state(old_sha)
+    rollback = machine.write_rollback_script(old_sha)
+    assert json.loads((backup / "meta.json").read_text())["old_sha"] == old_sha
+    assert backup.stat().st_mode & 0o777 == 0o700
+    assert (backup / "files/.env").stat().st_mode & 0o777 == 0o600
+    assert (backup / "files/.env").read_text() == "SECRET=keep\n"
+    nested.unlink()
+    nested.symlink_to(repo / "home/dot_zsh/config/custom.zsh")
+    env.write_text("SECRET=new\n")
+    subprocess.run(["bash", str(rollback)], check=True)
+    assert git("rev-parse", "HEAD") == old_sha
+    assert os.readlink(nested) == str(repo / ".zsh/config/custom.zsh")
+    assert nested.read_text() == "old alias\n"
+    assert env.read_text() == "SECRET=new\n"
+    assert env.stat().st_mode & 0o777 == 0o640
+
+
+def test_git_host_settings_preserve_multivalue_and_existing_local_override(
+    tmp_path, monkeypatch
+):
+    from test_bw_and_answers import isolated_machine
+
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    backup = tmp_path / "snapshot"
+    (backup / "files").mkdir(parents=True)
+    (backup / "files/.gitconfig").write_text(
+        "[user]\n email = old@example.com\n[credential]\n helper = first\n helper = second\n[safe]\n directory = /old\n"
+    )
+    (backup / "files/.gitconfig.local").write_text(
+        "[user]\n email = explicit@example.com\n"
+    )
+    local = tmp_path / ".gitconfig.local"
+    local.write_text(
+        "[user]\n email = explicit@example.com\n[credential]\n helper = template\n"
+    )
+    machine.migration_backup = backup
+    machine.preserve_git_host_settings()
+
+    def get(key):
+        return subprocess.run(
+            ["git", "config", "-f", str(local), "--get-all", key],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+
+    assert get("user.email") == ["explicit@example.com"]
+    assert get("credential.helper") == ["first", "second"]
+    assert get("safe.directory") == ["/old"]
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_sde_prefers_repository_script_and_uses_shared_fallback(tmp_path, shell):
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} unavailable")
+    source = (REPO / "home/dot_zsh/config/01_work.zsh").read_text()
+    body = source.split("sde() {", 1)[1].split("\n}\n", 1)[0]
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    shared = tools / "sde"
+    shared.write_text('#!/bin/bash\nprintf "shared:%s" "$*"\n')
+    shared.chmod(0o755)
+    env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}"}
+    command = "sde() {" + body + "\n}\n" + 'sde "argument with spaces"'
+    fallback = subprocess.run(
+        [shell, "-c", command], cwd=tmp_path, capture_output=True, text=True, env=env
+    )
+    assert fallback.returncode == 0
+    assert fallback.stdout == "shared:-- argument with spaces"
+    script = tmp_path / ".devcontainer/sde.sh"
+    script.parent.mkdir()
+    script.write_text('#!/bin/bash\nprintf "repo:%s" "$1"\nexit 7\n')
+    preferred = subprocess.run(
+        [shell, "-c", command], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert preferred.returncode == 7
+    assert preferred.stdout == "repo:argument with spaces"
+    script.chmod(0o755)
+    executable = subprocess.run(
+        [shell, "-c", command], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert executable.returncode == 7
+    assert executable.stdout == "repo:argument with spaces"
+    body = source.split("sdx() {", 1)[1].split("\n}\n", 1)[0]
+    extended = subprocess.run(
+        [shell, "-c", "sdx() {" + body + '\n}\nsdx "argument with spaces"'],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert extended.returncode == 0
+    assert extended.stdout == "shared:--extended -- argument with spaces"
+
+
+@pytest.mark.parametrize("extended,image", [(False, ""), (True, "existing-image")])
+def test_shared_sde_one_off_commands_and_extended_mounts(tmp_path, extended, image):
+    import json
+
+    home = tmp_path / "host home"
+    home.mkdir()
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    docker = tools / "docker"
+    docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "with open(os.environ['DOCKER_LOG'], 'a') as log:\n"
+        "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:4] == ['compose', 'images', '-q']:\n"
+        "    print(os.environ['DOCKER_IMAGE'])\n"
+        "elif sys.argv[1:3] == ['compose', 'run']:\n"
+        "    raise SystemExit(7)\n"
+    )
+    docker.chmod(0o755)
+    project = tmp_path / "project"
+    (project / ".devcontainer").mkdir(parents=True)
+    (project / ".devcontainer/initialize-command.sh").write_text(
+        "#!/bin/bash\nprintf 'PROJECT_VALUE=present\\n' > .env\n"
+    )
+    log = tmp_path / "docker.jsonl"
+    command = ["bash", str(REPO / "home/dot_local/bin/executable_sde")]
+    if extended:
+        command.append("--extended")
+    command.extend(["--", "printf", "%s", "argument with spaces", "$(not-executed)"])
+    result = subprocess.run(
+        command,
+        cwd=project,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "HOME": str(home),
+            "DOTFILES_REPO": str(REPO),
+            "DOCKER_SERVICE": "dev-env",
+            "DOCKER_LOG": str(log),
+            "DOCKER_IMAGE": image,
+        },
+    )
+    assert result.returncode == 7
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert any(call[:3] == ["compose", "build", "--pull"] for call in calls) == (
+        not image
+    )
+    run = next(call for call in calls if call[:2] == ["compose", "run"])
+    assert "-T" in run
+    assert run[-4:] == ["printf", "%s", "argument with spaces", "$(not-executed)"]
+    assert all(call[1] != "attach" for call in calls)
+    assert (str(REPO) + ":/mnt/dotfiles:ro" in run) == extended
+    history = home / ".docker-cache/commandhistory.d/project_zsh"
+    assert history.is_file() == extended
+    assert (project / ".env").read_text() == "PROJECT_VALUE=present\n"
+    sequence = project / "sequence"
+    (project / ".devcontainer/post-start-command.sh").write_text(
+        "printf 'post-start\\n' >> sequence\n"
+    )
+    shell_index = run.index("bash")
+    payload = run[shell_index:]
+    if extended:
+        fixture = tmp_path / "fixture"
+        fixture.mkdir()
+        (fixture / "install.py").write_text(
+            "from pathlib import Path\nPath('sequence').write_text('setup\\n')\n"
+        )
+        payload[payload.index("/mnt/dotfiles")] = str(fixture)
+    executed = subprocess.run(payload, cwd=project, capture_output=True, text=True)
+    assert executed.returncode == 0
+    assert executed.stdout == "argument with spaces$(not-executed)"
+    assert sequence.read_text().splitlines() == (
+        ["setup", "post-start"] if extended else ["post-start"]
+    )
+
+
+@pytest.mark.parametrize(
+    "extended,label,selection,attach",
+    [
+        (False, "minimal", "9\n1\n1\n", True),
+        (True, "extended", "1\n1\n", True),
+        (True, "minimal", "1\n", False),
+        (False, "minimal", "2\n", False),
+    ],
+)
+def test_shared_sde_interactive_reuse_and_rebuild(
+    tmp_path, extended, label, selection, attach
+):
+    import json
+    import pty
+
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    docker = tools / "docker"
+    docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "args = sys.argv[1:]\n"
+        "with open(os.environ['DOCKER_LOG'], 'a') as log:\n"
+        "    log.write(json.dumps(args) + '\\n')\n"
+        "if args[:3] == ['compose', 'images', '-q']:\n"
+        "    print('existing-image')\n"
+        "elif args[:3] == ['compose', 'ps', '-a']:\n"
+        "    print('container-id:project-dev-env:STATUS:Exited (0)')\n"
+        "elif args[0] == 'inspect':\n"
+        "    print('exited' if '.State.Status' in args[2] else os.environ['CONTAINER_MODE'])\n"
+    )
+    docker.chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    log = tmp_path / "docker.jsonl"
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{tools}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(log),
+        "CONTAINER_MODE": label,
+        "DOTFILES_REPO": str(REPO),
+    }
+    command = ["bash", str(REPO / "home/dot_local/bin/executable_sde")]
+    if extended:
+        command.append("--extended")
+    master, slave = pty.openpty()
+    try:
+        os.write(master, selection.encode())
+        result = subprocess.run(
+            command,
+            stdin=slave,
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    finally:
+        os.close(master)
+        os.close(slave)
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert (["attach", "container-id"] in calls) == attach
+    assert (["start", "container-id"] in calls) == attach
+    assert any(call[:2] == ["compose", "run"] for call in calls) == (not attach)
+    assert any(call[:3] == ["compose", "build", "--pull"] for call in calls) == (
+        selection == "2\n"
+    )

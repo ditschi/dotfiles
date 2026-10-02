@@ -8,6 +8,53 @@
     - name: Resolve package list from profile features
       ansible.builtin.include_tasks: tasks/resolve_packages.yml
 
+    - name: Preserve the installed Docker provider
+      when: "'docker' in (features | default([]))"
+      block:
+        - name: Inspect installed package providers
+          ansible.builtin.package_facts:
+            manager: auto
+
+        - name: Check existing Docker CLI as the login user
+          ansible.builtin.command: docker --version
+          become: false
+          environment:
+            PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+          register: machine_docker
+          changed_when: false
+          failed_when: false
+
+        - name: Check existing Compose capability
+          ansible.builtin.command: docker compose version
+          become: false
+          environment:
+            PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+          register: machine_compose
+          changed_when: false
+          failed_when: false
+
+        - name: Avoid replacing existing Docker packages or custom executables
+          ansible.builtin.set_fact:
+            install_packages: "{{ install_packages | difference(packages_docker) }}"
+          when: >-
+            machine_docker.rc == 0 or 'docker-ce' in ansible_facts.packages
+            or 'docker.io' in ansible_facts.packages or 'moby-engine' in ansible_facts.packages
+
+        - name: Add only a missing provider-compatible Compose package
+          ansible.builtin.set_fact:
+            install_packages: "{{ install_packages + ['docker-compose-plugin' if 'docker-ce' in ansible_facts.packages else 'docker-compose-v2'] }}"
+          when:
+            - machine_compose.rc != 0
+            - "'docker-ce' in ansible_facts.packages or 'docker.io' in ansible_facts.packages"
+
+        - name: Report unmanaged Docker installations lacking Compose
+          ansible.builtin.debug:
+            msg: "Existing Docker preserved; install Compose from its provider manually. No engine, context or group changes made."
+          when:
+            - machine_docker.rc == 0
+            - machine_compose.rc != 0
+            - "'docker-ce' not in ansible_facts.packages and 'docker.io' not in ansible_facts.packages"
+
     - name: Install workstation packages
       ansible.builtin.apt:
         name: "{{ install_packages | unique }}"

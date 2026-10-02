@@ -6,7 +6,7 @@
 [user]
 {{- if eq .profile "work-laptop" }}
     name = Ditscher Christian (XC-AS/ESE1)
-    email = dci2lr@bosch.com
+    email = christian.ditscher@de.bosch.com
 {{- else }}
     name = Christian Ditscher
     email = chris@ditscher.me
@@ -14,6 +14,11 @@
 
 [credential]
     helper = store
+{{- if eq .profile "work-laptop" }}
+
+[safe]
+    directory = /opt/osd/ansible/osd-ansible-custom
+{{- end }}
 {{- if eq .profile "container" }}
 
 [safe]

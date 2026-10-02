@@ -86,6 +86,10 @@ def update_env(tmp_path: Path, monkeypatch):
 
     calls: list[str] = []
     monkeypatch.setattr(machine, "run_chezmoi_apply", lambda: calls.append("chezmoi"))
+    original_have = cli.have
+    monkeypatch.setattr(
+        cli, "have", lambda name: name == "chezmoi" or original_have(name)
+    )
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: calls.append("env") or 0)
     monkeypatch.setattr(machine, "cmd_apply", lambda _args: calls.append("apply") or 0)
     return machine, repo, other, home, calls
@@ -246,10 +250,33 @@ def test_env_pull_backs_up_hand_written_env_once(tmp_path, monkeypatch, fake_bw)
     assert machine.cmd_env_pull() == 0
     backups = list((machine.state_dir / "env-backup").iterdir())
     assert len(backups) == 1 and backups[0].read_text() == "HANDMADE=1\n"
+    assert backups[0].stat().st_mode & 0o777 == 0o600
+    assert (home / ".env.local").read_text() == "HANDMADE=1\n"
 
     # a generated file is not backed up again
     assert machine.cmd_env_pull() == 0
     assert len(list((machine.state_dir / "env-backup").iterdir())) == 1
+
+
+def test_env_pull_warns_and_keeps_original_when_overlay_would_need_overwrite(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {"env/work-shared": _item("A=updated")},
+    )
+    original = "A=old\nLOCAL_ONLY=preserve\n"
+    (home / ".env").write_text(original)
+    (home / ".env.local").write_text("OTHER=unchanged\n")
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env").read_text() == original
+    assert (home / ".env.local").read_text() == "OTHER=unchanged\n"
+    output = capsys.readouterr().out
+    assert "LOCAL_ONLY" in output and str(home / ".env.local") in output
+    assert str(machine.state_dir / "env-backup") in output
 
 
 def test_env_pull_leaves_env_untouched_without_items(tmp_path, monkeypatch, fake_bw):

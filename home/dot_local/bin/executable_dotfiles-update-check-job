@@ -5,7 +5,7 @@ repo="${DOTFILES_REPO:-$HOME/dotfiles}"
 marker="${DOTFILES_UPDATE_MARKER:-$HOME/.dotfiles-update-available}"
 last_check_file="${DOTFILES_UPDATE_LAST_CHECK:-$HOME/.dotfiles-update-last-check}"
 
-date -Is > "$last_check_file"
+date -Is >"$last_check_file"
 
 if [ ! -d "$repo/.git" ]; then
     exit 0
@@ -27,7 +27,7 @@ fi
 
 pending_count="$(git -C "$repo" rev-list --count "HEAD..$upstream_ref" 2>/dev/null || echo 0)"
 if [ "${pending_count:-0}" -gt 0 ]; then
-    : > "$marker"
+    : >"$marker"
 else
     rm -f "$marker"
 fi

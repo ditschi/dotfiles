@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -8,7 +9,15 @@ import pytest
 import testinfra
 
 REPO = Path(__file__).resolve().parents[2]
-IMAGE = "dotfiles-preset-test:local"
+# Ubuntu releases the container tests run on, default first; pick another with
+# UBUNTU_VERSION=<version>.
+UBUNTU_VERSIONS = ("26.04", "24.04")
+UBUNTU_VERSION = os.environ.get("UBUNTU_VERSION", UBUNTU_VERSIONS[0])
+IMAGE = (
+    "dotfiles-preset-test:local"
+    if UBUNTU_VERSION == UBUNTU_VERSIONS[0]
+    else f"dotfiles-preset-test:ubuntu-{UBUNTU_VERSION}"
+)
 
 
 def docker_available() -> bool:
@@ -28,8 +37,18 @@ def docker_available() -> bool:
 def docker_image():
     if not docker_available():
         pytest.skip("Docker is not available")
+    if UBUNTU_VERSION not in UBUNTU_VERSIONS:
+        pytest.fail(f"UBUNTU_VERSION={UBUNTU_VERSION} not in {UBUNTU_VERSIONS}")
     subprocess.run(
-        ["docker", "build", "-t", IMAGE, str(REPO / "tests/docker")],
+        [
+            "docker",
+            "build",
+            "--build-arg",
+            f"UBUNTU_VERSION={UBUNTU_VERSION}",
+            "-t",
+            IMAGE,
+            str(REPO / "tests/docker"),
+        ],
         check=True,
     )
     return IMAGE

@@ -2,7 +2,7 @@
 # Filename = short hostname (`hostname -s`).
 #
 # Fleet (home):
-#   ditschi-ThinkPad-L13-Yoga-Gen-2.yml  — this laptop (home-laptop + stylus + sshd-home)
+#   ditschi-ThinkPad-L13-Yoga-Gen-2.yml  — this laptop (home-laptop + stylus + thinkpad-tuning + touch-device + sshd-home)
 #   homeserver.yml                       — M720q / K3s CP (home-server + sshd-home)
 #   netmaster.yml                        — Pi edge (rpi + sshd-home)
 #   _example-thinkpad-copy.yml           — template for 2nd ThinkPad (see T470 key)

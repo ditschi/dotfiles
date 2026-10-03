@@ -62,6 +62,12 @@ packages_stylus_touch_guard:
   - python3-evdev
   - python3-psutil
 
+# ThinkPad laptops: zram swap, power profiles, VA-API check tool
+packages_thinkpad_tuning:
+  - power-profiles-daemon
+  - systemd-zram-generator
+  - vainfo
+
 packages_sshd_home:
   - openssh-server
 
@@ -73,6 +79,13 @@ packages_rpi_zero:
   - fzf
 
 apt_cache_valid_time: 3600
+
+# Shared by roles that install helper scripts and systemd units.
+machine_lib_dir: /usr/local/lib/machine
+# False in containers (CI): files are installed, services are not started.
+machine_manage_services: >-
+  {{ ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+     and ansible_connection | default('') != 'docker' }}
 
 # Telegraf config names (SoT). Role roles/monitoring resolves the list from
 # profile + features; CLI must not duplicate this map.

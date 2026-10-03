@@ -1,0 +1,5 @@
+---
+# GNOME Shell extensions for touchscreens / convertibles (extensions.gnome.org UUIDs).
+touch_device_gnome_extensions:
+  - touchup@mityax # touch tweaks, better built-in on-screen keyboard
+  - screen-rotate@shyzus.github.io # rotate button in the quick settings

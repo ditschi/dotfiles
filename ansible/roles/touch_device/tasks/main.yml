@@ -1,0 +1,43 @@
+---
+# Runs as the login user (no become). Needs a running GNOME session; skipped otherwise.
+
+- name: Read GNOME Shell version
+  ansible.builtin.command: gnome-shell --version
+  register: touch_device_shell_version
+  changed_when: false
+  failed_when: false
+  when: ansible_env.DBUS_SESSION_BUS_ADDRESS is defined
+
+- name: List installed GNOME Shell extensions
+  ansible.builtin.command: gnome-extensions list
+  register: touch_device_extensions_installed
+  changed_when: false
+  failed_when: false
+  when: ansible_env.DBUS_SESSION_BUS_ADDRESS is defined
+
+- name: Install GNOME Shell extensions
+  ansible.builtin.shell: |
+    set -euo pipefail
+    zip=$(mktemp --suffix=.zip)
+    trap 'rm -f "$zip"' EXIT
+    curl -fsSL -o "$zip" "https://extensions.gnome.org/download-extension/{{ item }}.shell-extension.zip?shell_version={{ touch_device_shell_version.stdout | regex_search('[0-9]+') }}"
+    gnome-extensions install --force "$zip"
+  args:
+    executable: /bin/bash
+  loop: "{{ touch_device_gnome_extensions }}"
+  when:
+    - touch_device_extensions_installed.rc | default(1) == 0
+    - touch_device_shell_version.rc | default(1) == 0
+    - item not in touch_device_extensions_installed.stdout_lines
+
+- name: Enable GNOME Shell extensions (Wayland loads new ones after the next login)
+  ansible.builtin.shell: |
+    gnome-extensions list --enabled | grep -qxF '{{ item }}' && exit 0
+    gnome-extensions enable '{{ item }}' && echo enabled
+  args:
+    executable: /bin/bash
+  loop: "{{ touch_device_gnome_extensions }}"
+  register: touch_device_extension_enable
+  changed_when: "'enabled' in touch_device_extension_enable.stdout"
+  failed_when: false
+  when: touch_device_extensions_installed.rc | default(1) == 0

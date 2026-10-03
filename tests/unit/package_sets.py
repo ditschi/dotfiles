@@ -51,6 +51,8 @@ def resolve_packages(
         packages.extend(variables.get("packages_syncthing") or [])
     if "stylus-touch-guard" in features_set:
         packages.extend(variables.get("packages_stylus_touch_guard") or [])
+    if "thinkpad-tuning" in features_set:
+        packages.extend(variables.get("packages_thinkpad_tuning") or [])
     if "sshd-home" in features_set:
         packages.extend(variables.get("packages_sshd_home") or [])
     return sorted(set(packages))

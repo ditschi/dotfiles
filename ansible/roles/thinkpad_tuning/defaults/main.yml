@@ -1,0 +1,18 @@
+---
+# Battery charge thresholds (percent). Start charging below start, stop at stop.
+thinkpad_tuning_charge_start: 75
+thinkpad_tuning_charge_stop: 80
+
+# power-profiles-daemon profile per power source.
+thinkpad_tuning_profile_ac: performance
+thinkpad_tuning_profile_battery: balanced
+
+# Kernel suspend mode; "deep" (S3) needs BIOS Config → Power → Sleep State = Linux S3.
+thinkpad_tuning_mem_sleep: deep
+
+# zram swap: size expression for zram-generator (MiB), preferred over the disk swap file.
+thinkpad_tuning_zram: true
+thinkpad_tuning_zram_size: "min(ram / 2, 8192)"
+
+# Show the GNOME on-screen keyboard while folded into tablet mode.
+thinkpad_tuning_tablet_osk: true

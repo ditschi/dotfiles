@@ -25,6 +25,4 @@
     enabled: true
     state: started
     daemon_reload: true
-  when:
-    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
-    - ansible_connection | default('') != 'docker'
+  when: machine_manage_services | bool

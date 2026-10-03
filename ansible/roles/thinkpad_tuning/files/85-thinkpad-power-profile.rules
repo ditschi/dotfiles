@@ -1,0 +1,2 @@
+# Managed by ansible roles/thinkpad_tuning — re-evaluate the power profile on AC plug/unplug
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ACTION=="change", RUN+="/usr/bin/systemctl --no-block restart thinkpad-power-profile.service"

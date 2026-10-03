@@ -11,5 +11,7 @@ features:
   - monitoring
   - ssh-host-key
   - stylus-touch-guard
+  - thinkpad-tuning
+  - touch-device
   - sshd-home
 ssh_allow_from: []

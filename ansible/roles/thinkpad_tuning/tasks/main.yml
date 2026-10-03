@@ -1,0 +1,149 @@
+---
+# Role gated at playbook level (workstation.yml) by feature thinkpad-tuning.
+
+- name: Ensure target directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ machine_lib_dir }}"
+    - /etc/udev/rules.d
+    - /etc/systemd/system
+    - /etc/systemd/user
+    - /etc/sysctl.d
+
+- name: Write tuning settings
+  ansible.builtin.template:
+    src: thinkpad-tuning.env.j2
+    dest: /etc/default/thinkpad-tuning
+    mode: "0644"
+  notify:
+    - Apply charge thresholds
+    - Apply power profile
+
+# --- Battery charge thresholds -------------------------------------------
+
+- name: Install thinkpad-charge
+  ansible.builtin.copy:
+    src: thinkpad-charge
+    dest: /usr/local/bin/thinkpad-charge
+    mode: "0755"
+  notify: Apply charge thresholds
+
+- name: Install charge threshold unit
+  ansible.builtin.copy:
+    src: thinkpad-charge-thresholds.service
+    dest: /etc/systemd/system/thinkpad-charge-thresholds.service
+    mode: "0644"
+  notify: Apply charge thresholds
+
+# --- Power profile per power source --------------------------------------
+
+- name: Install power profile switcher
+  ansible.builtin.copy:
+    src: thinkpad-power-profile
+    dest: "{{ machine_lib_dir }}/thinkpad-power-profile"
+    mode: "0755"
+  notify: Apply power profile
+
+- name: Install power profile unit
+  ansible.builtin.copy:
+    src: thinkpad-power-profile.service
+    dest: /etc/systemd/system/thinkpad-power-profile.service
+    mode: "0644"
+  notify: Apply power profile
+
+- name: Install power profile udev rule
+  ansible.builtin.copy:
+    src: 85-thinkpad-power-profile.rules
+    dest: /etc/udev/rules.d/85-thinkpad-power-profile.rules
+    mode: "0644"
+  notify: Reload udev rules
+
+- name: Enable charge threshold and power profile units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: true
+  loop:
+    - thinkpad-charge-thresholds.service
+    - thinkpad-power-profile.service
+  when: machine_manage_services | bool
+
+# --- Suspend mode ---------------------------------------------------------
+
+- name: Check for GRUB drop-in directory
+  ansible.builtin.stat:
+    path: /etc/default/grub.d
+  register: thinkpad_tuning_grub_d
+
+- name: Set default suspend mode on the kernel command line
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/thinkpad-tuning.cfg
+    mode: "0644"
+    content: |
+      # Managed by ansible roles/thinkpad_tuning
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT mem_sleep_default={{ thinkpad_tuning_mem_sleep }}"
+  when: thinkpad_tuning_grub_d.stat.isdir | default(false)
+  notify: Update grub
+
+- name: Read supported suspend modes
+  ansible.builtin.slurp:
+    src: /sys/power/mem_sleep
+  register: thinkpad_tuning_mem_sleep_modes
+  failed_when: false
+  when: machine_manage_services | bool
+
+- name: Warn when the firmware does not offer the wanted suspend mode
+  ansible.builtin.debug:
+    msg: >-
+      Suspend mode '{{ thinkpad_tuning_mem_sleep }}' is not offered by the firmware
+      ({{ thinkpad_tuning_mem_sleep_modes.content | b64decode | trim }}).
+      Set BIOS Config → Power → Sleep State to "Linux S3".
+  when:
+    - thinkpad_tuning_mem_sleep_modes.content is defined
+    - thinkpad_tuning_mem_sleep not in (thinkpad_tuning_mem_sleep_modes.content | b64decode)
+
+# --- zram swap ------------------------------------------------------------
+
+- name: Configure zram swap
+  ansible.builtin.template:
+    src: zram-generator.conf.j2
+    dest: /etc/systemd/zram-generator.conf
+    mode: "0644"
+  when: thinkpad_tuning_zram
+  notify: Start zram swap
+
+- name: Tune swap behaviour for zram
+  ansible.builtin.copy:
+    src: 99-zram.conf
+    dest: /etc/sysctl.d/99-zram.conf
+    mode: "0644"
+  when: thinkpad_tuning_zram
+  notify: Apply zram sysctl
+
+# --- Tablet mode on-screen keyboard --------------------------------------
+
+- name: Install tablet on-screen keyboard watcher
+  ansible.builtin.copy:
+    src: tablet_osk.py
+    dest: "{{ machine_lib_dir }}/tablet_osk.py"
+    mode: "0755"
+  when: thinkpad_tuning_tablet_osk
+
+- name: Install tablet on-screen keyboard user unit
+  ansible.builtin.copy:
+    src: tablet-osk.service
+    dest: /etc/systemd/user/tablet-osk.service
+    mode: "0644"
+  when: thinkpad_tuning_tablet_osk
+
+- name: Enable tablet on-screen keyboard for all users
+  ansible.builtin.systemd:
+    name: tablet-osk.service
+    scope: global
+    enabled: true
+  when:
+    - thinkpad_tuning_tablet_osk
+    - machine_manage_services | bool

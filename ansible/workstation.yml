@@ -122,6 +122,24 @@
     - role: stylus_touch_guard
       when: "'stylus-touch-guard' in (features | default([]))"
 
+- name: ThinkPad tuning (battery, power profile, suspend, zram, tablet mode)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [thinkpad]
+  roles:
+    - role: thinkpad_tuning
+      when: "'thinkpad-tuning' in (features | default([]))"
+
+- name: Touch device (GNOME extensions for the login user)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: false
+  gather_facts: true
+  tags: [touch]
+  roles:
+    - role: touch_device
+      when: "'touch-device' in (features | default([]))"
+
 - name: SSH port + authorized_keys (home fleet)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

@@ -1,0 +1,10 @@
+[Unit]
+Description=Apply ThinkPad battery charge thresholds
+ConditionPathIsDirectory=/sys/devices/platform/thinkpad_acpi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/thinkpad-charge normal
+
+[Install]
+WantedBy=multi-user.target

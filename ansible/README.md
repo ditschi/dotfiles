@@ -22,5 +22,7 @@ Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 | `monitoring` | `monitoring` |
 | `sshd_home` | `sshd-home` — Port 5115 + authorized_keys |
 | `stylus_touch_guard` | `stylus-touch-guard` |
+| `touch_device` | `touch-device` — GNOME extensions TouchUp + Screen Rotate |
+| `thinkpad_tuning` | `thinkpad-tuning` — charge thresholds, power profile, S3, zram, tablet OSK ([docs](../docs/thinkpad-l13-yoga-gen2.md)) |
 
 See root [Readme.md](../Readme.md) for architecture, Galaxy decisions, and tests.

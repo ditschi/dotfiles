@@ -18,6 +18,9 @@ def host_yaml_container(docker_image, request):
         request.node.get_closest_marker("apt") is not None
         or request.node.get_closest_marker("apt_gnome") is not None
     )
+    # sudo_prompt marker: user whose sudo prompts; Ansible gets the password from a file.
+    with_password = request.node.get_closest_marker("sudo_prompt") is not None
+    user = "pwtester" if with_password else "tester"
     name = f"dotfiles-hy-{hostname}-{uuid.uuid4().hex[:8]}"
     host_file = REPO / "machine" / "hosts" / f"{hostname}.yml"
     assert host_file.is_file(), f"missing versioned host profile {host_file}"
@@ -48,7 +51,13 @@ def host_yaml_container(docker_image, request):
         text=True,
     )
     try:
-        exec_cmd = ["docker", "exec", "-u", "tester", "-w", "/dotfiles", name]
+        exec_cmd = ["docker", "exec", "-u", user, "-e", f"HOME=/home/{user}"]
+        if with_password:
+            exec_cmd += [
+                "-e",
+                f"ANSIBLE_BECOME_PASSWORD_FILE=/home/{user}/.become-password",
+            ]
+        exec_cmd += ["-w", "/dotfiles", name]
         subprocess.run(
             [
                 *exec_cmd,
@@ -66,7 +75,9 @@ def host_yaml_container(docker_image, request):
         sync = subprocess.run(
             [
                 *exec_cmd,
-                "python3",
+                "uv",
+                "run",
+                "--script",
                 "home/dot_local/bin/executable_machine",
                 "profile",
                 "sync",
@@ -82,11 +93,13 @@ def host_yaml_container(docker_image, request):
             )
 
         setup_cmd = [
-            "python3",
+            "uv",
+            "run",
+            "--script",
             "home/dot_local/bin/executable_machine",
             "setup",
             "--yes",
-            "--no-become",
+            "--no-become",  # never prompt; pwtester's password comes from the file
         ]
         if not run_apt:
             setup_cmd.append("--skip-ansible")
@@ -171,6 +184,20 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
 
 
 @pytest.mark.docker
+@pytest.mark.apt
+@pytest.mark.sudo_prompt
+@pytest.mark.parametrize("host_yaml_container", ["ci-rpi-zero"], indirect=True)
+def test_install_with_sudo_password(host_yaml_container):
+    """Ansible become through a real password prompt (sudo-rs on Ubuntu 25.10+)."""
+    host, _hostname, _host_file = host_yaml_container
+    # pwtester's home is not readable for the default container user
+    assert host.run("sudo test -f /home/pwtester/.config/machine/profile.yml").rc == 0
+    assert "NOPASSWD" not in host.check_output("sudo -l -U pwtester")
+    assert host.package("zsh").is_installed
+    assert host.file("/etc/telegraf/telegraf.conf").user == "root"
+
+
+@pytest.mark.docker
 @pytest.mark.apt_gnome
 @pytest.mark.parametrize("host_yaml_container", ["ci-home-laptop"], indirect=True)
 def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container):
@@ -191,6 +218,9 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     # Role installs files; systemd enable is skipped in containers
     assert host.file("/usr/local/lib/machine/stylus_touch_guard.py").exists
     assert host.file("/etc/systemd/system/stylus-touch-guard.service").exists
+    assert host.file("/usr/local/bin/thinkpad-charge").exists
+    assert host.file("/etc/systemd/zram-generator.conf").exists
+    assert host.file("/etc/systemd/user/tablet-osk.service").exists
     assert host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
     assert (
         "Port 5115"

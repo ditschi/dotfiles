@@ -301,3 +301,57 @@ def test_health_check_ignores_sshd_without_root(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     machine.write_profile("home-laptop", ["zsh-full", "sshd-home"], [])
     assert machine.health_check_after_apply() is True
+
+
+def _fake_tool(directory: Path, name: str, exit_code: int) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    tool = directory / name
+    tool.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+    tool.chmod(0o755)
+
+
+def test_ansible_works_rejects_shim_that_cannot_run(tmp_path: Path, monkeypatch):
+    """A leftover shim (e.g. pipx venv after a Python upgrade) is not a working ansible."""
+    cli_mod, _machine, _repo = _machine_env(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    assert not cli_mod.ansible_works()
+    _fake_tool(bin_dir, "ansible-playbook", 1)
+    assert not cli_mod.ansible_works()
+    _fake_tool(bin_dir, "ansible-playbook", 0)
+    assert cli_mod.ansible_works()
+
+
+def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    commands: list[list[str]] = []
+    states = iter([False, True])
+
+    monkeypatch.setattr(cli_mod, "have", lambda _name: True)
+    monkeypatch.setattr(cli_mod, "ansible_works", lambda: next(states))
+    monkeypatch.setattr(cli_mod, "run", lambda cmd, **_k: commands.append(list(cmd)))
+    monkeypatch.setattr(machine, "ensure_gum", lambda: None)
+    monkeypatch.setattr(machine, "ensure_uv", lambda: True)
+
+    machine.ensure_bootstrap_tools(False, True, False)
+    assert ["uv", "tool", "install", "--force", "ansible-core"] in commands
+
+
+def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatch):
+    """sudo-rs prompts are not recognised by Ansible; local runs pick sudo.ws if present."""
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
+    commands: list[list[str]] = []
+    monkeypatch.setattr(cli_mod, "run", lambda cmd, **_k: commands.append(list(cmd)))
+    classic_sudo = "ansible_become_exe=sudo.ws"
+
+    monkeypatch.setattr(cli_mod, "have", lambda name: name == "sudo.ws")
+    machine.run_ansible("workstation", ask_become=False)
+    assert classic_sudo in commands[-1]
+    machine.run_ansible("workstation", limit="homeserver", ask_become=False)
+    assert classic_sudo not in commands[-1]
+
+    monkeypatch.setattr(cli_mod, "have", lambda _name: False)
+    machine.run_ansible("workstation", ask_become=False)
+    assert classic_sudo not in commands[-1]

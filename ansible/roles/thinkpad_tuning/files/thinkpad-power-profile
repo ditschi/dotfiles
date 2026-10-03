@@ -1,0 +1,16 @@
+#!/bin/bash
+# Pick the power-profiles-daemon profile for the current power source.
+set -euo pipefail
+
+PROFILE_AC=performance
+PROFILE_BATTERY=balanced
+# shellcheck disable=SC1091
+[ -r /etc/default/thinkpad-tuning ] && . /etc/default/thinkpad-tuning
+
+profile=$PROFILE_BATTERY
+for supply in /sys/class/power_supply/*; do
+    if [ "$(cat "$supply/type" 2>/dev/null)" = Mains ] && [ "$(cat "$supply/online" 2>/dev/null)" = 1 ]; then
+        profile=$PROFILE_AC
+    fi
+done
+exec powerprofilesctl set "$profile"

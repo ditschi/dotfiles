@@ -133,6 +133,13 @@ jobs:
 
   apt-rpi-zero:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # keep in sync with UBUNTU_VERSIONS in tests/integration/conftest.py
+        ubuntu: ["26.04", "24.04"]
+    env:
+      UBUNTU_VERSION: ${{ matrix.ubuntu }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Battery charge thresholds: thinkpad-charge [status|normal|full]
+set -euo pipefail
+
+CHARGE_START=75
+CHARGE_STOP=80
+# shellcheck disable=SC1091
+[ -r /etc/default/thinkpad-tuning ] && . /etc/default/thinkpad-tuning
+
+set_thresholds() {
+    # Reset start first so any new start/stop pair is accepted.
+    echo 0 >"$bat/charge_control_start_threshold"
+    echo "$2" >"$bat/charge_control_end_threshold"
+    echo "$1" >"$bat/charge_control_start_threshold"
+}
+
+# All batteries: models like the T470 have two (BAT0, BAT1).
+for bat in /sys/class/power_supply/BAT*; do
+    [ -e "$bat/charge_control_end_threshold" ] || continue
+    case "${1:-status}" in
+        normal) set_thresholds "$CHARGE_START" "$CHARGE_STOP" ;;
+        full) set_thresholds 95 100 ;;
+        status) ;;
+        *)
+            echo "usage: thinkpad-charge [status|normal|full]" >&2
+            exit 2
+            ;;
+    esac
+    echo "${bat##*/}: $(cat "$bat/capacity")% $(cat "$bat/status")," \
+        "charge between $(cat "$bat/charge_control_start_threshold")%" \
+        "and $(cat "$bat/charge_control_end_threshold")%"
+done

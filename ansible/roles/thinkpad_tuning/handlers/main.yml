@@ -1,0 +1,36 @@
+---
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true
+  when: machine_manage_services | bool
+
+- name: Apply charge thresholds
+  ansible.builtin.systemd:
+    name: thinkpad-charge-thresholds.service
+    state: restarted
+    daemon_reload: true
+  when: machine_manage_services | bool
+
+- name: Apply power profile
+  ansible.builtin.systemd:
+    name: thinkpad-power-profile.service
+    state: restarted
+    daemon_reload: true
+  when: machine_manage_services | bool
+
+- name: Update grub
+  ansible.builtin.command: update-grub
+  changed_when: true
+  when: machine_manage_services | bool
+
+- name: Start zram swap
+  ansible.builtin.systemd:
+    name: systemd-zram-setup@zram0.service
+    state: restarted
+    daemon_reload: true
+  when: machine_manage_services | bool
+
+- name: Apply zram sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  when: machine_manage_services | bool

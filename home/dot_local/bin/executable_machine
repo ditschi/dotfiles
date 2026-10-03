@@ -72,6 +72,8 @@ FEATURES = [
     "tailscale",
     "ssh-host-key",
     "stylus-touch-guard",
+    "thinkpad-tuning",
+    "touch-device",
     "sshd-home",
 ]
 PLAYBOOKS = ["workstation", "homelab", "site"]
@@ -93,6 +95,8 @@ FEATURE_HELP = {
     "tailscale": "Tailscale package (+ optional login)",
     "ssh-host-key": "Per-host ed25519 key + Bitwarden pub",
     "stylus-touch-guard": "Disable touch while stylus near (Yoga / Xournal++)",
+    "thinkpad-tuning": "ThinkPad battery thresholds, power profile, S3, zram, tablet OSK",
+    "touch-device": "GNOME touch extensions (TouchUp, Screen Rotate)",
     "sshd-home": "sshd Port 5115 + authorized_keys from machine/ssh_keys",
 }
 ENV_CLASS = {
@@ -135,6 +139,21 @@ def die(message: str, code: int = 1) -> None:
 
 def have(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def ansible_works() -> bool:
+    """True when ansible-playbook exists and its interpreter can still import ansible."""
+    if not have("ansible-playbook"):
+        return False
+    return (
+        subprocess.run(
+            ["ansible-playbook", "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def is_tty() -> bool:
@@ -673,11 +692,13 @@ class Machine:
             log("installing chezmoi to ~/.local/bin")
             script = run(["curl", "-fsLS", "get.chezmoi.io"], capture=True).stdout
             run(["sh", "-s", "--", "-b", str(local_bin)], input_text=script)
-        if need_ansible and not have("ansible-playbook"):
+        if need_ansible and not ansible_works():
             if self.ensure_uv():
                 log("installing ansible-core via uv tool install")
-                run(["uv", "tool", "install", "ansible-core"], check=False)
-            if not have("ansible-playbook") and not (
+                # --force replaces a shim whose venv broke (e.g. pipx venv
+                # after a system Python upgrade).
+                run(["uv", "tool", "install", "--force", "ansible-core"], check=False)
+            if not ansible_works() and not (
                 self.install_pkg_if_missing("ansible-core")
                 or self.install_pkg_if_missing("ansible")
             ):
@@ -1194,6 +1215,10 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             extra.extend(
                 ["-e", json.dumps({"machine_user_path": os.environ.get("PATH", "")})]
             )
+            # sudo-rs (Ubuntu 25.10+) wraps the prompt as "[sudo: …]", which
+            # Ansible's become plugin does not recognise; use classic sudo.
+            if have("sudo.ws"):
+                extra.extend(["-e", "ansible_become_exe=sudo.ws"])
         else:
             cmd.extend(["--limit", limit])
         if ask_become and playbook_name != "homelab" and is_tty():

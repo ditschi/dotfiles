@@ -96,6 +96,8 @@ ansible/
     monitoring/           # Telegraf agent configs
     sshd_home/            # port 5115 + authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
+    touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
+    thinkpad_tuning/      # charge thresholds, power profile, S3, zram, tablet OSK
     user_tools/           # starship, fonts
     yazi/                 # yazi terminal file manager (.deb release)
 tests/                    # unit + Docker/CI
@@ -221,11 +223,12 @@ machine ssh restore           # restore private key
 
 `work-laptop`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `sshd-home`
+Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 
 Yoga/convertible (L13): feature `stylus-touch-guard` → role `stylus_touch_guard`. Previously: [helpers-and-automation](https://github.com/ditschi/helpers-and-automation) (**archived / deprecated**).
+ThinkPad laptops: features `thinkpad-tuning` → role `thinkpad_tuning` and `touch-device` → role `touch_device`, see [docs/thinkpad-l13-yoga-gen2.md](docs/thinkpad-l13-yoga-gen2.md).
 
 SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `authorized_keys` from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
 

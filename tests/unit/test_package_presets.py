@@ -344,6 +344,7 @@ def test_group_vars_are_lists():
         "packages_syncthing",
         "packages_cosmic",
         "packages_stylus_touch_guard",
+        "packages_thinkpad_tuning",
         "packages_sshd_home",
     ):
         assert isinstance(variables[key], list)

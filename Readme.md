@@ -104,9 +104,23 @@ tests/                    # unit + Docker/CI
 ```
 
 `home/dot_local/bin/executable_machine` is a [PEP 723](https://peps.python.org/pep-0723/)
-single-file script (shebang `uv run --script`) — its dependencies (typer, rich,
+script (shebang `uv run --script`) — its dependencies (typer, rich,
 PyYAML) are declared inline and resolved by [uv](https://astral.sh/uv) on first
 run, no manual venv. `./bootstrap` installs `uv` itself if it's missing.
+
+The script itself only defines the command line. The implementation is the package
+`home/dot_local/lib/machine_cli/` (deployed to `~/.local/lib/machine_cli/`):
+
+| Module | Content |
+| --- | --- |
+| `core` | constants (profiles, features) and pure helpers |
+| `system` | everything touching the outside world (`run`, `have`, tty, hostname); tests replace these here |
+| `profile` | local profile, versioned host files, prompts |
+| `tools` | bootstrap tools, git / ansible / chezmoi runners |
+| `bitwarden` | `~/.env`, per-host SSH keys, authorized_keys |
+| `migration` | migration from the old layout and rollback |
+| `commands` | setup, apply, update, status, commit, push |
+| `machine` | the `Machine` class combining the modules above |
 
 Profile cache: `~/.config/machine/profile.yml` (not in git).  
 **Source of truth per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — features and `ssh_allow_from`. chezmoi config: `~/.config/chezmoi/chezmoi.yaml`.

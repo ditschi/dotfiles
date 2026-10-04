@@ -14,6 +14,7 @@ source tests/.venv/bin/activate
 pip install -q -r tests/requirements.txt
 
 "$PYTHON" -m py_compile home/dot_local/bin/executable_machine install.py
+"$PYTHON" -m compileall -q home/dot_local/lib/machine_cli
 pytest tests/unit -q "$@"
 
 if command -v ansible-playbook >/dev/null 2>&1; then

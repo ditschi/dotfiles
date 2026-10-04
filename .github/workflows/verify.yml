@@ -25,6 +25,7 @@ jobs:
             hosts:
               - 'machine/hosts/**'
               - 'home/dot_local/bin/executable_machine'
+              - 'home/dot_local/lib/machine_cli/**'
               - 'tests/integration/test_host_yaml_install.py'
               - 'tests/unit/test_host_profiles.py'
 
@@ -47,6 +48,7 @@ jobs:
       - name: Unit tests and CLI smoke
         run: |
           python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          python3 -m compileall -q home/dot_local/lib/machine_cli
           pytest tests/unit -q
       - name: Ansible syntax
         run: |
@@ -180,6 +182,7 @@ jobs:
       - name: Unit tests and Ansible syntax on ARM
         run: |
           python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          python3 -m compileall -q home/dot_local/lib/machine_cli
           pytest tests/unit -q
           ansible-galaxy collection install -r ansible/requirements.yml
           ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml

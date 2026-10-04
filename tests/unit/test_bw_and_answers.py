@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import subprocess
@@ -32,7 +33,7 @@ def test_fake_bw_publish_ssh_public_key(tmp_path: Path, fake_bw, monkeypatch):
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
-    cli = SourceFileLoader("machine_cli", str(MACHINE)).load_module()
+    cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()
     machine = cli.Machine()
     machine.write_profile("home-laptop", ["zsh-full", "ssh-host-key"], [])
     # Pretend unlock already done
@@ -69,7 +70,7 @@ def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatc
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
-    cli = SourceFileLoader("machine_cli", str(MACHINE)).load_module()
+    cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()
     machine = cli.Machine()
     assert machine.saved_features() == ["zsh-full", "monitoring"]
 
@@ -83,8 +84,10 @@ def isolated_machine(tmp_path, monkeypatch):
     monkeypatch.delenv("MACHINE_PROFILE", raising=False)
     monkeypatch.delenv("SUDO_USER", raising=False)
     cli = SourceFileLoader("machine_keys", str(MACHINE)).load_module()
-    monkeypatch.setattr(cli, "in_docker", lambda: False)
-    monkeypatch.setattr(cli, "is_tty", lambda: False)
+    monkeypatch.setattr(cli.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: False)
+    # No versioned host file may match, whatever machine the tests run on.
+    monkeypatch.setattr(cli.system, "hostname_short", lambda: "unit-test-host")
     return cli, cli.Machine()
 
 
@@ -98,7 +101,7 @@ def isolated_machine(tmp_path, monkeypatch):
 )
 def test_profile_default_matches_work_account(tmp_path, monkeypatch, user, expected):
     cli, machine = isolated_machine(tmp_path, monkeypatch)
-    monkeypatch.setattr(cli.getpass, "getuser", lambda: user)
+    monkeypatch.setattr(getpass, "getuser", lambda: user)
     assert machine.default_profile() == expected
     machine.write_profile("home-server", ["zsh-full"], [])
     monkeypatch.setenv("MACHINE_PROFILE", "work-laptop")
@@ -107,8 +110,8 @@ def test_profile_default_matches_work_account(tmp_path, monkeypatch, user, expec
 
 def test_container_default_beats_work_username(tmp_path, monkeypatch):
     cli, machine = isolated_machine(tmp_path, monkeypatch)
-    monkeypatch.setattr(cli, "in_docker", lambda: True)
-    monkeypatch.setattr(cli.getpass, "getuser", lambda: "dci2lr")
+    monkeypatch.setattr(cli.system, "in_docker", lambda: True)
+    monkeypatch.setattr(getpass, "getuser", lambda: "dci2lr")
     assert machine.default_profile() == "container"
 
 
@@ -128,7 +131,7 @@ def test_existing_ssh_key_is_reused_without_generation(tmp_path, monkeypatch):
     original = key.read_bytes()
     public = Path(str(key) + ".pub")
     monkeypatch.setattr(
-        cli, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
+        cli.system, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
     )
     assert machine.ensure_host_ssh_key() == public
     assert key.read_bytes() == original
@@ -141,7 +144,7 @@ def test_ambiguous_existing_ssh_keys_skip_generation(tmp_path, monkeypatch):
     for name in ("custom-one", "custom-two"):
         generate_test_key(tmp_path / ".ssh" / name)
     monkeypatch.setattr(
-        cli, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
+        cli.system, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
     )
     assert machine.ensure_host_ssh_key() is None
 
@@ -159,7 +162,7 @@ def test_encrypted_key_without_public_file_is_kept(tmp_path, monkeypatch):
         calls.append(args)
         return subprocess.CompletedProcess(args, 1, "", "locked")
 
-    monkeypatch.setattr(cli, "run", locked_key)
+    monkeypatch.setattr(cli.system, "run", locked_key)
     assert machine.ensure_host_ssh_key() is None
     assert len(calls) == 1 and "-y" in calls[0] and "-P" in calls[0]
     assert key.read_bytes() == original

@@ -61,7 +61,7 @@ def test_sync_host_profile_from_repo(tmp_path: Path, monkeypatch):
     )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-    monkeypatch.setattr(cli_mod, "hostname_short", lambda: "testhost")
+    monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: "testhost")
 
     machine = cli_mod.Machine()
     assert machine.sync_host_profile_from_repo() is True
@@ -85,7 +85,7 @@ def test_save_host_profile_to_repo(tmp_path: Path, monkeypatch):
     )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-    monkeypatch.setattr(cli_mod, "hostname_short", lambda: "box1")
+    monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: "box1")
 
     machine = cli_mod.Machine()
     path = machine.save_host_profile_to_repo(
@@ -150,7 +150,7 @@ def _machine_env(tmp_path: Path, monkeypatch, hostname: str = "testhost"):
     )
     monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-    monkeypatch.setattr(cli_mod, "hostname_short", lambda: hostname)
+    monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: hostname)
     return cli_mod, cli_mod.Machine(), repo
 
 
@@ -316,11 +316,11 @@ def test_ansible_works_rejects_shim_that_cannot_run(tmp_path: Path, monkeypatch)
     bin_dir = tmp_path / "bin"
     monkeypatch.setenv("PATH", str(bin_dir))
 
-    assert not cli_mod.ansible_works()
+    assert not cli_mod.system.ansible_works()
     _fake_tool(bin_dir, "ansible-playbook", 1)
-    assert not cli_mod.ansible_works()
+    assert not cli_mod.system.ansible_works()
     _fake_tool(bin_dir, "ansible-playbook", 0)
-    assert cli_mod.ansible_works()
+    assert cli_mod.system.ansible_works()
 
 
 def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
@@ -328,9 +328,11 @@ def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
     commands: list[list[str]] = []
     states = iter([False, True])
 
-    monkeypatch.setattr(cli_mod, "have", lambda _name: True)
-    monkeypatch.setattr(cli_mod, "ansible_works", lambda: next(states))
-    monkeypatch.setattr(cli_mod, "run", lambda cmd, **_k: commands.append(list(cmd)))
+    monkeypatch.setattr(cli_mod.system, "have", lambda _name: True)
+    monkeypatch.setattr(cli_mod.system, "ansible_works", lambda: next(states))
+    monkeypatch.setattr(
+        cli_mod.system, "run", lambda cmd, **_k: commands.append(list(cmd))
+    )
     monkeypatch.setattr(machine, "ensure_gum", lambda: None)
     monkeypatch.setattr(machine, "ensure_uv", lambda: True)
 
@@ -343,16 +345,18 @@ def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatc
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
     commands: list[list[str]] = []
-    monkeypatch.setattr(cli_mod, "run", lambda cmd, **_k: commands.append(list(cmd)))
+    monkeypatch.setattr(
+        cli_mod.system, "run", lambda cmd, **_k: commands.append(list(cmd))
+    )
     classic_sudo = "ansible_become_exe=sudo.ws"
 
-    monkeypatch.setattr(cli_mod, "have", lambda name: name == "sudo.ws")
+    monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo.ws")
     machine.run_ansible("workstation", ask_become=False)
     assert classic_sudo in commands[-1]
     machine.run_ansible("workstation", limit="homeserver", ask_become=False)
     assert classic_sudo not in commands[-1]
 
-    monkeypatch.setattr(cli_mod, "have", lambda _name: False)
+    monkeypatch.setattr(cli_mod.system, "have", lambda _name: False)
     machine.run_ansible("workstation", ask_become=False)
     assert classic_sudo not in commands[-1]
 

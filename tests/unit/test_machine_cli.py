@@ -15,7 +15,7 @@ MACHINE = REPO / "home/dot_local/bin/executable_machine"
 
 
 def _cli():
-    return SourceFileLoader("machine_cli", str(MACHINE)).load_module()
+    return SourceFileLoader("machine_entry", str(MACHINE)).load_module()
 
 
 def test_help_lists_setup_migrate_and_env():

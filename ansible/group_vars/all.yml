@@ -1,4 +1,5 @@
 ---
+# Profile-driven package sets (see tasks/resolve_packages.yml).
 packages_base:
   - curl
   - git
@@ -10,14 +11,15 @@ packages_base:
   - python3-venv
   - python-is-python3
 
-packages_zsh:
-  - autojump
-  - fzf
-  - jq
-  - luajit
+# Slim replacement for packages_base on profile rpi-zero.
+packages_rpi_zero:
+  - curl
+  - git
   - tmux
   - zsh
+  - fzf
 
+# Every profile except rpi-zero and container.
 packages_host:
   - eza
   - fonts-firacode
@@ -27,56 +29,46 @@ packages_host:
   - libsecret-tools
   - pipx
 
-packages_desktop: []
-
-packages_gnome:
-  - flameshot
-  - gnome-shell-extension-manager
-  - gnome-shell-extension-prefs
-  - guake
-
-packages_cosmic: []
-
-packages_docker:
-  - docker.io
-  - docker-compose-v2
-
-packages_work:
+# Profile work-laptop, and feature kerberos on other profiles.
+packages_work: &packages_work
   - ldap-utils
   - krb5-user
 
-# telegraf is often missing from Ubuntu apt; roles/monitoring installs/configures it.
-packages_monitoring: []
-
-packages_unattended:
-  - unattended-upgrades
-
-packages_syncthing:
-  - syncthing
-
-packages_tailscale: []
-
-# Yoga / convertible: stylus proximity → grab touchscreen (Xournal++ workaround)
-packages_stylus_touch_guard:
-  - evtest
-  - python3-evdev
-  - python3-psutil
-
-# ThinkPad laptops: zram swap, power profiles, VA-API check tool
-packages_thinkpad_tuning:
-  - power-profiles-daemon
-  - systemd-zram-generator
-  - vainfo
-
-packages_sshd_home:
-  - openssh-server
-
-packages_rpi_zero:
-  - curl
-  - git
-  - tmux
-  - zsh
-  - fzf
+# apt packages per feature. A feature without packages needs no entry; a new
+# feature with packages only needs a line here.
+packages_by_feature:
+  zsh-full:
+    - autojump
+    - fzf
+    - jq
+    - luajit
+    - tmux
+    - zsh
+  gnome:
+    - flameshot
+    - gnome-shell-extension-manager
+    - gnome-shell-extension-prefs
+    - guake
+  docker:
+    - docker.io
+    - docker-compose-v2
+  kerberos: *packages_work
+  unattended-upgrades:
+    - unattended-upgrades
+  syncthing:
+    - syncthing
+  # Yoga / convertible: stylus proximity → grab touchscreen (Xournal++ workaround)
+  stylus-touch-guard:
+    - evtest
+    - python3-evdev
+    - python3-psutil
+  # ThinkPad laptops: zram swap, power profiles, VA-API check tool
+  thinkpad-tuning:
+    - power-profiles-daemon
+    - systemd-zram-generator
+    - vainfo
+  sshd-home:
+    - openssh-server
 
 apt_cache_valid_time: 3600
 

@@ -355,3 +355,10 @@ def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatc
     monkeypatch.setattr(cli_mod, "have", lambda _name: False)
     machine.run_ansible("workstation", ask_become=False)
     assert classic_sudo not in commands[-1]
+
+
+def test_package_table_only_names_known_features():
+    from package_sets import load_group_vars
+
+    unknown = set(load_group_vars()["packages_by_feature"]) - set(_cli().FEATURES)
+    assert not unknown, f"packages_by_feature has unknown features: {unknown}"

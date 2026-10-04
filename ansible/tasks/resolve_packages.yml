@@ -9,78 +9,29 @@
     install_packages: "{{ packages_base }}"
   when: profile | default('') != 'rpi-zero'
 
-- name: Add zsh packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_zsh }}"
-  when: "'zsh-full' in (features | default([]))"
-
 - name: Add host packages
   ansible.builtin.set_fact:
     install_packages: "{{ install_packages + packages_host }}"
   when: profile | default('') not in ['rpi-zero', 'container']
 
-- name: Add desktop packages
+- name: Add work packages
   ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_desktop }}"
-  when: "'desktop' in (features | default([]))"
+    install_packages: "{{ install_packages + packages_work }}"
+  when: profile | default('') == 'work-laptop'
 
-- name: Add GNOME packages
+- name: Add packages of the selected features
   ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_gnome }}"
-  when: "'gnome' in (features | default([]))"
-
-- name: Add Cosmic packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_cosmic }}"
-  when: "'cosmic' in (features | default([]))"
+    install_packages: >-
+      {{ install_packages
+         + (packages_by_feature | dict2items
+            | selectattr('key', 'in', features | default([]))
+            | map(attribute='value') | flatten) }}
 
 - name: Warn when Cosmic selected on non-Pop
   ansible.builtin.debug:
     msg: >-
-      Feature cosmic is selected but packages_cosmic is empty on this OS;
+      Feature cosmic is selected but it has no packages on this OS;
       desktop session will not be installed here.
   when:
     - "'cosmic' in (features | default([]))"
-    - (packages_cosmic | default([]) | length) == 0
-
-- name: Add Docker packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_docker }}"
-  when: "'docker' in (features | default([]))"
-
-- name: Add work packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_work }}"
-  when: >-
-    profile | default('') == 'work-laptop'
-    or 'kerberos' in (features | default([]))
-
-- name: Add monitoring packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_monitoring }}"
-  when: "'monitoring' in (features | default([]))"
-
-- name: Add unattended-upgrades
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_unattended }}"
-  when: "'unattended-upgrades' in (features | default([]))"
-
-- name: Add syncthing
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_syncthing }}"
-  when: "'syncthing' in (features | default([]))"
-
-- name: Add stylus touch-guard packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_stylus_touch_guard }}"
-  when: "'stylus-touch-guard' in (features | default([]))"
-
-- name: Add ThinkPad tuning packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_thinkpad_tuning }}"
-  when: "'thinkpad-tuning' in (features | default([]))"
-
-- name: Add sshd-home packages
-  ansible.builtin.set_fact:
-    install_packages: "{{ install_packages + packages_sshd_home }}"
-  when: "'sshd-home' in (features | default([]))"
+    - (packages_by_feature.cosmic | default([]) | length) == 0

@@ -12,7 +12,6 @@ import pytest
 
 from package_sets import REPO
 
-
 MACHINE = REPO / "home/dot_local/bin/executable_machine"
 
 HOST_YAML = """\

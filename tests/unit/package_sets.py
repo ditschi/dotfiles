@@ -29,32 +29,13 @@ def resolve_packages(
         packages = list(variables["packages_rpi_zero"])
     else:
         packages = list(variables["packages_base"])
-    if "zsh-full" in features_set:
-        packages.extend(variables["packages_zsh"])
     if profile not in {"rpi-zero", "container"}:
         packages.extend(variables["packages_host"])
-    if "desktop" in features_set:
-        packages.extend(variables.get("packages_desktop") or [])
-    if "gnome" in features_set:
-        packages.extend(variables["packages_gnome"])
-    if "cosmic" in features_set:
-        packages.extend(variables.get("packages_cosmic") or [])
-    if "docker" in features_set:
-        packages.extend(variables.get("packages_docker") or [])
-    if profile == "work-laptop" or "kerberos" in features_set:
+    if profile == "work-laptop":
         packages.extend(variables["packages_work"])
-    if "monitoring" in features_set:
-        packages.extend(variables.get("packages_monitoring") or [])
-    if "unattended-upgrades" in features_set:
-        packages.extend(variables.get("packages_unattended") or [])
-    if "syncthing" in features_set:
-        packages.extend(variables.get("packages_syncthing") or [])
-    if "stylus-touch-guard" in features_set:
-        packages.extend(variables.get("packages_stylus_touch_guard") or [])
-    if "thinkpad-tuning" in features_set:
-        packages.extend(variables.get("packages_thinkpad_tuning") or [])
-    if "sshd-home" in features_set:
-        packages.extend(variables.get("packages_sshd_home") or [])
+    for feature, feature_packages in variables["packages_by_feature"].items():
+        if feature in features_set:
+            packages.extend(feature_packages)
     return sorted(set(packages))
 
 

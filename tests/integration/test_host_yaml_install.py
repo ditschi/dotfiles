@@ -1,127 +1,45 @@
 from __future__ import annotations
 
 import re
-import subprocess
-import uuid
 
 import pytest
 import testinfra
 
-from conftest import REPO
+from conftest import MACHINE_CLI, REPO, run_checked, running_container, wants_apt
 
 
 @pytest.fixture
 def host_yaml_container(docker_image, request):
     """Clean container whose hostname matches machine/hosts/<name>.yml."""
     hostname = request.param
-    run_apt = (
-        request.node.get_closest_marker("apt") is not None
-        or request.node.get_closest_marker("apt_gnome") is not None
-    )
+    host_file = REPO / "machine" / "hosts" / f"{hostname}.yml"
+    assert host_file.is_file(), f"missing versioned host profile {host_file}"
     # sudo_prompt marker: user whose sudo prompts; Ansible gets the password from a file.
     with_password = request.node.get_closest_marker("sudo_prompt") is not None
     user = "pwtester" if with_password else "tester"
-    name = f"dotfiles-hy-{hostname}-{uuid.uuid4().hex[:8]}"
-    host_file = REPO / "machine" / "hosts" / f"{hostname}.yml"
-    assert host_file.is_file(), f"missing versioned host profile {host_file}"
-
-    subprocess.run(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            name,
-            "--hostname",
-            hostname,
-            "-v",
-            f"{REPO}:/dotfiles:ro",
-            "-e",
-            "DOTFILES_REPO=/dotfiles",
-            "-e",
-            "DEBIAN_FRONTEND=noninteractive",
-            "-e",
-            "MACHINE_SKIP_BW=1",
-            docker_image,
-            "sleep",
-            "infinity",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
+    exec_env = (
+        (f"ANSIBLE_BECOME_PASSWORD_FILE=/home/{user}/.become-password",)
+        if with_password
+        else ()
     )
-    try:
-        exec_cmd = ["docker", "exec", "-u", user, "-e", f"HOME=/home/{user}"]
-        if with_password:
-            exec_cmd += [
-                "-e",
-                f"ANSIBLE_BECOME_PASSWORD_FILE=/home/{user}/.become-password",
-            ]
-        exec_cmd += ["-w", "/dotfiles", name]
-        subprocess.run(
-            [
-                *exec_cmd,
-                "git",
-                "config",
-                "--global",
-                "--add",
-                "safe.directory",
-                "/dotfiles",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        sync = subprocess.run(
-            [
-                *exec_cmd,
-                "uv",
-                "run",
-                "--script",
-                "home/dot_local/bin/executable_machine",
-                "profile",
-                "sync",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if sync.returncode != 0:
-            raise AssertionError(
-                f"profile sync failed for {hostname}\n"
-                f"STDOUT:\n{sync.stdout}\nSTDERR:\n{sync.stderr}"
-            )
+    # --no-become: never prompt; pwtester's password comes from the file
+    setup_cmd = [*MACHINE_CLI, "setup", "--yes", "--no-become"]
+    if not wants_apt(request):
+        setup_cmd.append("--skip-ansible")
 
-        setup_cmd = [
-            "uv",
-            "run",
-            "--script",
-            "home/dot_local/bin/executable_machine",
-            "setup",
-            "--yes",
-            "--no-become",  # never prompt; pwtester's password comes from the file
-        ]
-        if not run_apt:
-            setup_cmd.append("--skip-ansible")
-        result = subprocess.run(
-            [*exec_cmd, *setup_cmd],
-            check=False,
-            capture_output=True,
-            text=True,
+    with running_container(
+        docker_image,
+        f"hy-{hostname}",
+        hostname=hostname,
+        user=user,
+        env=("MACHINE_SKIP_BW=1",),
+        exec_env=exec_env,
+    ) as (name, exec_cmd):
+        run_checked(
+            exec_cmd, [*MACHINE_CLI, "profile", "sync"], f"profile sync for {hostname}"
         )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"setup from host yaml failed for {hostname}\n"
-                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-            )
+        run_checked(exec_cmd, setup_cmd, f"setup from host yaml for {hostname}")
         yield testinfra.get_host(f"docker://{name}"), hostname, host_file
-    finally:
-        subprocess.run(
-            ["docker", "rm", "-f", name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
 
 
 def assert_second_apply_is_idempotent(host) -> None:

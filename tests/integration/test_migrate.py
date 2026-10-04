@@ -2,26 +2,11 @@ from __future__ import annotations
 
 import subprocess
 import shutil
-import uuid
 from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[2]
-IMAGE = "dotfiles-preset-test:local"
-
-
-def docker_available() -> bool:
-    try:
-        subprocess.run(
-            ["docker", "info"],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
+from conftest import REPO, running_container
 
 
 @pytest.mark.docker
@@ -66,46 +51,13 @@ def test_migrate_clears_old_root_symlinks(tmp_path: Path, docker_image):
         shutil.copy2(REPO / filename, repo / filename)
     git("add", ".")
     git("commit", "-qm", "machine layout")
-    name = f"dotfiles-migrate-{uuid.uuid4().hex[:8]}"
-    subprocess.run(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            name,
-            "-v",
-            f"{repo}:/dotfiles:rw",
-            "-e",
-            "DOTFILES_REPO=/dotfiles",
-            "-e",
-            "DEBIAN_FRONTEND=noninteractive",
-            "-e",
-            "MACHINE_SKIP_BW=1",
-            docker_image,
-            "sleep",
-            "infinity",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    try:
-        exec_cmd = ["docker", "exec", "-u", "tester", "-w", "/dotfiles", name]
-        subprocess.run(
-            [
-                *exec_cmd,
-                "git",
-                "config",
-                "--global",
-                "--add",
-                "safe.directory",
-                "/dotfiles",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+    with running_container(
+        docker_image,
+        "migrate",
+        repo=repo,
+        repo_mode="rw",
+        env=("MACHINE_SKIP_BW=1",),
+    ) as (_name, exec_cmd):
         # Old-style links into repo root (targets need not exist)
         subprocess.run(
             [
@@ -172,10 +124,3 @@ def test_migrate_clears_old_root_symlinks(tmp_path: Path, docker_image):
         )
         assert restored.returncode == 0, restored.stdout + restored.stderr
         assert git("rev-parse", "HEAD") == old_sha
-    finally:
-        subprocess.run(
-            ["docker", "rm", "-f", name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )

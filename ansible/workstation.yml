@@ -35,7 +35,7 @@
 
         - name: Avoid replacing existing Docker packages or custom executables
           ansible.builtin.set_fact:
-            install_packages: "{{ install_packages | difference(packages_docker) }}"
+            install_packages: "{{ install_packages | difference(packages_by_feature.docker) }}"
           when: >-
             machine_docker.rc == 0 or 'docker-ce' in ansible_facts.packages
             or 'docker.io' in ansible_facts.packages or 'moby-engine' in ansible_facts.packages

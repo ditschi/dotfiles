@@ -54,29 +54,7 @@ PROFILES = [
     "rpi-zero",
     "container",
 ]
-FEATURES = [
-    "zsh-full",
-    "fonts",
-    "starship",
-    "yazi",
-    "desktop",
-    "gnome",
-    "cosmic",
-    "docker",
-    "gh-cli",
-    "kerberos",
-    "azure-cli",
-    "monitoring",
-    "unattended-upgrades",
-    "syncthing",
-    "tailscale",
-    "ssh-host-key",
-    "stylus-touch-guard",
-    "thinkpad-tuning",
-    "touch-device",
-    "sshd-home",
-]
-PLAYBOOKS = ["workstation", "homelab", "site"]
+# Selectable features with their one-line help (order = prompt order).
 FEATURE_HELP = {
     "zsh-full": "Shell stack (zsh, fzf, tmux, jq)",
     "fonts": "Meslo / Nerd fonts for prompts",
@@ -99,6 +77,8 @@ FEATURE_HELP = {
     "touch-device": "GNOME touch extensions (TouchUp, Screen Rotate)",
     "sshd-home": "sshd Port 5115 + authorized_keys from machine/ssh_keys",
 }
+FEATURES = list(FEATURE_HELP)
+PLAYBOOKS = ["workstation", "homelab", "site"]
 ENV_CLASS = {
     "work-laptop": "work",
     "rpi": "iot",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -54,40 +55,46 @@ def docker_image():
     return IMAGE
 
 
-@pytest.fixture
-def profile_env(docker_image, request):
-    profile = request.param
-    name = f"dotfiles-{profile}-{uuid.uuid4().hex[:8]}"
-    run_apt = (
-        request.node.get_closest_marker("apt") is not None
-        or request.node.get_closest_marker("apt_gnome") is not None
-    )
-    setup_cmd = ["./bootstrap", "--profile", profile, "--yes"]
-    if not run_apt:
-        setup_cmd.extend(["--skip-ansible", "--no-become"])
+MACHINE_CLI = ["uv", "run", "--script", "home/dot_local/bin/executable_machine"]
+
+
+def wants_apt(request) -> bool:
+    """True for tests marked apt / apt_gnome: they run the real ansible apply."""
+    return any(request.node.get_closest_marker(m) for m in ("apt", "apt_gnome"))
+
+
+@contextmanager
+def running_container(
+    image: str,
+    prefix: str,
+    *,
+    repo: Path = REPO,
+    repo_mode: str = "ro",
+    hostname: str = "",
+    user: str = "tester",
+    env: tuple[str, ...] = (),
+    exec_env: tuple[str, ...] = (),
+):
+    """Start a throwaway container with the repo at /dotfiles.
+
+    Yields (container name, `docker exec` prefix running as `user` in /dotfiles).
+    `env` is set on the container, `exec_env` only for commands run through the prefix.
+    """
+    name = f"dotfiles-{prefix}-{uuid.uuid4().hex[:8]}"
+    cmd = ["docker", "run", "-d", "--name", name]
+    if hostname:
+        cmd += ["--hostname", hostname]
+    cmd += ["-v", f"{repo}:/dotfiles:{repo_mode}"]
+    for item in ("DOTFILES_REPO=/dotfiles", "DEBIAN_FRONTEND=noninteractive", *env):
+        cmd += ["-e", item]
     subprocess.run(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            name,
-            "-v",
-            f"{REPO}:/dotfiles:ro",
-            "-e",
-            "DOTFILES_REPO=/dotfiles",
-            "-e",
-            "DEBIAN_FRONTEND=noninteractive",
-            docker_image,
-            "sleep",
-            "infinity",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
+        [*cmd, image, "sleep", "infinity"], check=True, capture_output=True, text=True
     )
     try:
-        exec_cmd = ["docker", "exec", "-u", "tester", "-w", "/dotfiles", name]
+        exec_cmd = ["docker", "exec", "-u", user, "-e", f"HOME=/home/{user}"]
+        for item in exec_env:
+            exec_cmd += ["-e", item]
+        exec_cmd += ["-w", "/dotfiles", name]
         subprocess.run(
             [
                 *exec_cmd,
@@ -102,18 +109,7 @@ def profile_env(docker_image, request):
             capture_output=True,
             text=True,
         )
-        result = subprocess.run(
-            [*exec_cmd, *setup_cmd],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"bootstrap failed for {profile}\n"
-                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-            )
-        yield testinfra.get_host(f"docker://{name}"), profile
+        yield name, exec_cmd
     finally:
         subprocess.run(
             ["docker", "rm", "-f", name],
@@ -121,3 +117,25 @@ def profile_env(docker_image, request):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+
+def run_checked(exec_cmd: list[str], cmd: list[str], what: str) -> None:
+    """Run a command in the container; fail the test with its output on error."""
+    result = subprocess.run(
+        [*exec_cmd, *cmd], check=False, capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"{what} failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+
+
+@pytest.fixture
+def profile_env(docker_image, request):
+    profile = request.param
+    setup_cmd = ["./bootstrap", "--profile", profile, "--yes"]
+    if not wants_apt(request):
+        setup_cmd.extend(["--skip-ansible", "--no-become"])
+    with running_container(docker_image, profile) as (name, exec_cmd):
+        run_checked(exec_cmd, setup_cmd, f"bootstrap for {profile}")
+        yield testinfra.get_host(f"docker://{name}"), profile

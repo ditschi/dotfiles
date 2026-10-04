@@ -208,7 +208,7 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
         [task],
         {
             "features": ["docker"],
-            "packages_docker": ["docker.io", "docker-compose-v2"],
+            "packages_by_feature": {"docker": ["docker.io", "docker-compose-v2"]},
             "install_packages": ["docker.io", "docker-compose-v2"],
         },
     )
@@ -330,24 +330,10 @@ def test_python_monitoring_matches_ansible(name: str, features, tmp_path: Path):
 
 def test_group_vars_are_lists():
     variables = load_group_vars()
-    for key in (
-        "packages_base",
-        "packages_zsh",
-        "packages_host",
-        "packages_desktop",
-        "packages_gnome",
-        "packages_work",
-        "packages_rpi_zero",
-        "packages_docker",
-        "packages_monitoring",
-        "packages_unattended",
-        "packages_syncthing",
-        "packages_cosmic",
-        "packages_stylus_touch_guard",
-        "packages_thinkpad_tuning",
-        "packages_sshd_home",
-    ):
+    for key in ("packages_base", "packages_rpi_zero", "packages_host", "packages_work"):
         assert isinstance(variables[key], list)
+    for feature, packages in variables["packages_by_feature"].items():
+        assert isinstance(packages, list), feature
     assert isinstance(variables["monitoring_by_profile"], dict)
     assert "home-laptop" in variables["monitoring_by_profile"]
 

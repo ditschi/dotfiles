@@ -51,6 +51,8 @@ def test_migrate_clears_old_root_symlinks(tmp_path: Path, docker_image):
         shutil.copy2(REPO / filename, repo / filename)
     git("add", ".")
     git("commit", "-qm", "machine layout")
+    # The container user has a different uid than whoever runs the tests.
+    subprocess.run(["chmod", "-R", "a+rwX", str(repo)], check=True)
     with running_container(
         docker_image,
         "migrate",

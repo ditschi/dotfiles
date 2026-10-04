@@ -77,7 +77,7 @@ def update_env(tmp_path: Path, monkeypatch):
     _git("clone", "-q", str(origin), str(other), cwd=tmp_path)
 
     cli = _cli()
-    monkeypatch.setattr(cli, "hostname_short", lambda: "testhost")
+    monkeypatch.setattr(cli.system, "hostname_short", lambda: "testhost")
     machine = cli.Machine()
     # never let a broken fixture fall back to the real checkout (it would git pull)
     assert machine.repo == repo
@@ -85,9 +85,9 @@ def update_env(tmp_path: Path, monkeypatch):
 
     calls: list[str] = []
     monkeypatch.setattr(machine, "run_chezmoi_apply", lambda: calls.append("chezmoi"))
-    original_have = cli.have
+    original_have = cli.system.have
     monkeypatch.setattr(
-        cli, "have", lambda name: name == "chezmoi" or original_have(name)
+        cli.system, "have", lambda name: name == "chezmoi" or original_have(name)
     )
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: calls.append("env") or 0)
     monkeypatch.setattr(machine, "cmd_apply", lambda _args: calls.append("apply") or 0)
@@ -184,7 +184,7 @@ def _env_machine(tmp_path, monkeypatch, fake_bw, profile: str, items: dict):
     monkeypatch.setenv("PATH", f"{bw.parent}:{os.environ.get('PATH', '')}")
     monkeypatch.setenv("BW_SESSION", "fake-session")
     cli = _cli()
-    monkeypatch.setattr(cli, "hostname_short", lambda: "testhost")
+    monkeypatch.setattr(cli.system, "hostname_short", lambda: "testhost")
     machine = cli.Machine()
     assert machine.repo == repo
     machine.write_profile(profile, ["zsh-full"], [])

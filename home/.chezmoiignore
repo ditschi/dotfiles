@@ -1,5 +1,6 @@
 {{- /* Patterns match target names, not source names. */ -}}
 __pycache__
+**/__pycache__
 **/*.pyc
 
 {{- if ne .profile "work-laptop" }}

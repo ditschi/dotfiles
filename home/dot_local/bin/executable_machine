@@ -69,7 +69,7 @@ def _global_options(
     debug: bool = typer.Option(
         False,
         "--debug",
-        envvar="MACHINE_DEBUG",
+        envvar="DEBUG",
         help="show every command that is run; ansible runs with -v",
     ),
 ) -> None:

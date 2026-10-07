@@ -108,7 +108,7 @@ script (shebang `uv run --script`) — its dependencies (typer, rich,
 PyYAML, questionary) are declared inline and resolved by [uv](https://astral.sh/uv) on first
 run, no manual venv. `./bootstrap` installs `uv` itself if it's missing.
 
-`machine --debug <command>` (or `MACHINE_DEBUG=1`) prints every command the CLI
+`machine --debug <command>` (or `DEBUG=1`) prints every command the CLI
 runs and passes `-v` to Ansible.
 
 The script itself only defines the command line. The implementation is the package

@@ -24,13 +24,13 @@
     line: "Port {{ sshd_home_port }}"
     backup: true
   notify: Reload sshd
-  when: ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+  when: ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
 
 - name: Validate sshd configuration
   ansible.builtin.command: sshd -t
   changed_when: false
   when:
-    - ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
     - ansible_connection | default('') != 'docker'
 
 - name: Build list of present pubkey files for ssh_allow_from

@@ -28,8 +28,17 @@ PROFILES = [
 ]
 
 
-def run_task_fixture(tmp_path, tasks, variables):
+def run_task_fixture(tmp_path, tasks, variables, facts=None):
     output = tmp_path / "result.json"
+    if facts:
+        # gather_facts is off; set_fact on ansible_facts is how facts are injected
+        tasks.insert(
+            0,
+            {
+                "name": "Provide fixture facts",
+                "ansible.builtin.set_fact": {"ansible_facts": facts},
+            },
+        )
     tasks.append(
         {
             "name": "Capture resulting facts",
@@ -130,7 +139,10 @@ def test_yazi_release_policy_with_mocked_mutations(
 
     mock_actions(tasks)
     result = run_task_fixture(
-        tmp_path, tasks, {"ansible_architecture": "x86_64", "yazi_version": "latest"}
+        tmp_path,
+        tasks,
+        {"yazi_version": "latest"},
+        facts={"architecture": "x86_64"},
     )
     assert result["download"] is upgrade
     assert result["installed"] is upgrade
@@ -166,8 +178,8 @@ def test_existing_cli_skips_all_package_mutations(tmp_path, role, tool):
         tasks,
         {
             "machine_user_path": str(tmp_path) + ":" + os.environ["PATH"],
-            "ansible_env": {"PATH": os.environ["PATH"]},
         },
+        facts={"env": {"PATH": os.environ["PATH"]}},
     )
 
 

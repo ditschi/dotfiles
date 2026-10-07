@@ -70,18 +70,19 @@ class CommandsMixin:
             )
             features = defaults if args.yes else self.prompt_features(defaults)
 
+        # Before the ssh_allow_from prompt: it offers the hosts published in Bitwarden.
+        if need_bw:
+            self.maybe_login_bitwarden()
+
         allow_from = self.saved_ssh_allow_from()
         if not args.yes and system.is_tty():
-            allow_from = self.prompt_ssh_allow_from(allow_from)
+            allow_from = self.prompt_ssh_allow_from(allow_from, profile)
 
         self.write_profile(profile, features, allow_from)
         self.write_chezmoi_config(profile)
         log(f"wrote {self.profile_path} (profile={profile})")
 
         self.maybe_persist_host_profile(profile, features, allow_from, yes=args.yes)
-
-        if need_bw:
-            self.maybe_login_bitwarden()
 
         if skip_ansible or profile == "container":
             log("skipping ansible")

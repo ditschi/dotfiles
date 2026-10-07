@@ -85,6 +85,22 @@ class BitwardenMixin:
             return None
         return self.item_to_dotenv(item)
 
+    def bw_ssh_hosts(self, profile: Optional[str] = None) -> List[str]:
+        """Hostnames with a published SSH key in the profile's class (home / work)."""
+        klass = self.ssh_class(profile)
+        if not klass or not system.have("bw") or not os.environ.get("BW_SESSION"):
+            return []
+        prefix = f"ssh/{klass}/hosts/"
+        result = system.run(
+            ["bw", "list", "items", "--search", prefix], capture=True, check=False
+        )
+        try:
+            items = json.loads(result.stdout or "[]")
+        except json.JSONDecodeError:
+            return []
+        names = [str(item.get("name") or "") for item in items]
+        return sorted({n.removeprefix(prefix) for n in names if n.startswith(prefix)})
+
     def bw_upsert_ssh_item(
         self, item_name: str, public_key: str, private_key: Optional[str] = None
     ) -> bool:

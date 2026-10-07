@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
 import yaml
+from rich.console import Console
+from rich.text import Text
 
 MACHINE_PROG_NAME = "machine"
 PROFILES = [
@@ -68,12 +70,60 @@ OLD_ROOT_LINK_NAMES = [
 ]
 
 
+# Colours only on a terminal (rich also honours NO_COLOR); soft_wrap keeps one
+# message on one line so piped output and logs stay greppable.
+_stdout = Console(highlight=False, soft_wrap=True)
+_stderr = Console(stderr=True, highlight=False, soft_wrap=True)
+
+
+def _emit(console: Console, message: str, style: Optional[str]) -> None:
+    console.print(Text("machine: ", style="bold cyan").append(message, style=style))
+
+
+class _ConsoleHandler(logging.Handler):
+    """Print records as `machine: <message>`; errors go to stderr."""
+
+    STYLES = {
+        logging.DEBUG: "dim",
+        logging.WARNING: "yellow",
+        logging.ERROR: "bold red",
+    }
+
+    def emit(self, record: logging.LogRecord) -> None:
+        console = _stderr if record.levelno >= logging.ERROR else _stdout
+        _emit(console, record.getMessage(), self.STYLES.get(record.levelno))
+
+
+logger = logging.getLogger("machine")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+logger.addHandler(_ConsoleHandler())
+
+
+def set_debug(enabled: bool) -> None:
+    logger.setLevel(logging.DEBUG if enabled else logging.INFO)
+
+
+def debug_enabled() -> bool:
+    return logger.isEnabledFor(logging.DEBUG)
+
+
+def debug(message: str) -> None:
+    logger.debug(message)
+
+
 def log(message: str) -> None:
-    print(f"machine: {message}")
+    # Messages written as "WARNING: ..." predate warn(); keep them highlighted.
+    level = logging.WARNING if message.startswith("WARNING") else logging.INFO
+    logger.log(level, message)
+
+
+def warn(message: str) -> None:
+    logger.warning(message)
 
 
 def die(message: str, code: int = 1) -> None:
-    print(f"machine: {message}", file=sys.stderr)
+    logger.error(message)
     raise SystemExit(code)
 
 

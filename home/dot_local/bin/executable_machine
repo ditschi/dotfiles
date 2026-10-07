@@ -9,6 +9,7 @@
 #     "typer==0.27.2",
 #     "rich>=13.9",
 #     "pyyaml>=6.0",
+#     "questionary>=2.0",
 # ]
 # ///
 """Unified machine CLI: orchestrate chezmoi + ansible; host answers; Bitwarden UX."""
@@ -61,6 +62,18 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def _global_options(
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        envvar="MACHINE_DEBUG",
+        help="show every command that is run; ansible runs with -v",
+    ),
+) -> None:
+    core.set_debug(debug)
 
 
 def _completion_script(shell: str) -> str:

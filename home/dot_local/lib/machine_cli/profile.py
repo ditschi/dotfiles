@@ -10,7 +10,7 @@ import sys
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 from . import system
@@ -247,40 +247,17 @@ class ProfileMixin:
 
     def prompt_profile(self, current: str) -> str:
         default = current or "home-laptop"
-        if system.have("gum"):
-            selected = system.run(
-                [
-                    "gum",
-                    "choose",
-                    "--header",
-                    "Machine profile",
-                    f"--selected={default}",
-                    *PROFILES,
-                ],
-                capture=True,
-            ).stdout.strip()
-            return selected or default
+        if system.is_tty():
+            return system.choose("Machine profile", PROFILES, default)
         print(f"Profiles: {' '.join(PROFILES)}", file=sys.stderr)
         answer = input(f"Profile [{default}]: ").strip()
         return answer or default
 
     def prompt_features(self, defaults: Sequence[str]) -> List[str]:
-        if system.have("gum"):
-            cmd = [
-                "gum",
-                "choose",
-                "--no-limit",
-                "--header",
-                "Features (space to toggle)",
-            ]
-            for item in defaults:
-                if item in FEATURES:
-                    cmd.append(f"--selected={item}")
-            cmd.extend(FEATURES)
-            result = system.run(cmd, capture=True, check=False)
-            if result.returncode == 0 and (result.stdout or "").strip():
-                return result.stdout.split()
-            return list(defaults)
+        if system.is_tty():
+            return system.choose_many(
+                "Features (space to toggle)", FEATURE_HELP, defaults
+            )
         print("Features (space-separated). Empty keeps defaults.", file=sys.stderr)
         for name in FEATURES:
             mark = "*" if name in defaults else " "
@@ -289,10 +266,33 @@ class ProfileMixin:
         answer = input(f"Features [{(' '.join(defaults))}]: ").strip()
         return answer.split() if answer else list(defaults)
 
-    def prompt_ssh_allow_from(self, current: Sequence[str]) -> List[str]:
+    def known_ssh_hosts(self, profile: str) -> Dict[str, str]:
+        """Hosts whose public key we can install: {hostname: where the key is}."""
+        hosts: Dict[str, str] = {}
+        if self.ssh_class(profile) == "home":  # the repo only holds home fleet keys
+            for path in sorted((self.repo / "machine" / "ssh_keys").glob("*.pub")):
+                hosts[path.stem] = "machine/ssh_keys"
+        for host in self.bw_ssh_hosts(profile):
+            hosts[host] = f"{hosts[host]} + Bitwarden" if host in hosts else "Bitwarden"
+        hosts.pop(system.hostname_short(), None)
+        return hosts
+
+    def prompt_ssh_allow_from(
+        self, current: Sequence[str], profile: Optional[str] = None
+    ) -> List[str]:
         default = " ".join(current)
         if not system.is_tty():
             return list(current)
+        hosts = self.known_ssh_hosts(profile or self.current_profile())
+        if hosts:
+            # Keep already configured hosts selectable even if their key is gone.
+            for host in current:
+                hosts.setdefault(host, "configured, no key found")
+            return system.choose_many(
+                "Hosts that may SSH into this machine (none = leave authorized_keys alone)",
+                hosts,
+                current,
+            )
         print(
             "Hosts that may SSH into this machine (same class only). Empty = leave authorized_keys alone.",
             file=sys.stderr,

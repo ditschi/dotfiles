@@ -18,6 +18,7 @@ from typing import List, Optional
 
 from . import system
 from .core import (
+    debug_enabled,
     log,
     die,
 )
@@ -93,36 +94,6 @@ class ToolsMixin:
             return False
         return True
 
-    def ensure_gum(self) -> None:
-        if system.have("gum") or not system.is_tty() or system.in_docker():
-            return
-        arch = platform.machine()
-        arch_map = {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armv7"}
-        gum_arch = arch_map.get(arch)
-        if not gum_arch:
-            return
-        version = "0.14.5"
-        url = (
-            f"https://github.com/charmbracelet/gum/releases/download/v{version}/"
-            f"gum_{version}_Linux_{gum_arch}.tar.gz"
-        )
-        local_bin = self.home / ".local/bin"
-        local_bin.mkdir(parents=True, exist_ok=True)
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                archive = Path(tmp) / "gum.tgz"
-                urllib.request.urlretrieve(url, archive)
-                system.run(["tar", "-xzf", str(archive), "-C", tmp], check=True)
-                binary = next(Path(tmp).rglob("gum"), None)
-                if binary and binary.is_file():
-                    dest = local_bin / "gum"
-                    shutil.copy2(binary, dest)
-                    dest.chmod(0o755)
-                    os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
-                    log(f"installed gum to {dest}")
-        except (OSError, subprocess.CalledProcessError, StopIteration):
-            log("could not install gum; using plain prompts")
-
     def ensure_bitwarden_cli(self) -> bool:
         if system.have("bw"):
             return True
@@ -188,7 +159,6 @@ class ToolsMixin:
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True, exist_ok=True)
         os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
-        self.ensure_gum()
         if need_chezmoi and not system.have("chezmoi"):
             log("installing chezmoi to ~/.local/bin")
             script = system.run(
@@ -290,6 +260,8 @@ class ToolsMixin:
             cmd.extend(["--limit", limit])
         if ask_become and playbook_name != "homelab" and system.is_tty():
             cmd.append("--ask-become-pass")
+        if debug_enabled():
+            cmd.append("-v")
         cmd.extend(extra)
         log(f"ansible-playbook {playbook_name}.yml")
         system.run(cmd, cwd=self.ansible_dir)

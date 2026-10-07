@@ -5,14 +5,18 @@ Call these as `system.<name>(...)` so tests can replace them in one place."""
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Dict, List, Optional, Sequence
+
+import questionary
 
 from .core import (
+    debug,
     die,
 )
 
@@ -52,6 +56,7 @@ def run(
     capture: bool = False,
     input_text: Optional[str] = None,
 ) -> subprocess.CompletedProcess:
+    debug("$ " + shlex.join(str(arg) for arg in args))
     return subprocess.run(
         list(args),
         cwd=str(cwd) if cwd else None,
@@ -96,3 +101,25 @@ def prompt_yes_no(question: str, default: bool = False) -> bool:
     if not answer:
         return default
     return answer in {"y", "yes"}
+
+
+def choose(title: str, choices: Sequence[str], default: str) -> str:
+    """Pick one of `choices` with the arrow keys; `default` on cancel."""
+    selected = questionary.select(title, choices=list(choices), default=default).ask()
+    return selected or default
+
+
+def choose_many(
+    title: str, choices: Dict[str, str], selected: Sequence[str]
+) -> List[str]:
+    """Tick any of `choices` ({value: help text}); the pre-selection on cancel."""
+    answer = questionary.checkbox(
+        title,
+        choices=[
+            questionary.Choice(
+                f"{name:20} {text}", value=name, checked=name in selected
+            )
+            for name, text in choices.items()
+        ],
+    ).ask()
+    return list(selected) if answer is None else answer

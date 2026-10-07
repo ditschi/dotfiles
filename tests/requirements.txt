@@ -5,3 +5,4 @@ ansible-lint>=24.2.0
 ansible-core>=2.16
 typer==0.27.2
 rich>=13.9
+questionary>=2.0

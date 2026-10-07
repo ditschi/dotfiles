@@ -5,6 +5,8 @@ import textwrap
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
+import pytest
+
 from package_sets import REPO
 
 MACHINE = REPO / "home/dot_local/bin/executable_machine"
@@ -333,11 +335,85 @@ def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         cli_mod.system, "run", lambda cmd, **_k: commands.append(list(cmd))
     )
-    monkeypatch.setattr(machine, "ensure_gum", lambda: None)
     monkeypatch.setattr(machine, "ensure_uv", lambda: True)
 
     machine.ensure_bootstrap_tools(False, True, False)
     assert ["uv", "tool", "install", "--force", "ansible-core"] in commands
+
+
+def test_prompts_use_arrow_key_pickers_on_a_terminal(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "choose", lambda _t, choices, _d: choices[1])
+    monkeypatch.setattr(
+        cli_mod.system,
+        "choose_many",
+        lambda _t, choices, selected: [*selected, list(choices)[-1]],
+    )
+
+    assert machine.prompt_profile("rpi") == cli_mod.PROFILES[1]
+    assert machine.prompt_features(["zsh-full"]) == ["zsh-full", cli_mod.FEATURES[-1]]
+
+
+def test_log_marks_warnings_and_keeps_plain_text_when_piped(tmp_path, capsys):
+    cli_mod = _cli()
+    cli_mod.log("WARNING: " + "x" * 200)
+    with pytest.raises(SystemExit):
+        cli_mod.die("boom")
+    captured = capsys.readouterr()
+    # not a terminal: no colour codes, no wrapping
+    assert captured.out == "machine: WARNING: " + "x" * 200 + "\n"
+    assert captured.err == "machine: boom\n"
+
+
+def test_debug_shows_commands_only_when_enabled(tmp_path, monkeypatch, capsys):
+    cli_mod, _machine, _repo = _machine_env(tmp_path, monkeypatch)
+    cli_mod.system.run(["true"])
+    assert capsys.readouterr().out == ""
+    cli_mod.core.set_debug(True)
+    try:
+        cli_mod.system.run(["true"])
+    finally:
+        cli_mod.core.set_debug(False)
+    assert capsys.readouterr().out == "machine: $ true\n"
+
+
+def test_bw_ssh_hosts_lists_same_class_only(tmp_path: Path, monkeypatch):
+    import json
+    import subprocess
+
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    names = ["ssh/home/hosts/alpha", "ssh/work/hosts/beta", "ssh/home/hosts-old/x"]
+    listing = json.dumps([{"name": name} for name in names])
+    monkeypatch.setenv("BW_SESSION", "fake")
+    monkeypatch.setattr(cli_mod.system, "have", lambda _name: True)
+    monkeypatch.setattr(
+        cli_mod.system,
+        "run",
+        lambda cmd, **_k: subprocess.CompletedProcess(cmd, 0, listing, ""),
+    )
+    assert machine.bw_ssh_hosts("home-laptop") == ["alpha"]
+    assert machine.bw_ssh_hosts("work-laptop") == ["beta"]
+    assert machine.bw_ssh_hosts("container") == []
+
+
+def test_ssh_allow_from_offers_hosts_from_repo_and_bitwarden(tmp_path, monkeypatch):
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    keys = repo / "machine" / "ssh_keys"
+    keys.mkdir(parents=True)
+    for host in ("homeserver", "testhost"):  # testhost is this machine
+        (keys / f"{host}.pub").write_text("ssh-ed25519 AAAA\n", encoding="utf-8")
+    monkeypatch.setattr(machine, "bw_ssh_hosts", lambda _p=None: ["homeserver", "pi"])
+
+    assert machine.known_ssh_hosts("home-laptop") == {
+        "homeserver": "machine/ssh_keys + Bitwarden",
+        "pi": "Bitwarden",
+    }
+    # repo keys belong to the home fleet only
+    assert machine.known_ssh_hosts("work-laptop") == {
+        "homeserver": "Bitwarden",
+        "pi": "Bitwarden",
+    }
 
 
 def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatch):

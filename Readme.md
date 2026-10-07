@@ -240,7 +240,7 @@ machine ssh restore           # restore private key
 
 `work-laptop`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
+Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 

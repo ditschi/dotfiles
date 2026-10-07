@@ -11,4 +11,5 @@ features:
   - kerberos
   - azure-cli
   - ssh-host-key
+  - etckeeper
 ssh_allow_from: []

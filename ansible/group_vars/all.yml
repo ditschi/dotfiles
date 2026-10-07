@@ -57,6 +57,9 @@ packages_by_feature:
     - unattended-upgrades
   syncthing:
     - syncthing
+  # /etc as a local git repository; commits around every apt run and daily
+  etckeeper:
+    - etckeeper
   # Yoga / convertible: stylus proximity → grab touchscreen (Xournal++ workaround)
   stylus-touch-guard:
     - evtest

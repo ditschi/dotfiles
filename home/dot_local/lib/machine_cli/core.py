@@ -35,6 +35,7 @@ FEATURE_HELP = {
     "azure-cli": "Azure CLI (work)",
     "monitoring": "Telegraf agent (home profiles)",
     "unattended-upgrades": "Automatic security upgrades",
+    "etckeeper": "Keep /etc in a local git repository (history of system config)",
     "syncthing": "Syncthing package",
     "tailscale": "Tailscale package (+ optional login)",
     "ssh-host-key": "Per-host ed25519 key + Bitwarden pub",

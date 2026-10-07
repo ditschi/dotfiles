@@ -8,4 +8,5 @@ features:
   - unattended-upgrades
   - ssh-host-key
   - sshd-home
+  - etckeeper
 ssh_allow_from: []

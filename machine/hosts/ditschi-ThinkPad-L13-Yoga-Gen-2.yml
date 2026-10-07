@@ -4,12 +4,20 @@ features:
   - zsh-full
   - fonts
   - starship
+  - yazi
   - desktop
   - gnome
+  - docker
+  - gh-cli
   - monitoring
+  - unattended-upgrades
+  - syncthing
+  - tailscale
   - ssh-host-key
   - stylus-touch-guard
   - thinkpad-tuning
   - touch-device
   - sshd-home
-ssh_allow_from: []
+ssh_allow_from:
+  - homeserver
+  - netmaster

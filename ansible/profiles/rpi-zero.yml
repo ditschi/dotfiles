@@ -5,4 +5,5 @@ features:
   - monitoring
   - unattended-upgrades
   - ssh-host-key
+  - etckeeper
 ssh_allow_from: []

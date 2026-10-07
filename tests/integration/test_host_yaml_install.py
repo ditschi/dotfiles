@@ -90,6 +90,8 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert host.package("fzf").is_installed
     assert host.package("tmux").is_installed
     assert host.package("unattended-upgrades").is_installed
+    assert host.package("etckeeper").is_installed
+    assert host.file("/etc/.git").is_directory
     assert not host.package("guake").is_installed
     conf_dir = host.file("/etc/telegraf/telegraf.d")
     assert conf_dir.exists

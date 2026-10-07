@@ -18,6 +18,7 @@ features:
   - thinkpad-tuning
   - touch-device
   - sshd-home
+  - etckeeper
 ssh_allow_from:
   - homeserver
   - netmaster

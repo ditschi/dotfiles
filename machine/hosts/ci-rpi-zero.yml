@@ -6,4 +6,5 @@ features:
   - zsh-full
   - monitoring
   - unattended-upgrades
+  - etckeeper
 ssh_allow_from: []

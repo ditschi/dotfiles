@@ -12,4 +12,5 @@ features:
   - ssh-host-key
   - stylus-touch-guard
   - sshd-home
+  - etckeeper
 ssh_allow_from: []

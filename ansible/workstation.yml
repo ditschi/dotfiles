@@ -19,7 +19,7 @@
           ansible.builtin.command: docker --version
           become: false
           environment:
-            PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+            PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
           register: machine_docker
           changed_when: false
           failed_when: false
@@ -28,7 +28,7 @@
           ansible.builtin.command: docker compose version
           become: false
           environment:
-            PATH: "{{ machine_user_path | default(ansible_env.PATH) }}"
+            PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
           register: machine_compose
           changed_when: false
           failed_when: false
@@ -60,7 +60,7 @@
         name: "{{ install_packages | unique }}"
         state: present
         cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
-      when: ansible_os_family == "Debian" and (install_packages | default([])) | length > 0
+      when: ansible_facts.os_family == "Debian" and (install_packages | default([])) | length > 0
 
 - name: User-level tools
   hosts: "{{ target_hosts | default('all') }}"

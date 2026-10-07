@@ -76,7 +76,7 @@ apt_cache_valid_time: 3600
 machine_lib_dir: /usr/local/lib/machine
 # False in containers (CI): files are installed, services are not started.
 machine_manage_services: >-
-  {{ ansible_virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+  {{ ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
      and ansible_connection | default('') != 'docker' }}
 
 # Telegraf config names (SoT). Role roles/monitoring resolves the list from

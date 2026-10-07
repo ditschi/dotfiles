@@ -1,7 +1,7 @@
 ---
 - name: Ensure ~/.local/bin exists
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.local/bin"
+    path: "{{ ansible_facts.env.HOME }}/.local/bin"
     state: directory
     mode: "0755"
 
@@ -13,7 +13,7 @@
 
 - name: Install starship into ~/.local/bin
   ansible.builtin.shell: |
-    curl -fsSL https://starship.rs/install.sh | sh -s -- -y --bin-dir "{{ ansible_env.HOME }}/.local/bin"
+    curl -fsSL https://starship.rs/install.sh | sh -s -- -y --bin-dir "{{ ansible_facts.env.HOME }}/.local/bin"
   args:
     executable: /bin/bash
   when:
@@ -22,21 +22,21 @@
 
 - name: Ensure user font directory exists
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.local/share/fonts"
+    path: "{{ ansible_facts.env.HOME }}/.local/share/fonts"
     state: directory
     mode: "0755"
   when: "'fonts' in (features | default([]))"
 
 - name: Check MesloLGS NF
   ansible.builtin.stat:
-    path: "{{ ansible_env.HOME }}/.local/share/fonts/MesloLGS NF Regular.ttf"
+    path: "{{ ansible_facts.env.HOME }}/.local/share/fonts/MesloLGS NF Regular.ttf"
   register: user_tools_meslo_font
   when: "'fonts' in (features | default([]))"
 
 - name: Download MesloLGS NF for p10k
   ansible.builtin.get_url:
     url: "{{ item.url }}"
-    dest: "{{ ansible_env.HOME }}/.local/share/fonts/{{ item.name }}"
+    dest: "{{ ansible_facts.env.HOME }}/.local/share/fonts/{{ item.name }}"
     mode: "0644"
   loop:
     - name: MesloLGS NF Regular.ttf

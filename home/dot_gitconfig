@@ -93,11 +93,11 @@
 
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
-    # identity: default per host comes from ~/.gitconfig.local; these override one repo
-    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'christian.ditscher@de.bosch.com'
-    user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
-    user-show = "!f() { echo \"repo  : $(git config --local user.name) <$(git config --local user.email)>\"; echo \"host  : $(git config -f ~/.gitconfig.local user.name) <$(git config -f ~/.gitconfig.local user.email)>\"; echo \"active: $(git config user.name) <$(git config user.email)>\"; }; f"
-    user-unset-local = !git config --local --unset-all user.name && git config --local --unset-all user.email || true
+    # identity + credentials: host default in ~/.gitconfig.local, owner rules at the end; these override one repo
+    user-work = "!f() { git user-unset-local; git config --local --add include.path ~/.config/git/work.gitconfig; }; f"
+    user-private = "!f() { git user-unset-local; git config --local --add include.path ~/.config/git/private.gitconfig; }; f"
+    user-show = "!f() { echo \"repo  : $(git config --local --includes user.name) <$(git config --local --includes user.email)>\"; echo \"host  : $(git config -f ~/.gitconfig.local user.name) <$(git config -f ~/.gitconfig.local user.email)>\"; echo \"active: $(git config user.name) <$(git config user.email)>\"; echo \"github: $(git config --get-urlmatch credential.username https://github.com)\"; }; f"
+    user-unset-local = "!f() { git config --local --unset-all include.path 'config/git/(work|private)[.]gitconfig$'; git config --local --unset-all user.name; git config --local --unset-all user.email; true; }; f"
 
     # conflict/merges
     ours = !sh -c 'git checkout --ours "$@" && git add -- "$@"' -
@@ -165,6 +165,27 @@
     process = git-lfs filter-process
     required = true
 
-# Must stay last: host-local values override everything above.
+# Host-local values override everything above except the owner rules below.
 [include]
     path = ~/.gitconfig.local
+
+# Identity + credentials by repo owner. Must stay last; later rules win and
+# repo-local config (`git user-work` / `git user-private`) wins over all.
+[includeIf "hasconfig:remote.*.url:https://github.com/**"]
+    path = ~/.config/git/private.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
+    path = ~/.config/git/private.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.com/bosch-*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.com/bosch_*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:bosch-*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:bosch_*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.boschdevcloud.com/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://sourcecode*.bosch.com/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:ssh://*@sourcecode*.bosch.com*/**"]
+    path = ~/.config/git/work.gitconfig

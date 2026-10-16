@@ -1,0 +1,11 @@
+# Private identity + GitHub credentials. Included by the owner rules in ~/.gitconfig
+# or per repo via `git user-private`.
+[user]
+    name = Christian Ditscher
+    email = chris@ditscher.me
+
+[credential "https://github.com"]
+    username = ditschi
+    # empty value drops earlier helpers (store), so tokens never land in ~/.git-credentials
+    helper =
+    helper = !$HOME/.local/bin/git-credential-env GITHUB_PRIVATE_TOKEN

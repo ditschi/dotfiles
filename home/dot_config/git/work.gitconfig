@@ -1,0 +1,15 @@
+# Work identity + GitHub credentials. Included by the owner rules in ~/.gitconfig
+# or per repo via `git user-work`.
+[user]
+    name = Ditscher Christian (XC-AS/ESE1)
+    email = christian.ditscher@de.bosch.com
+
+[credential "https://github.com"]
+    username = dci2lr_bosch
+    # empty value drops earlier helpers (store), so tokens never land in ~/.git-credentials
+    helper =
+    helper = !$HOME/.local/bin/git-credential-env GITHUB_TOKEN
+
+[credential "https://github.boschdevcloud.com"]
+    helper =
+    helper = !$HOME/.local/bin/git-credential-env BDC_GITHUB_TOKEN

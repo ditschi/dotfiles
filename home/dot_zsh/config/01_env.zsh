@@ -11,6 +11,22 @@ export GITHUB_GRAPHQL_URL=https://api.github.com/graphql
 # ~/.env is generated from Bitwarden (`machine env pull`).
 # Host-only extras: ~/.env.local (not overwritten).
 # load customization
+# Expand ${NAME} like docker compose does, without executing the value.
+_envfile_expand() {
+	local rest=$1 out= name
+	while [[ $rest == *'${'*'}'* ]]; do
+		out+=${rest%%'${'*}
+		rest=${rest#*'${'}
+		name=${rest%%'}'*}
+		rest=${rest#*'}'}
+		if [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+			out+=$(printenv "$name")
+		else
+			out+='${'$name'}'
+		fi
+	done
+	printf '%s' "$out$rest"
+}
 # enable nullglob in a shell-agnostic way
 [[ -n "$ZSH_VERSION" ]] && setopt nullglob || shopt -s nullglob
 for envfile in ~/.env ~/.env.*; do
@@ -31,9 +47,12 @@ for envfile in ~/.env ~/.env.*; do
 			[[ -z "$line" ]] && continue
 			# Export variable
 			if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)= ]]; then
-				export "$line"
+				key=${line%%=*}
+				export "${key//[[:space:]]/}=$(_envfile_expand "${line#*=}")"
 			fi
 		done < "$envfile"
 	fi
 done
+unset key
+unset -f _envfile_expand
 [[ -n "$ZSH_VERSION" ]] && unsetopt nullglob || shopt -u nullglob

@@ -22,7 +22,7 @@ Optional:
 - `.zshrc` and `.zsh/config/*.zsh`
   Modular zsh setup; files are split by topic and documented inline.
 - `.gitconfig`
-  Git defaults and repo-local identity helpers (`git user-auto`, `git user-work`, `git user-private`).
+  Git defaults. Identity and GitHub credentials are picked by repo owner (`bosch-*`/`bosch_*`, GHES, Bitbucket → `.config/git/work.gitconfig`, other github.com → `.config/git/private.gitconfig`). Tokens come from `~/.env` via `.local/bin/git-credential-env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`). Per-repo override: `git user-work`, `git user-private`, `git user-unset-local`; check with `git user-show`.
 - `.tmux.conf`
   tmux keybindings (including German keyboard layout mappings).
 - `.bashrc`, `.profile`, `.zprofile`

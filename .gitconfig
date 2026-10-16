@@ -89,12 +89,11 @@
 
     la = "!git config --get-regexp '^alias\\.' | sed -E 's/^alias\\.//; s/ .*//'"
 
-    # set the user based on the remote url
-    user-work = !git config --local user.name 'Ditscher Christian (XC-AS/ESE1)' && git config --local user.email 'christian.ditscher@de.bosch.com'
-    user-private = !git config --local user.name 'Christian Ditscher' && git config --local user.email 'chris@ditscher.me'
-    user-setup = !sh -c 'url=$(git remote get-url origin 2>/dev/null || true); if echo "$url" | grep -Eiq "bosch|boschdevcloud|sourcecode.*bosch"; then git user-work; else git user-private; fi; git config --get user.name; git config --get user.email' -
-    user-show = !sh -c 'echo "local : $(git config --local --get user.name 2>/dev/null || echo -) <$(git config --local --get user.email 2>/dev/null || echo -)>"; echo "global: $(git config --global --get user.name 2>/dev/null || echo -) <$(git config --global --get user.email 2>/dev/null || echo -)>"; echo "active: $(git config --get user.name 2>/dev/null || echo -) <$(git config --get user.email 2>/dev/null || echo -)>"' -
-    user-unset-local = !git config --local --unset-all user.name && git config --local --unset-all user.email || true
+    # identity + credentials come from the owner rules at the end; these override one repo
+    user-work = "!f() { git user-unset-local; git config --local --add include.path ~/.config/git/work.gitconfig; }; f"
+    user-private = "!f() { git user-unset-local; git config --local --add include.path ~/.config/git/private.gitconfig; }; f"
+    user-show = "!f() { echo \"local : $(git config --local --includes user.name) <$(git config --local --includes user.email)>\"; echo \"active: $(git config user.name) <$(git config user.email)>\"; echo \"github: $(git config --get-urlmatch credential.username https://github.com)\"; }; f"
+    user-unset-local = "!f() { git config --local --unset-all include.path 'config/git/(work|private)[.]gitconfig$'; git config --local --unset-all user.name; git config --local --unset-all user.email; true; }; f"
 
     # conflict/merges
     ours = !sh -c 'git checkout --ours "$@" && git add -- "$@"' -
@@ -174,3 +173,24 @@
     helper = store
 [safe]
 	directory = /opt/osd/ansible/osd-ansible-custom
+
+# Identity + credentials by repo owner. Must stay last; later rules win and
+# repo-local config (`git user-work` / `git user-private`) wins over all.
+[includeIf "hasconfig:remote.*.url:https://github.com/**"]
+    path = ~/.config/git/private.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
+    path = ~/.config/git/private.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.com/bosch-*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.com/bosch_*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:bosch-*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:bosch_*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.boschdevcloud.com/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://sourcecode*.bosch.com/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:ssh://*@sourcecode*.bosch.com*/**"]
+    path = ~/.config/git/work.gitconfig

@@ -10,6 +10,10 @@ import pytest
 from package_sets import REPO
 
 SHARED = REPO / "home/dot_gitconfig"
+HELPER = REPO / "home/dot_local/bin/executable_git-credential-env"
+TOKEN_VARS = ("GITHUB_TOKEN", "BDC_GITHUB_TOKEN", "GITHUB_PRIVATE_TOKEN")
+WORK = "christian.ditscher@de.bosch.com"
+PRIVATE = "chris@ditscher.me"
 HOST_ONLY = (
     r"^(user\.(name|email|signingkey)|gpg\.|commit\.gpgsign|tag\.gpgsign"
     r"|safe\.|credential\.|https?\.|core\.sshcommand)"
@@ -30,8 +34,12 @@ def test_shared_gitconfig_has_no_host_only_settings():
 
 
 def test_local_include_is_last_so_it_wins():
-    res = _git("config", "-f", str(SHARED), "--no-includes", "--list")
-    assert res.stdout.strip().splitlines()[-1] == "include.path=~/.gitconfig.local"
+    lines = _git("config", "-f", str(SHARED), "--no-includes", "--list").stdout
+    lines = lines.strip().splitlines()
+    local = lines.index("include.path=~/.gitconfig.local")
+    after = lines[local:][1:]
+    assert after, "owner rules expected after the host-local include"
+    assert all(line.startswith("includeif.hasconfig:remote.*.url:") for line in after)
 
 
 def test_gitconfig_relocation_preserves_local_overrides_and_multivalues(tmp_path):
@@ -307,14 +315,22 @@ def git_home(tmp_path: Path):
     (home / ".gitconfig").symlink_to(SHARED)
     (home / ".gitconfig.local").write_text(
         "[user]\n    name = Host Default\n    email = host@example.com\n"
+        "[credential]\n    helper = store\n"
     )
+    (home / ".config/git").mkdir(parents=True)
+    for snippet in (REPO / "home/dot_config/git").iterdir():
+        (home / ".config/git" / snippet.name).symlink_to(snippet)
+    (home / ".local/bin").mkdir(parents=True)
+    (home / ".local/bin/git-credential-env").symlink_to(HELPER)
     env = {
         **os.environ,
         "HOME": str(home),
         "XDG_CONFIG_HOME": str(home / ".config"),
         "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
     }
-    env.pop("GIT_CONFIG_GLOBAL", None)
+    for var in ("GIT_CONFIG_GLOBAL", "GIT_ASKPASS", "SSH_ASKPASS", *TOKEN_VARS):
+        env.pop(var, None)
     repo = tmp_path / "repo"
     _git("init", "-q", str(repo), env=env)
     (repo / "a.txt").write_text("a\n")
@@ -359,6 +375,131 @@ def test_store_alias_writes_host_local_file_not_shared(git_home):
     assert SHARED.read_text() == before
     local = _git("config", "-f", str(home / ".gitconfig.local"), "credential.helper")
     assert local.stdout.strip() == "store"
+
+
+def _identity(env, repo) -> tuple[str, str]:
+    email = _git("config", "user.email", env=env, cwd=repo).stdout.strip()
+    user = _git(
+        "config",
+        "--get-urlmatch",
+        "credential.username",
+        "https://github.com",
+        env=env,
+        cwd=repo,
+    ).stdout.strip()
+    return email, user
+
+
+@pytest.mark.parametrize(
+    "url, email, github_user",
+    [
+        ("https://github.com/ditschi/dotfiles.git", PRIVATE, "ditschi"),
+        ("git@github.com:ditschi/dotfiles.git", PRIVATE, "ditschi"),
+        ("https://github.com/someone/bosch-tool.git", PRIVATE, "ditschi"),
+        ("https://github.com/bosch-foo/x.git", WORK, "dci2lr_bosch"),
+        ("https://github.com/bosch_rbadas/x.git", WORK, "dci2lr_bosch"),
+        ("git@github.com:bosch-foo/x.git", WORK, "dci2lr_bosch"),
+        ("https://github.boschdevcloud.com/DCI2LR/x.git", WORK, "dci2lr_bosch"),
+        (
+            "ssh://git@sourcecode.socialcoding.bosch.com:7999/p/x.git",
+            WORK,
+            "dci2lr_bosch",
+        ),
+        ("https://gitlab.com/me/x.git", "host@example.com", ""),
+    ],
+)
+def test_owner_rules_pick_identity_and_github_user(git_home, url, email, github_user):
+    _home, repo, env = git_home
+    _run(env, repo, "remote", "add", "origin", url)
+    assert _identity(env, repo) == (email, github_user)
+
+
+def test_user_alias_overrides_owner_rule(git_home):
+    _home, repo, env = git_home
+    _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")
+    _run(env, repo, "user-work")
+    assert _identity(env, repo) == (WORK, "dci2lr_bosch")
+    _run(env, repo, "user-private")
+    assert (
+        _run(env, repo, "config", "--local", "--get-all", "include.path").count("\n")
+        == 1
+    )
+    _run(env, repo, "user-unset-local")
+    assert _identity(env, repo) == (PRIVATE, "ditschi")
+
+
+def _fill(env, repo, host="github.com"):
+    return subprocess.run(
+        ["git", "credential", "fill"],
+        input=f"protocol=https\nhost={host}\n\n",
+        env=env,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_credentials_come_from_env_and_are_never_stored(git_home):
+    home, repo, env = git_home
+    _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")
+    filled = _fill({**env, "GITHUB_PRIVATE_TOKEN": "private-secret"}, repo)
+    assert filled.returncode == 0, filled.stderr
+    assert "username=ditschi\npassword=private-secret\n" in filled.stdout
+    approve = subprocess.run(
+        ["git", "credential", "approve"],
+        input=filled.stdout,
+        env=env,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+    assert approve.returncode == 0
+    assert not (home / ".git-credentials").exists()
+
+    _run(env, repo, "remote", "set-url", "origin", "https://github.com/bosch-x/y.git")
+    filled = _fill({**env, "GITHUB_TOKEN": "work-secret"}, repo)
+    assert "username=dci2lr_bosch\npassword=work-secret\n" in filled.stdout
+
+
+def test_credential_helper_reads_dotenv_when_env_is_empty(git_home):
+    home, repo, env = git_home
+    (home / ".zsh/config").mkdir(parents=True)
+    (home / ".zsh/config/01_env.zsh").symlink_to(
+        REPO / "home/dot_zsh/config/01_env.zsh"
+    )
+    dotenv = home / ".env"
+    dotenv.write_text(
+        "BDC_GITHUB_TOKEN=a$b;c d\nGITHUB_PRIVATE_TOKEN=${BDC_GITHUB_TOKEN}\n"
+    )
+    dotenv.chmod(0o600)
+    _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")
+    assert "password=a$b;c d\n" in _fill(env, repo).stdout
+    _run(
+        env,
+        repo,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.boschdevcloud.com/o/x.git",
+    )
+    filled = _fill(env, repo, "github.boschdevcloud.com")
+    assert "username=x-access-token\npassword=a$b;c d\n" in filled.stdout
+
+
+def test_credential_helper_without_token_returns_nothing(tmp_path):
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path)}
+    run = lambda *args: subprocess.run(  # noqa: E731
+        [str(HELPER), *args],
+        input="protocol=https\nhost=github.com\n\n",
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    missing = run("GITHUB_PRIVATE_TOKEN", "get")
+    assert (missing.returncode, missing.stdout) == (0, "")
+    assert "GITHUB_PRIVATE_TOKEN is not set" in missing.stderr
+    assert run("GITHUB_PRIVATE_TOKEN", "store").stdout == ""
+    assert run("BAD-NAME", "get").returncode == 1
 
 
 @pytest.fixture

@@ -49,8 +49,10 @@ Uncommitted local changes block `machine update` (unless `--force`).
 ### Git config
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.
-- `~/.gitconfig.local` → host-local, not in git, included last (wins). chezmoi creates it once from the profile (`work-laptop` → work user, otherwise private) and never overwrites it. Signing key, `safe.directory`, credentials and proxy go here.
-- Single repo with a different identity: `git user-work` / `git user-private`; show: `git user-show`.
+- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. chezmoi creates it once from the profile (`work-laptop` → work user, otherwise private) and never overwrites it. Signing key, `safe.directory`, credentials and proxy go here.
+- Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
+- `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
+- Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
 - `machine update` and `machine commit` move host-only entries from the shared config into `~/.gitconfig.local`. Existing local overrides win; repeated values are preserved. Backups live under `~/.local/share/machine/gitconfig-backup/`.
 - The installed pre-commit hook does the same before an ordinary Git commit. If it changes the shared file, review and stage the cleaned file, then commit again.
 - CI runs `python3 machine/gitconfig.py --check` and fails on committed host-only entries or invalid config. Hooks also run read-only when `CI=true`. Restricted keys include user identity/signing keys, signing settings, `safe.*`, `credential.*`, `http.*`, `https.*` and `core.sshCommand`; `user.useConfigOnly` remains shared.

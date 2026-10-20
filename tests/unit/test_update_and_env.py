@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import textwrap
 from importlib.machinery import SourceFileLoader
@@ -224,10 +225,15 @@ def test_env_pull_layers_class_profile_host_and_fields(tmp_path, monkeypatch, fa
     env_file = home / ".env"
     values = _sourced(env_file)
     assert values["SHARED"] == "1"
-    assert values["LAYER"] == "host"
-    assert values["FIELD_WINS"] == "from-field"
+    assert values["LAYER"] == "profile"
+    assert values["FIELD_WINS"] == "from-notes"
     assert "WORK_ONLY" not in values
+    host_values = _sourced(home / ".env.host")
+    assert host_values["LAYER"] == "host"
+    assert host_values["FIELD_WINS"] == "from-field"
+    assert "SHARED" not in host_values
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
+    assert (home / ".env.host").stat().st_mode & 0o777 == 0o600
 
 
 def test_env_pull_work_laptop_reads_work_items_only(tmp_path, monkeypatch, fake_bw):
@@ -270,20 +276,199 @@ def test_env_pull_warns_and_keeps_original_when_overlay_would_need_overwrite(
     original = "A=old\nLOCAL_ONLY=preserve\n"
     (home / ".env").write_text(original)
     (home / ".env.local").write_text("OTHER=unchanged\n")
-    assert machine.cmd_env_pull() == 0
+    with pytest.raises(SystemExit):
+        machine.cmd_env_pull()
     assert (home / ".env").read_text() == original
     assert (home / ".env.local").read_text() == "OTHER=unchanged\n"
     output = capsys.readouterr().out
     assert "LOCAL_ONLY" in output and str(home / ".env.local") in output
     assert str(machine.state_dir / "env-backup") in output
+    assert not (home / ".env.host").exists()
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_env_pull_preserves_local_session_and_load_order(
+    tmp_path, monkeypatch, fake_bw, shell
+):
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} is not installed")
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {
+            "env/work-shared": _item("LAYER=shared\nGITHUB_PRIVATE_TOKEN=private"),
+            "env/profiles/work-laptop": _item("LAYER=profile"),
+            "env/hosts/testhost": _item("LAYER=host\nHOST_ONLY=yes"),
+        },
+    )
+    local = (
+        "export BW_SESSION=local-session\n"
+        "export NODE_USE_ENV_PROXY=1\nexport LAYER=local\n"
+    )
+    (home / ".env.local").write_text(local)
+    (home / ".env.backup").write_text("export LAYER=wrong\n")
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env.local").read_text() == local
+    assert "BW_SESSION" not in (home / ".env").read_text()
+    assert "BW_SESSION" not in (home / ".env.host").read_text()
+    result = subprocess.run(
+        [
+            shell,
+            "-c",
+            '. "$1" >/dev/null; printf "%s\\n" "$LAYER" "$HOST_ONLY" '
+            '"$GITHUB_PRIVATE_TOKEN" "$BW_SESSION" "$NODE_USE_ENV_PROXY"',
+            "_",
+            str(REPO / "home/dot_zsh/config/01_env.zsh"),
+        ],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == [
+        "local",
+        "yes",
+        "private",
+        "local-session",
+        "1",
+    ]
+
+
+def test_env_pull_backs_up_both_generated_files_on_change(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {
+            "env/work-shared": _item("A=new"),
+            "env/hosts/testhost": _item("B=new"),
+        },
+    )
+    (home / ".env").write_text("A=old\n")
+    (home / ".env.host").write_text("B=old\n")
+    assert machine.cmd_env_pull() == 0
+    backups = list((machine.state_dir / "env-backup").iterdir())
+    assert {p.read_text() for p in backups} == {"A=old\n", "B=old\n"}
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in backups)
+    assert machine.cmd_env_pull() == 0
+    assert len(list((machine.state_dir / "env-backup").iterdir())) == 2
+
+
+@pytest.mark.parametrize("name", ["env/work-shared", "env/hosts/testhost"])
+@pytest.mark.parametrize("custom_field", [False, True])
+def test_env_pull_rejects_vault_session(
+    tmp_path, monkeypatch, fake_bw, name, custom_field
+):
+    item = (
+        _item(BW_SESSION="vault-session")
+        if custom_field
+        else _item("export BW_SESSION=vault-session")
+    )
+    machine, home = _env_machine(
+        tmp_path, monkeypatch, fake_bw, "work-laptop", {name: item}
+    )
+    (home / ".env.local").write_text("export BW_SESSION=local-session\n")
+    with pytest.raises(SystemExit):
+        machine.cmd_env_pull()
+    assert not (home / ".env").exists()
+    assert not (home / ".env.host").exists()
+    assert (home / ".env.local").read_text() == "export BW_SESSION=local-session\n"
+
+
+def test_env_pull_migrates_host_keys_from_old_combined_env(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {
+            "env/work-shared": _item("A=shared"),
+            "env/hosts/testhost": _item("B=host"),
+        },
+    )
+    (home / ".env").write_text("A=shared\nB=host\n")
+    (home / ".env.local").write_text("export BW_SESSION=keep\n")
+    assert machine.cmd_env_pull() == 0
+    assert "B=host" not in (home / ".env").read_text()
+    assert _sourced(home / ".env.host")["B"] == "host"
+    assert (home / ".env.local").read_text() == "export BW_SESSION=keep\n"
 
 
 def test_env_pull_leaves_env_untouched_without_items(tmp_path, monkeypatch, fake_bw):
     machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
     (home / ".env").write_text("KEEP=1\n")
+    (home / ".env.host").write_text("HOST=keep\n")
+    (home / ".env.local").write_text("export BW_SESSION=keep\n")
 
     assert machine.cmd_env_pull() == 0
     assert (home / ".env").read_text() == "KEEP=1\n"
+    assert (home / ".env.host").read_text() == "HOST=keep\n"
+    assert (home / ".env.local").read_text() == "export BW_SESSION=keep\n"
+
+
+def test_env_pull_with_host_item_only(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {"env/hosts/testhost": _item("HOST_ONLY=yes")},
+    )
+    assert machine.cmd_env_pull() == 0
+    assert "HOST_ONLY" not in (home / ".env").read_text()
+    assert _sourced(home / ".env.host")["HOST_ONLY"] == "yes"
+
+
+def test_env_pull_keeps_both_files_on_sync_failure(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {"env/work-shared": _item("A=new")},
+    )
+    (home / ".env").write_text("A=old\n")
+    (home / ".env.host").write_text("HOST=old\n")
+    monkeypatch.setattr(machine, "unlock_bitwarden", lambda: True)
+    cli = _cli()
+    original_run = cli.system.run
+
+    def fail_sync(command, **kwargs):
+        if command == ["bw", "sync"]:
+            raise subprocess.CalledProcessError(1, command)
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(cli.system, "run", fail_sync)
+    with pytest.raises(subprocess.CalledProcessError):
+        machine.cmd_env_pull()
+    assert (home / ".env").read_text() == "A=old\n"
+    assert (home / ".env.host").read_text() == "HOST=old\n"
+
+
+def test_env_pull_keeps_both_files_with_complex_host_content(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-laptop",
+        {"env/work-shared": _item("A=new")},
+    )
+    (home / ".env").write_text("A=old\n")
+    (home / ".env.host").write_text("if true; then\nHOST=old\nfi\n")
+    with pytest.raises(SystemExit):
+        machine.cmd_env_pull()
+    assert (home / ".env").read_text() == "A=old\n"
+    assert (home / ".env.host").read_text() == "if true; then\nHOST=old\nfi\n"
+    assert not (home / ".env.local").exists()
 
 
 def test_env_pull_skips_container_profile(tmp_path, monkeypatch, fake_bw):

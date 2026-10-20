@@ -8,8 +8,8 @@ export DOCKER_BUILDKIT=1
 export GITHUB_API_URL=https://api.github.com
 export GITHUB_GRAPHQL_URL=https://api.github.com/graphql
 
-# ~/.env is generated from Bitwarden (`machine env pull`).
-# Host-only extras: ~/.env.local (not overwritten).
+# ~/.env and ~/.env.host are generated from Bitwarden (`machine env pull`).
+# Local overrides, including BW_SESSION: ~/.env.local (never overwritten).
 # load customization
 # Expand ${NAME} like docker compose does, without executing the value.
 _envfile_expand() {
@@ -29,7 +29,7 @@ _envfile_expand() {
 }
 # enable nullglob in a shell-agnostic way
 [[ -n "$ZSH_VERSION" ]] && setopt nullglob || shopt -s nullglob
-for envfile in ~/.env ~/.env.*; do
+for envfile in ~/.env ~/.env.host ~/.env.local; do
 	[[ -f $envfile ]] || continue
     # Check permissions: warn if world-readable or writable
     perms=$(stat -c %a "$envfile")

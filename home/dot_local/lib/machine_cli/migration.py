@@ -169,7 +169,14 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
         }
         names = set(
             OLD_ROOT_LINK_NAMES
-            + [".zsh", ".gitconfig.local", ".env", ".env.local", ".zshrc-local"]
+            + [
+                ".zsh",
+                ".gitconfig.local",
+                ".env",
+                ".env.host",
+                ".env.local",
+                ".zshrc-local",
+            ]
         )
         for name in sorted(names):
             target = self.home / name
@@ -312,7 +319,13 @@ echo "machine: restored checkout $OLD_SHA and re-linked with that install.py"
             backup / "migration-report.txt", ("\n".join(report) + "\n").encode()
         )
         log(f"manual checks: {backup / 'migration-report.txt'}")
-        for name in (".gitconfig", ".gitconfig.local", ".env", ".env.local"):
+        for name in (
+            ".gitconfig",
+            ".gitconfig.local",
+            ".env",
+            ".env.host",
+            ".env.local",
+        ):
             log(
                 f"review {self.home / name}; backup {backup / 'files' / name} (if present)"
             )

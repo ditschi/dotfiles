@@ -72,7 +72,7 @@ class CommandsMixin:
 
         # Before the ssh_allow_from prompt: it offers the hosts published in Bitwarden.
         if need_bw:
-            self.maybe_login_bitwarden()
+            self.setup_bitwarden()
 
         allow_from = self.saved_ssh_allow_from()
         if not args.yes and system.is_tty():

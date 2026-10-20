@@ -11,6 +11,7 @@ import shlex
 import types
 from pathlib import Path
 from typing import List, Optional, Sequence
+from urllib.parse import urlsplit
 
 
 from . import system
@@ -32,15 +33,186 @@ class BitwardenMixin:
             status_text = status.stdout or ""
             if allow_login and "unauthenticated" in status_text.lower():
                 log("Bitwarden login")
-                system.run(["bw", "login"], check=False)
+                result = system.run(["bw", "login", "--raw"], capture=True, check=False)
+                if result.returncode != 0:
+                    log("WARNING: Bitwarden login failed; environment sync skipped")
+                    return False
+                session = (result.stdout or "").strip()
+                if session:
+                    os.environ["BW_SESSION"] = session
+                    return self.unlock_bitwarden()
             log("unlocking Bitwarden")
             result = system.run(["bw", "unlock", "--raw"], capture=True, check=False)
             session = (result.stdout or "").strip()
             if result.returncode != 0 or not session:
+                log("WARNING: Bitwarden unlock failed; environment sync skipped")
                 return False
             os.environ["BW_SESSION"] = session
-        system.run(["bw", "sync"], check=False, capture=True)
+        result = system.run(["bw", "sync"], check=False, capture=True)
+        if result.returncode:
+            log(
+                "WARNING: Bitwarden sync failed; check server, network and unlock session"
+            )
+            return False
         return True
+
+    def setup_bitwarden(self) -> bool:
+        if getattr(self, "unattended", False) or not system.is_tty():
+            log(
+                "Bitwarden setup skipped (non-interactive); run machine setup to log in"
+            )
+            return False
+        if not system.have("bw"):
+            log("WARNING: Bitwarden CLI unavailable; login setup skipped")
+            return False
+        if not system.prompt_yes_no("Configure Bitwarden and log in now?", False):
+            log("Bitwarden setup skipped")
+            return False
+
+        settings = {}
+        local = self.home / ".env.local"
+        if local.is_file():
+            for line in local.read_text().splitlines():
+                match = re.match(
+                    r"^\s*(?:export\s+)?"
+                    r"(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)=(.*)$",
+                    line,
+                )
+                if match:
+                    try:
+                        value = shlex.split(match.group(2), comments=True)
+                    except ValueError:
+                        die(
+                            f"cannot parse {match.group(1)} in {local}; repair it first"
+                        )
+                    if len(value) != 1:
+                        die(
+                            f"expected one literal value for {match.group(1)} in {local}"
+                        )
+                    settings[match.group(1)] = value[0]
+        for key, value in settings.items():
+            os.environ.setdefault(key, value)
+        status = self.bitwarden_setup_status()
+        if status.get("status") != "unlocked":
+            os.environ.pop("BW_SESSION", None)
+        if status.get("status") == "unauthenticated":
+            current = status.get("serverUrl") or "https://vault.bitwarden.com"
+            server = input(f"Bitwarden server URL [{current}]: ").strip() or current
+            parsed = urlsplit(server)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                die("Bitwarden server must be an HTTPS URL without credentials")
+            system.run(["bw", "config", "server", server], capture=True)
+        else:
+            log(f"using configured Bitwarden server: {status.get('serverUrl', '')}")
+
+        if not self.unlock_bitwarden(allow_login=True):
+            log("WARNING: Bitwarden setup incomplete; local settings not saved")
+            return False
+        if system.prompt_yes_no(
+            "Save the unlock token and CA/proxy settings in ~/.env.local "
+            "(mode 600)? The token grants vault access until invalidated.",
+            False,
+        ):
+            self.save_bitwarden_local_settings()
+        return True
+
+    def bitwarden_setup_status(self) -> dict:
+        attempted = set()
+        while True:
+            result = system.run(["bw", "status"], capture=True, check=False)
+            error = (result.stderr or "").lower()
+            certificate_error = any(
+                message in error
+                for message in (
+                    "unable_to_get_issuer_cert",
+                    "unable to get local issuer certificate",
+                    "self_signed_cert",
+                    "self signed certificate",
+                )
+            )
+            network_error = any(
+                message in error
+                for message in ("enotfound", "econnrefused", "etimedout", "eai_again")
+            )
+            ca_bundle = Path("/etc/ssl/certs/ca-certificates.crt")
+            key = ""
+            value = ""
+            question = ""
+            if (
+                certificate_error
+                and not os.environ.get("NODE_EXTRA_CA_CERTS")
+                and ca_bundle.is_file()
+            ):
+                key, value = "NODE_EXTRA_CA_CERTS", str(ca_bundle)
+                question = (
+                    "Bitwarden reported a certificate trust error. "
+                    "Retry using Ubuntu's CA bundle (TLS verification stays enabled)?"
+                )
+            elif (
+                network_error
+                and os.environ.get("NODE_USE_ENV_PROXY") != "1"
+                and any(os.environ.get(name) for name in ("HTTPS_PROXY", "https_proxy"))
+            ):
+                key, value = "NODE_USE_ENV_PROXY", "1"
+                question = (
+                    "Bitwarden reported a DNS/connection error while an HTTPS proxy "
+                    "is configured. Retry with Node environment-proxy support?"
+                )
+            if key and key not in attempted:
+                attempted.add(key)
+                if system.prompt_yes_no(question, False):
+                    os.environ[key] = value
+                    continue
+            if result.returncode or certificate_error or network_error:
+                die(
+                    "Bitwarden connection check failed; check server, Kerberos/proxy "
+                    "and certificate trust. Local settings were not changed."
+                )
+            try:
+                status = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                die("cannot read Bitwarden status; local settings were not changed")
+            if not isinstance(status, dict) or status.get("status") not in {
+                "unauthenticated",
+                "locked",
+                "unlocked",
+            }:
+                die("invalid Bitwarden status; local settings were not changed")
+            return status
+
+    def save_bitwarden_local_settings(self) -> None:
+        settings = {
+            key: os.environ[key]
+            for key in ("BW_SESSION", "NODE_EXTRA_CA_CERTS", "NODE_USE_ENV_PROXY")
+            if os.environ.get(key)
+        }
+        if "BW_SESSION" not in settings:
+            die("no Bitwarden unlock session to save")
+        path = self.home / ".env.local"
+        existing = path.read_text() if path.is_file() else ""
+        assignment = re.compile(
+            r"^\s*(?:export\s+)?(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)="
+        )
+        lines = []
+        for line in existing.splitlines(keepends=True):
+            match = assignment.match(line)
+            if not match or match.group(1) not in settings:
+                lines.append(line)
+        content = "".join(lines)
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += "".join(
+            f"export {key}={shlex.quote(value)}\n" for key, value in settings.items()
+        )
+        write_private(path, content.encode())
+        log(f"saved Bitwarden local settings to {path} (mode 600); token not printed")
 
     def maybe_login_bitwarden(self) -> bool:
         if not system.have("bw"):
@@ -372,57 +544,79 @@ class BitwardenMixin:
         if not self.unlock_bitwarden():
             log("Bitwarden locked; skip ~/.env sync")
             return 0
-        system.run(["bw", "sync"], check=False, capture=True)
+        system.run(["bw", "sync"], capture=True)
         names = self.env_item_names()
-        chunks = [
-            "# generated by machine env pull — do not commit",
-            "# overlay extra keys in ~/.env.local (not managed)",
-            "# Bitwarden items (later files/fields win):",
-        ]
-        chunks.extend(f"# - {name}" for name in names)
-        chunks.append("")
+        assignment = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=")
+        env_path = self.home / ".env"
+        host_path = self.home / ".env.host"
+        chunks = {
+            path: [
+                "# generated by machine env pull — do not commit",
+                "# local overrides in ~/.env.local (never overwritten)",
+                "# Bitwarden items (later files/fields win):",
+                *(f"# - {name}" for name in selected),
+                "",
+            ]
+            for path, selected in (
+                (env_path, names[:-1]),
+                (host_path, names[-1:]),
+            )
+        }
         got = 0
         for name in names:
             body = self.bw_get_item_dotenv(name)
             if body:
-                chunks.extend(["", f"# --- {name} ---", body.rstrip("\n")])
+                if any(
+                    match.group(1) == "BW_SESSION"
+                    for line in body.splitlines()
+                    if (match := assignment.match(line))
+                ):
+                    die(f"BW_SESSION must remain local; remove it from {name}")
+                path = host_path if name == names[-1] else env_path
+                chunks[path].extend(["", f"# --- {name} ---", body.rstrip("\n")])
                 got += 1
                 log(f"env from {name}")
             else:
                 log(f"no Bitwarden item {name} (skip)")
-        env_path = self.home / ".env"
         if got == 0:
-            log("no env items in Bitwarden; left ~/.env unchanged")
+            log("no env items in Bitwarden; left ~/.env and ~/.env.host unchanged")
             return 0
         backup_dir = self.state_dir / "env-backup"
         backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         backup_dir.chmod(0o700)
-        generated = "\n".join(chunks).rstrip() + "\n"
-        if env_path.is_file():
-            existing = env_path.read_text(encoding="utf-8")
-            header = "\n".join(existing.splitlines()[:3])
-            if "# generated by machine env pull" not in header:
+        generated = {
+            path: "\n".join(lines).rstrip("\n") + "\n" for path, lines in chunks.items()
+        }
+        generated_keys = {
+            match.group(1)
+            for content in generated.values()
+            for line in content.splitlines()
+            if (match := assignment.match(line))
+        }
+        overlay = self.home / ".env.local"
+        overlay_text = overlay.read_text() if overlay.is_file() else ""
+        overlay_keys = {
+            match.group(1)
+            for line in overlay_text.splitlines()
+            if (match := assignment.match(line))
+        }
+        safe_lines = []
+        blocked = False
+        for path, content in generated.items():
+            if not path.is_file():
+                continue
+            existing = path.read_text(encoding="utf-8")
+            if existing != content:
                 digest = hashlib.sha256(existing.encode()).hexdigest()[:16]
-                bak = backup_dir / f"env.{digest}"
+                bak = backup_dir / f"{path.name.lstrip('.')}.{digest}"
                 if not bak.exists():
                     write_private(bak, existing.encode())
-                log(f"backed up existing ~/.env to {bak}")
-            assignment = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=")
-            generated_keys = {
-                match.group(1)
-                for line in generated.splitlines()
-                if (match := assignment.match(line))
-            }
+                log(f"backed up existing {path} to {bak}")
+            else:
+                continue
             old_keys = {
                 match.group(1)
                 for line in existing.splitlines()
-                if (match := assignment.match(line))
-            }
-            overlay = self.home / ".env.local"
-            overlay_text = overlay.read_text() if overlay.is_file() else ""
-            overlay_keys = {
-                match.group(1)
-                for line in overlay_text.splitlines()
                 if (match := assignment.match(line))
             }
             missing = old_keys - generated_keys - overlay_keys
@@ -434,12 +628,6 @@ class BitwardenMixin:
                 and not assignment.match(line)
             ]
             if missing or opaque:
-                review_backup = backup_dir / (
-                    "env." + hashlib.sha256(existing.encode()).hexdigest()[:16]
-                )
-                if not review_backup.exists():
-                    write_private(review_backup, existing.encode())
-                safe_lines = []
                 for line in existing.splitlines():
                     match = assignment.match(line)
                     if match and match.group(1) in missing:
@@ -450,17 +638,20 @@ class BitwardenMixin:
                         safe_lines.append(line)
                 if opaque or overlay.exists():
                     log(
-                        f"WARNING: keeping {env_path}; keys absent from vault/overlay: "
+                        f"WARNING: keeping environment files; review {path}; "
+                        "keys absent from vault/overlay: "
                         f"{', '.join(sorted(missing)) or 'complex shell content'}; "
-                        f"review {overlay} and backup {review_backup}"
+                        f"review {overlay} and backup {bak}"
                     )
-                    return 0
-                write_private(overlay, ("\n".join(safe_lines) + "\n").encode())
-                log(
-                    f"preserved local-only keys in {overlay}; review backup {review_backup}"
-                )
-        write_private(env_path, generated.encode())
-        log(f"wrote {env_path} from {got} Bitwarden item(s)")
+                    blocked = True
+        if blocked:
+            die("environment sync aborted; resolve local-only content before retrying")
+        if safe_lines:
+            write_private(overlay, ("\n".join(safe_lines) + "\n").encode())
+            log(f"preserved local-only keys in {overlay}; review {backup_dir}")
+        for path, content in generated.items():
+            write_private(path, content.encode())
+        log(f"wrote {env_path} and {host_path} from {got} Bitwarden item(s)")
         return 0
 
     def cmd_ssh(self, args: types.SimpleNamespace) -> int:

@@ -106,7 +106,7 @@ tests/                    # unit + Docker/CI
 ```
 
 `home/dot_local/bin/executable_machine` is a [PEP 723](https://peps.python.org/pep-0723/)
-script (shebang `uv run --script`) — its dependencies (typer, rich,
+script (shebang `uv run --script`, Python 3.11–3.13) — its dependencies (typer, rich,
 PyYAML, questionary) are declared inline and resolved by [uv](https://astral.sh/uv) on first
 run, no manual venv. `./bootstrap` installs `uv` itself if it's missing.
 
@@ -153,7 +153,28 @@ machine apply --limit homeserver
 
 ## Secrets / Bitwarden
 
-On real hosts, setup installs the **CLI** (`bw`) to `~/.local/bin` (not the GUI snap). Interactively, the wizard only asks: "Log in to Bitwarden now?" Without a login, `~/.env` and key uploads are skipped.
+On real hosts, setup installs the **CLI** (`bw`) to `~/.local/bin` (not the GUI snap).
+Interactive `machine setup` offers Bitwarden configuration and login before
+fetching secrets. For an unauthenticated CLI, it asks for the HTTPS server URL
+(including self-hosted servers). Already authenticated accounts keep their server.
+Passwords and two-factor codes are entered locally through the CLI.
+
+After a successful unlock and sync, a separate, default-no prompt offers to save
+`BW_SESSION`, `NODE_EXTRA_CA_CERTS`, and `NODE_USE_ENV_PROXY` in `~/.env.local`
+with mode 600. Existing unrelated content is preserved, and repeated setup replaces
+these exports rather than duplicating them. The helper first tries the existing
+network settings. Only on a certificate trust error does it offer Ubuntu's system
+CA bundle; only on a DNS/connection error with an HTTPS proxy configured does it
+offer Node environment-proxy support. Neither workaround is added automatically,
+and TLS verification stays enabled. Kerberos authenticates the proxy but does not
+configure application proxy support or certificate trust.
+Existing literal local exports are loaded without executing the file.
+
+Saving the token grants local processes vault access while it remains valid;
+it is never uploaded to Bitwarden or printed. Unlock again after expiry.
+Declining storage keeps the session only for the setup process.
+`--yes` / non-interactive setup never prompts or persists unlock tokens.
+Without an unlocked vault, environment fetching and key uploads are skipped.
 
 ### Inventory
 
@@ -170,11 +191,26 @@ machine inventory encrypt ansible/inventory/hosts.yml
 
 Change the password in Bitwarden, then run `machine env pull` or `machine update` on the host. Bitwarden never pushes to devices — the host fetches the current state on apply (`bw sync`). Without an unlocked `bw`, the last `~/.env` stays in place.
 
-`~/.env` is **not** in git and not a symlink. Overlay for true snowflakes: `~/.env.local` (never overwritten). Before the first overwrite, a backup is written to `~/.local/share/machine/env-backup/`.
+The shell loads exactly these files, in order (later assignments win):
+
+| File | Contents | Ownership |
+| --- | --- | --- |
+| `~/.env` | Class-shared and profile Bitwarden items | Generated |
+| `~/.env.host` | This host's Bitwarden item | Generated |
+| `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local, never overwritten |
+
+These files are **not** in git and are not symlinks. Before replacing changed
+generated files, their previous contents are backed up with owner-only
+permissions under `~/.local/share/machine/env-backup/`. Other `~/.env.*` files
+are not loaded automatically.
+
+Keep `BW_SESSION` local: it is needed to unlock the vault before fetching items,
+and may expire. Pull refuses vault items containing a `BW_SESSION` assignment.
+Existing local override files are left byte-for-byte unchanged.
 
 Local-only keys are retained in a new `~/.env.local` when safe. If that overlay
 already exists and lacks the keys, or the old file contains complex shell
-content, the pull keeps `~/.env` unchanged and prints the live and backup paths
+content, the pull leaves both generated files unchanged, exits with an error, and prints the live and backup paths
 for manual review. Existing overlays are never overwritten; secret values are
 not printed in warnings.
 
@@ -210,7 +246,7 @@ Don't put work secrets in `env/home-*`. Home hosts never query `env/work-*`.
 
 ```bash
 machine env status    # which items exist
-machine env pull      # write ~/.env
+machine env pull      # write ~/.env and ~/.env.host; preserve ~/.env.local
 ```
 
 ### SSH keys (home / work separated)

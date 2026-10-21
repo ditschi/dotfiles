@@ -1,6 +1,7 @@
 ---
 node_tools_nvm_version: v0.40.3
 node_tools_nvm_dir: "{{ ansible_facts.env.NVM_DIR | default(ansible_facts.env.HOME ~ '/.nvm', true) }}"
+node_tools_llm_commands: [claude, copilot, codex, gemini, aider, ollama]
 node_tools_cli_packages:
   - feature: claude-code
     command: claude

@@ -61,6 +61,10 @@ select the desired CLIs, then save the host profile to roll them out.
 Existing CLI installations are preserved; missing CLIs are installed globally
 in the NVM default runtime without sudo. Authentication remains a manual step.
 
+OpenSpec is installed automatically when either CLI is selected or an existing
+Claude, Copilot, Codex, Gemini, Aider or Ollama command is found, even when both
+features are disabled.
+
 The runtime requires an architecture supported by upstream Node LTS. Original
 ARMv6 Pi Zero hosts cannot run current official Node binaries; provisioning
 reports a failure rather than silently substituting an obsolete runtime.
@@ -115,7 +119,7 @@ ansible/
     az_cli/               # Azure CLI, work only (official installer)
     gh_cli/               # GitHub CLI (official apt repo)
     monitoring/           # Telegraf agent configs
-    node_tools/           # NVM, Node LTS/npm, optional Claude/Copilot CLIs
+    node_tools/           # NVM, Node LTS/npm, optional LLM CLIs + OpenSpec
     sshd_home/            # port 5115 + authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
     touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)

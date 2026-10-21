@@ -34,17 +34,34 @@ def test_node_role_runs_for_all_profiles():
 @pytest.mark.parametrize(
     "features,existing,version,expected",
     [
-        (["claude-code"], [], None, ["@anthropic-ai/claude-code"]),
+        (
+            ["claude-code"],
+            [],
+            None,
+            ["@anthropic-ai/claude-code", "@fission-ai/openspec"],
+        ),
         (
             ["claude-code", "copilot-cli"],
             [],
             24,
-            ["@anthropic-ai/claude-code", "@github/copilot"],
+            ["@anthropic-ai/claude-code", "@github/copilot", "@fission-ai/openspec"],
         ),
-        (["copilot-cli"], [], 24, ["@github/copilot"]),
+        (
+            ["copilot-cli"],
+            [],
+            24,
+            ["@github/copilot", "@fission-ai/openspec"],
+        ),
         ([], [], 24, []),
-        (["claude-code"], ["claude"], 24, []),
-        (["claude-code", "copilot-cli"], ["claude", "copilot"], 24, []),
+        ([], ["codex"], 24, ["@fission-ai/openspec"]),
+        (["claude-code"], ["claude"], 24, ["@fission-ai/openspec"]),
+        (["claude-code"], ["claude", "openspec"], 24, []),
+        (
+            ["claude-code", "copilot-cli"],
+            ["claude", "copilot"],
+            24,
+            ["@fission-ai/openspec"],
+        ),
         ([], [], 20, []),
     ],
 )
@@ -73,6 +90,7 @@ echo "$3" >> "$NVM_DIR/../npm-installs"
 case "$3" in
   @anthropic-ai/claude-code) tool=claude ;;
   @github/copilot) tool=copilot ;;
+  @fission-ai/openspec) tool=openspec ;;
   *) exit 1 ;;
 esac
 printf '#!/bin/bash\\nexit 0\\n' > "$NVM_DIR/bin/$tool"

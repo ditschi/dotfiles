@@ -67,6 +67,11 @@ repos:
         language: system
         files: ^home/dot_gitconfig$
         pass_filenames: false
+      - id: no-co-authored-by
+        name: forbid Co-authored-by trailers in commit messages
+        entry: '(?i)^co-authored-by:'
+        language: pygrep
+        stages: [commit-msg]
   - repo: https://github.com/pycqa/flake8
     rev: '7.1.1'
     hooks:

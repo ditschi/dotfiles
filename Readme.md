@@ -149,7 +149,19 @@ machine update                # pull → sync profile → apply on drift
 machine apply --limit homeserver
 ```
 
-`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored and Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
+`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
+
+The recovery Ansible run only happens when syncing the host profile changed it;
+an unchanged profile is restored without repeating the same failed command.
+Package and system changes are not transactionally rolled back.
+
+Managed work machines may allow only specific sudo commands. The workstation
+playbook requires approval to execute Ansible modules as root, not just permission
+to run selected APT commands. A correct sudo password does not grant that approval.
+If fact gathering reports "not allowed to execute", stop and contact the machine
+administrator for an approved deployment route. `--no-become` only suppresses the
+password prompt; it does not disable the playbook's root tasks. Dotfile and
+environment management can remain active without applying system roles.
 
 ## Secrets / Bitwarden
 

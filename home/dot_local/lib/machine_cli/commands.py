@@ -155,7 +155,7 @@ class CommandsMixin:
 
         # Local apply: backup first, then repo host file wins
         backup = self.backup_local_profile()
-        self.sync_host_profile_from_repo()
+        profile_changed = self.sync_host_profile_from_repo()
         if not self.profile_path.is_file():
             die("no local profile; run machine setup first")
 
@@ -177,11 +177,20 @@ class CommandsMixin:
             log(f"apply failed: {exc}")
             if backup:
                 self.restore_local_profile(backup)
-                log("re-running ansible with restored profile")
-                try:
-                    self.run_ansible(playbook, force_local=True, ask_become=ask_become)
-                except subprocess.CalledProcessError:
-                    log("revert ansible also failed; check the host manually")
+                if profile_changed:
+                    log("re-running ansible with restored profile")
+                    try:
+                        self.run_ansible(
+                            playbook, force_local=True, ask_become=ask_become
+                        )
+                    except subprocess.CalledProcessError:
+                        log("revert ansible also failed; check the host manually")
+                else:
+                    log(
+                        "profile was unchanged; not retrying the failed apply. "
+                        "Review Ansible's error; sudo command restrictions require "
+                        "administrator approval, not a different password."
+                    )
             die("apply aborted and local profile restored where possible")
         log("apply finished")
         return 0

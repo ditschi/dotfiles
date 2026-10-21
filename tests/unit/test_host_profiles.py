@@ -232,6 +232,29 @@ def test_apply_reverts_profile_on_ansible_failure(tmp_path: Path, monkeypatch):
     assert len(calls) == 2  # fail + revert re-run
 
 
+def test_apply_does_not_retry_unchanged_profile_after_failure(tmp_path, monkeypatch):
+    import argparse
+    import subprocess
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    machine.write_profile("work-laptop", ["zsh-full"], [])
+    (repo / "machine/hosts/testhost.yml").write_bytes(machine.profile_path.read_bytes())
+    original = machine.profile_path.read_bytes()
+    calls = []
+
+    def denied_ansible(*_args, **_kwargs):
+        calls.append("ansible")
+        raise subprocess.CalledProcessError(2, ["ansible-playbook"])
+
+    monkeypatch.setattr(machine, "run_ansible", denied_ansible)
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
+    args = argparse.Namespace(limit="", playbook="workstation", no_become=True)
+    with pytest.raises(SystemExit):
+        machine.cmd_apply(args)
+    assert calls == ["ansible"]
+    assert machine.profile_path.read_bytes() == original
+
+
 def test_apply_reverts_on_health_check_failure(tmp_path: Path, monkeypatch):
     import argparse
 

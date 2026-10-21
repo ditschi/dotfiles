@@ -83,8 +83,16 @@
     - role: monitoring
       when:
         - "'monitoring' in (features | default([]))"
-        - profile | default('') not in ['container', 'work-laptop']
+        - profile | default('') not in ['container', 'work-machine']
         - (monitoring_configs | default([])) | length > 0
+
+- name: Minimum git version
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [git, packages]
+  roles:
+    - role: git_min
 
 - name: Yazi (terminal file manager)
   hosts: "{{ target_hosts | default('all') }}"
@@ -149,4 +157,4 @@
     - role: sshd_home
       when:
         - "'sshd-home' in (features | default([]))"
-        - profile | default('') not in ['container', 'work-laptop']
+        - profile | default('') not in ['container', 'work-machine']

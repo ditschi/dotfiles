@@ -1,0 +1,74 @@
+---
+- name: Check installed git version
+  ansible.builtin.command: git --version
+  become: false
+  environment:
+    PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
+  register: git_min_installed
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether git is too old
+  ansible.builtin.set_fact:
+    git_min_outdated: >-
+      {{ git_min_installed.rc != 0 or
+         (git_min_installed.stdout | regex_search('[0-9]+(\.[0-9]+)+')) is version(git_min_version, '<') }}
+
+- name: Install the latest git from the git-core PPA (Ubuntu)
+  when:
+    - git_min_outdated | bool
+    - ansible_facts.distribution == 'Ubuntu'
+  block:
+    - name: Ensure apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    # Plain HTTP(S) downloads honour the proxy; apt_repository's Launchpad API call does not.
+    - name: Add the git-core PPA signing key
+      ansible.builtin.get_url:
+        url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x{{ git_min_ppa_key }}"
+        dest: /etc/apt/keyrings/git-core-ppa.asc
+        mode: "0644"
+
+    - name: Add the git-core PPA repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/git-core-ppa.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/git-core-ppa.asc] https://ppa.launchpadcontent.net/git-core/ppa/ubuntu {{ ansible_facts.distribution_release }} main
+
+    - name: Upgrade git to the latest available version
+      ansible.builtin.apt:
+        name: git
+        state: latest
+        update_cache: true
+
+- name: Upgrade git from configured repositories (non-Ubuntu)
+  ansible.builtin.apt:
+    name: git
+    state: latest
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - git_min_outdated | bool
+    - ansible_facts.distribution != 'Ubuntu'
+
+- name: Re-check git version
+  ansible.builtin.command: git --version
+  become: false
+  environment:
+    PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
+  register: git_min_final
+  changed_when: false
+  when: git_min_outdated | bool
+
+- name: Warn when git stays below the minimum version
+  ansible.builtin.debug:
+    msg: >-
+      git {{ git_min_final.stdout | default('') }} is older than {{ git_min_version }};
+      repo-owner based git identity/credential rules will not apply.
+  when:
+    - git_min_outdated | bool
+    - (git_min_final.stdout | regex_search('[0-9]+(\.[0-9]+)+') | default('0', true)) is version(git_min_version, '<')

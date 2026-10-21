@@ -22,6 +22,9 @@ from .core import (
 )
 
 
+DEFAULT_BW_EMAIL = "chris@ditschers.de"
+
+
 class BitwardenMixin:
     def unlock_bitwarden(self, *, allow_login: bool = False) -> bool:
         if not system.have("bw"):
@@ -33,7 +36,13 @@ class BitwardenMixin:
             status_text = status.stdout or ""
             if allow_login and "unauthenticated" in status_text.lower():
                 log("Bitwarden login")
-                result = system.run(["bw", "login", "--raw"], capture=True, check=False)
+                default_email = os.environ.get("BW_EMAIL") or DEFAULT_BW_EMAIL
+                email = input(f"Bitwarden account email [{default_email}]: ").strip()
+                result = system.run(
+                    ["bw", "login", email or default_email, "--raw"],
+                    interactive_stdout=True,
+                    check=False,
+                )
                 if result.returncode != 0:
                     log("WARNING: Bitwarden login failed; environment sync skipped")
                     return False
@@ -42,7 +51,7 @@ class BitwardenMixin:
                     os.environ["BW_SESSION"] = session
                     return self.unlock_bitwarden()
             log("unlocking Bitwarden")
-            result = system.run(["bw", "unlock", "--raw"], capture=True, check=False)
+            result = system.run(["bw", "unlock", "--raw"], interactive_stdout=True, check=False)
             session = (result.stdout or "").strip()
             if result.returncode != 0 or not session:
                 log("WARNING: Bitwarden unlock failed; environment sync skipped")
@@ -71,8 +80,12 @@ class BitwardenMixin:
             ) or not self.ensure_bitwarden_cli():
                 log("Bitwarden CLI not installed; nothing done")
                 return False
-        if os.environ.get("BW_SESSION"):
+        self.load_local_bitwarden_settings()
+        if self.bitwarden_session_valid():
             return True
+        if os.environ.get("BW_SESSION"):
+            log("saved BW_SESSION is expired or invalid; log in again")
+            os.environ.pop("BW_SESSION")
         if not interactive:
             log(
                 "Bitwarden is installed but not unlocked (no BW_SESSION); "
@@ -81,6 +94,36 @@ class BitwardenMixin:
             return False
         log("Bitwarden is installed but not logged in/unlocked yet")
         return self.setup_bitwarden()
+
+    def load_local_bitwarden_settings(self) -> None:
+        """Export BW_SESSION and CA/proxy settings from ~/.env.local (env wins)."""
+        local = self.home / ".env.local"
+        if not local.is_file():
+            return
+        for line in local.read_text().splitlines():
+            match = re.match(
+                r"^\s*(?:export\s+)?"
+                r"(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)=(.*)$",
+                line,
+            )
+            if not match:
+                continue
+            try:
+                value = shlex.split(match.group(2), comments=True)
+            except ValueError:
+                die(f"cannot parse {match.group(1)} in {local}; repair it first")
+            if len(value) != 1:
+                die(f"expected one literal value for {match.group(1)} in {local}")
+            os.environ.setdefault(match.group(1), value[0])
+
+    def bitwarden_session_valid(self) -> bool:
+        if not os.environ.get("BW_SESSION"):
+            return False
+        result = system.run(["bw", "status"], capture=True, check=False)
+        try:
+            return json.loads(result.stdout or "{}").get("status") == "unlocked"
+        except json.JSONDecodeError:
+            return False
 
     def setup_bitwarden(self) -> bool:
         if getattr(self, "unattended", False) or not system.is_tty():
@@ -95,29 +138,7 @@ class BitwardenMixin:
             log("Bitwarden setup skipped")
             return False
 
-        settings = {}
-        local = self.home / ".env.local"
-        if local.is_file():
-            for line in local.read_text().splitlines():
-                match = re.match(
-                    r"^\s*(?:export\s+)?"
-                    r"(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)=(.*)$",
-                    line,
-                )
-                if match:
-                    try:
-                        value = shlex.split(match.group(2), comments=True)
-                    except ValueError:
-                        die(
-                            f"cannot parse {match.group(1)} in {local}; repair it first"
-                        )
-                    if len(value) != 1:
-                        die(
-                            f"expected one literal value for {match.group(1)} in {local}"
-                        )
-                    settings[match.group(1)] = value[0]
-        for key, value in settings.items():
-            os.environ.setdefault(key, value)
+        self.load_local_bitwarden_settings()
         status = self.bitwarden_setup_status()
         if status.get("status") != "unlocked":
             os.environ.pop("BW_SESSION", None)
@@ -235,7 +256,7 @@ class BitwardenMixin:
         if content and not content.endswith("\n"):
             content += "\n"
         content += "".join(
-            f"export {key}={shlex.quote(value)}\n" for key, value in settings.items()
+            f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
         )
         write_private(path, content.encode())
         log(f"saved Bitwarden local settings to {path} (mode 600); token not printed")

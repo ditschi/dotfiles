@@ -238,7 +238,7 @@ def test_apply_does_not_retry_unchanged_profile_after_failure(tmp_path, monkeypa
     import subprocess
 
     _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
-    machine.write_profile("work-laptop", ["zsh-full"], [])
+    machine.write_profile("work-machine", ["zsh-full"], [])
     (repo / "machine/hosts/testhost.yml").write_bytes(machine.profile_path.read_bytes())
     original = machine.profile_path.read_bytes()
     calls = []
@@ -417,7 +417,7 @@ def test_bw_ssh_hosts_lists_same_class_only(tmp_path: Path, monkeypatch):
         lambda cmd, **_k: subprocess.CompletedProcess(cmd, 0, listing, ""),
     )
     assert machine.bw_ssh_hosts("home-laptop") == ["alpha"]
-    assert machine.bw_ssh_hosts("work-laptop") == ["beta"]
+    assert machine.bw_ssh_hosts("work-machine") == ["beta"]
     assert machine.bw_ssh_hosts("container") == []
 
 
@@ -434,7 +434,7 @@ def test_ssh_allow_from_offers_hosts_from_repo_and_bitwarden(tmp_path, monkeypat
         "pi": "Bitwarden",
     }
     # repo keys belong to the home fleet only
-    assert machine.known_ssh_hosts("work-laptop") == {
+    assert machine.known_ssh_hosts("work-machine") == {
         "homeserver": "Bitwarden",
         "pi": "Bitwarden",
     }
@@ -513,3 +513,23 @@ def test_require_bitwarden_offers_install_then_login(tmp_path: Path, monkeypatch
     )
     assert machine.require_bitwarden() is True
     assert steps == ["install", "setup"]
+
+
+def test_unknown_profile_prompts_and_rewrites(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _ = _machine_env(tmp_path, monkeypatch)
+    machine.ensure_dirs()
+    machine.profile_path.write_text("profile: work-laptop\nfeatures:\n  - zsh-full\n")
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "choose", lambda *a: "work-machine")
+    assert machine.current_profile() == "work-machine"
+    assert "profile: work-machine" in machine.profile_path.read_text()
+    assert machine.saved_features() == ["zsh-full"]
+
+
+def test_unknown_profile_aborts_without_tty(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _ = _machine_env(tmp_path, monkeypatch)
+    machine.ensure_dirs()
+    machine.profile_path.write_text("profile: bogus\n")
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    with pytest.raises(SystemExit):
+        machine.current_profile()

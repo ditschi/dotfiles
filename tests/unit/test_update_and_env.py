@@ -211,15 +211,15 @@ def _item(notes: str = "", **fields: str) -> dict:
     }
 
 
-def test_env_pull_layers_class_profile_host_and_fields(tmp_path, monkeypatch, fake_bw):
+def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     items = {
-        "env/home-shared": _item("SHARED=1\nLAYER=shared\nFIELD_WINS=from-notes"),
-        "env/profiles/home-laptop": _item("LAYER=profile"),
+        "env/groups/private": _item("SHARED=1\nLAYER=shared\nFIELD_WINS=from-notes"),
+        "env/groups/server": _item("LAYER=profile"),
         "env/hosts/testhost": _item("LAYER=host", FIELD_WINS="from-field"),
         # must never be read by a home host
-        "env/work-shared": _item("WORK_ONLY=leak"),
+        "env/groups/work": _item("WORK_ONLY=leak"),
     }
-    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", items)
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-server", items)
 
     assert machine.cmd_env_pull() == 0
     env_file = home / ".env"
@@ -238,17 +238,17 @@ def test_env_pull_layers_class_profile_host_and_fields(tmp_path, monkeypatch, fa
 
 def test_env_pull_work_laptop_reads_work_items_only(tmp_path, monkeypatch, fake_bw):
     items = {
-        "env/work-shared": _item("CLASS=work"),
-        "env/home-shared": _item("CLASS=home"),
+        "env/groups/work": _item("CLASS=work"),
+        "env/groups/private": _item("CLASS=home"),
     }
-    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "work-laptop", items)
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "work-machine", items)
 
     assert machine.cmd_env_pull() == 0
     assert _sourced(home / ".env")["CLASS"] == "work"
 
 
 def test_env_pull_backs_up_hand_written_env_once(tmp_path, monkeypatch, fake_bw):
-    items = {"env/home-shared": _item("A=1")}
+    items = {"env/groups/private": _item("A=1")}
     machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", items)
     (home / ".env").write_text("HANDMADE=1\n")
 
@@ -270,8 +270,8 @@ def test_env_pull_warns_and_keeps_original_when_overlay_would_need_overwrite(
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
-        {"env/work-shared": _item("A=updated")},
+        "work-machine",
+        {"env/groups/work": _item("A=updated")},
     )
     original = "A=old\nLOCAL_ONLY=preserve\n"
     (home / ".env").write_text(original)
@@ -296,10 +296,9 @@ def test_env_pull_preserves_local_session_and_load_order(
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
+        "work-machine",
         {
-            "env/work-shared": _item("LAYER=shared\nGITHUB_PRIVATE_TOKEN=private"),
-            "env/profiles/work-laptop": _item("LAYER=profile"),
+            "env/groups/work": _item("LAYER=shared\nGITHUB_PRIVATE_TOKEN=private"),
             "env/hosts/testhost": _item("LAYER=host\nHOST_ONLY=yes"),
         },
     )
@@ -343,9 +342,9 @@ def test_env_pull_backs_up_both_generated_files_on_change(
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
+        "work-machine",
         {
-            "env/work-shared": _item("A=new"),
+            "env/groups/work": _item("A=new"),
             "env/hosts/testhost": _item("B=new"),
         },
     )
@@ -359,7 +358,7 @@ def test_env_pull_backs_up_both_generated_files_on_change(
     assert len(list((machine.state_dir / "env-backup").iterdir())) == 2
 
 
-@pytest.mark.parametrize("name", ["env/work-shared", "env/hosts/testhost"])
+@pytest.mark.parametrize("name", ["env/groups/work", "env/hosts/testhost"])
 @pytest.mark.parametrize("custom_field", [False, True])
 def test_env_pull_rejects_vault_session(
     tmp_path, monkeypatch, fake_bw, name, custom_field
@@ -370,7 +369,7 @@ def test_env_pull_rejects_vault_session(
         else _item("export BW_SESSION=vault-session")
     )
     machine, home = _env_machine(
-        tmp_path, monkeypatch, fake_bw, "work-laptop", {name: item}
+        tmp_path, monkeypatch, fake_bw, "work-machine", {name: item}
     )
     (home / ".env.local").write_text("export BW_SESSION=local-session\n")
     with pytest.raises(SystemExit):
@@ -387,9 +386,9 @@ def test_env_pull_migrates_host_keys_from_old_combined_env(
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
+        "work-machine",
         {
-            "env/work-shared": _item("A=shared"),
+            "env/groups/work": _item("A=shared"),
             "env/hosts/testhost": _item("B=host"),
         },
     )
@@ -418,7 +417,7 @@ def test_env_pull_with_host_item_only(tmp_path, monkeypatch, fake_bw):
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
+        "work-machine",
         {"env/hosts/testhost": _item("HOST_ONLY=yes")},
     )
     assert machine.cmd_env_pull() == 0
@@ -431,8 +430,8 @@ def test_env_pull_keeps_both_files_on_sync_failure(tmp_path, monkeypatch, fake_b
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
-        {"env/work-shared": _item("A=new")},
+        "work-machine",
+        {"env/groups/work": _item("A=new")},
     )
     (home / ".env").write_text("A=old\n")
     (home / ".env.host").write_text("HOST=old\n")
@@ -459,8 +458,8 @@ def test_env_pull_keeps_both_files_with_complex_host_content(
         tmp_path,
         monkeypatch,
         fake_bw,
-        "work-laptop",
-        {"env/work-shared": _item("A=new")},
+        "work-machine",
+        {"env/groups/work": _item("A=new")},
     )
     (home / ".env").write_text("A=old\n")
     (home / ".env.host").write_text("if true; then\nHOST=old\nfi\n")
@@ -472,7 +471,7 @@ def test_env_pull_keeps_both_files_with_complex_host_content(
 
 
 def test_env_pull_skips_container_profile(tmp_path, monkeypatch, fake_bw):
-    items = {"env/home-shared": _item("A=1")}
+    items = {"env/groups/private": _item("A=1")}
     machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "container", items)
 
     assert machine.cmd_env_pull() == 0

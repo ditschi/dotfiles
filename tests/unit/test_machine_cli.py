@@ -63,16 +63,16 @@ def test_dynamic_completion_resolves_subcommands():
     assert "migrate" in result.stdout.split()
 
 
-def test_env_item_names_by_class(tmp_path: Path, monkeypatch):
+def test_env_groups_by_profile(tmp_path: Path, monkeypatch):
     cli = _cli()
-    assert cli.ENV_CLASS["work-laptop"] == "work"
-    assert cli.ENV_CLASS["rpi-zero"] == "iot"
-    assert cli.ENV_CLASS["container"] == ""
+    assert cli.ENV_GROUPS["work-machine"] == ["work"]
+    assert cli.ENV_GROUPS["home-server"] == ["private", "server"]
+    assert cli.ENV_GROUPS["container"] == []
     monkeypatch.setenv("DOTFILES_REPO", str(REPO))
     monkeypatch.setenv("HOME", str(tmp_path))
     machine = cli.Machine()
     assert "monitoring" in machine.default_features_for("home-laptop")
-    assert "monitoring" not in machine.default_features_for("work-laptop")
+    assert "monitoring" not in machine.default_features_for("work-machine")
     assert "ssh-host-key" in machine.default_features_for("home-laptop")
 
 
@@ -92,7 +92,7 @@ def test_monitoring_resolved_in_ansible_group_vars():
         "machine/base",
         "machine/pi",
     ]
-    assert resolve_monitoring("work-laptop", ["kerberos"]) == []
+    assert resolve_monitoring("work-machine", ["kerberos"]) == []
     assert resolve_monitoring("home-server", ["monitoring", "docker"]) == [
         "machine/base",
         "machine/server",
@@ -110,7 +110,7 @@ def test_cli_has_no_monitoring_map():
 def test_ssh_item_names_separated_by_class():
     cli = _cli()
     assert cli.SSH_CLASS["home-laptop"] == "home"
-    assert cli.SSH_CLASS["work-laptop"] == "work"
+    assert cli.SSH_CLASS["work-machine"] == "work"
     assert cli.SSH_CLASS["rpi-zero"] == "home"
 
 

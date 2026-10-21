@@ -28,7 +28,7 @@ packages_host:
   - libsecret-tools
   - pipx
 
-# Profile work-laptop, and feature kerberos on other profiles.
+# Profile work-machine, and feature kerberos on other profiles.
 packages_work: &packages_work
   - ldap-utils
   - krb5-user

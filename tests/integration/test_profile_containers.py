@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-PROFILES = ["home-laptop", "work-laptop", "home-server", "rpi", "rpi-zero", "container"]
+PROFILES = ["home-laptop", "work-machine", "home-server", "rpi", "rpi-zero", "container"]
 
 # zinit clones ~10 plugins from GitHub on first start. A no-op stub keeps the
 # startup test offline and deterministic while all of our own config still runs.
@@ -33,7 +33,7 @@ def test_profile_dotfiles(profile_env):
     work_zsh = host.file("/home/tester/.zsh/config/01_work.zsh")
     work_tools = host.file("/home/tester/.zsh/config/01_work_tools.zsh")
     work_ldap = host.file("/home/tester/.zsh/config/01_work_ldap_helpers.zsh")
-    if profile == "work-laptop":
+    if profile == "work-machine":
         assert work_zsh.exists
         assert work_tools.exists
         assert work_ldap.exists
@@ -66,7 +66,7 @@ def test_profile_dotfiles(profile_env):
     assert local.exists and not local.is_symlink
     expected = (
         "christian.ditscher@de.bosch.com"
-        if profile == "work-laptop"
+        if profile == "work-machine"
         else "chris@ditscher.me"
     )
     assert host.check_output("git -C /tmp config user.email") == expected
@@ -76,7 +76,7 @@ def test_profile_dotfiles(profile_env):
 @pytest.mark.parametrize("profile_env", PROFILES, indirect=True)
 def test_shells_start_cleanly(profile_env):
     host, profile = profile_env
-    work = "true" if profile == "work-laptop" else ""
+    work = "true" if profile == "work-machine" else ""
     host.run_test(ZINIT_STUB)
 
     zsh = host.run(

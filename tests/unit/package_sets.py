@@ -31,7 +31,7 @@ def resolve_packages(
         packages = list(variables["packages_base"])
     if profile not in {"rpi-zero", "container"}:
         packages.extend(variables["packages_host"])
-    if profile == "work-laptop":
+    if profile == "work-machine":
         packages.extend(variables["packages_work"])
     for feature, feature_packages in variables["packages_by_feature"].items():
         if feature in features_set:

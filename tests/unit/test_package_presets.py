@@ -20,7 +20,7 @@ from package_sets import (
 
 PROFILES = [
     "home-laptop",
-    "work-laptop",
+    "work-machine",
     "home-server",
     "rpi",
     "rpi-zero",
@@ -255,7 +255,7 @@ def test_expected_package_invariants(name: str):
         assert "zsh" in packages
         assert "fzf" in packages
         assert "unattended-upgrades" in packages
-    if name == "work-laptop":
+    if name == "work-machine":
         assert "ldap-utils" in packages
         assert "krb5-user" in packages
         assert "guake" in packages
@@ -278,7 +278,7 @@ def test_expected_package_invariants(name: str):
     shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed"
 )
 @pytest.mark.parametrize(
-    "name", ["home-laptop", "work-laptop", "rpi-zero", "container"]
+    "name", ["home-laptop", "work-machine", "rpi-zero", "container"]
 )
 def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
     dump_path = tmp_path / "packages.json"

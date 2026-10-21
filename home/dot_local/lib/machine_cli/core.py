@@ -14,7 +14,7 @@ from rich.text import Text
 
 MACHINE_PROG_NAME = "machine"
 PROFILES = [
-    "work-laptop",
+    "work-machine",
     "home-laptop",
     "home-server",
     "rpi",
@@ -46,14 +46,17 @@ FEATURE_HELP = {
 }
 FEATURES = list(FEATURE_HELP)
 PLAYBOOKS = ["workstation", "homelab", "site"]
-ENV_CLASS = {
-    "work-laptop": "work",
-    "rpi": "iot",
-    "rpi-zero": "iot",
-    "container": "",
+# Bitwarden env groups per profile: items env/groups/<group>, merged in this order.
+ENV_GROUPS = {
+    "work-machine": ["work"],
+    "home-laptop": ["private"],
+    "home-server": ["private", "server"],
+    "rpi": ["private", "server", "iot"],
+    "rpi-zero": ["private", "iot"],
+    "container": [],
 }
 SSH_CLASS = {
-    "work-laptop": "work",
+    "work-machine": "work",
     "home-laptop": "home",
     "home-server": "home",
     "rpi": "home",

@@ -38,7 +38,9 @@ for envfile in ~/.env ~/.env.host ~/.env.local; do
     fi
 	# Detect if envfile uses 'export' (ignoring comments and blank lines)
 	if grep -E '^[[:space:]]*export[[:space:]]+' "$envfile" | grep -vq '^#'; then
+		set -a
 		source "$envfile"
+		set +a
 	else
 		# shellcheck disable=SC2163
 		while IFS= read -r line; do

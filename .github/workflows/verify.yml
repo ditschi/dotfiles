@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [home-laptop, work-laptop, home-server, rpi, rpi-zero, container]
+        profile: [home-laptop, work-machine, home-server, rpi, rpi-zero, container]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

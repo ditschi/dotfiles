@@ -5,7 +5,7 @@
 # Per-repo exceptions: `git user-work` / `git user-private`.
 
 [user]
-{{- if eq .profile "work-laptop" }}
+{{- if eq .profile "work-machine" }}
     name = Ditscher Christian (XC-AS/ESE1)
     email = christian.ditscher@de.bosch.com
 {{- else }}
@@ -15,7 +15,7 @@
 
 [credential]
     helper = store
-{{- if eq .profile "work-laptop" }}
+{{- if eq .profile "work-machine" }}
 
 [safe]
     directory = /opt/osd/ansible/osd-ansible-custom

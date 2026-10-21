@@ -55,7 +55,9 @@ def run(
     check: bool = True,
     capture: bool = False,
     input_text: Optional[str] = None,
+    interactive_stdout: bool = False,
 ) -> subprocess.CompletedProcess:
+    """interactive_stdout: capture stdout only so prompts on stderr stay visible."""
     debug("$ " + shlex.join(str(arg) for arg in args))
     return subprocess.run(
         list(args),
@@ -63,7 +65,7 @@ def run(
         check=check,
         text=True,
         input=input_text,
-        stdout=subprocess.PIPE if capture else None,
+        stdout=subprocess.PIPE if (capture or interactive_stdout) else None,
         stderr=subprocess.PIPE if capture else None,
     )
 

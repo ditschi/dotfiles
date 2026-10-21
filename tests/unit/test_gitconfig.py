@@ -181,7 +181,7 @@ def test_machine_commands_move_shared_host_settings_before_git(
 @pytest.mark.parametrize(
     "profile, email",
     [
-        ("work-laptop", "christian.ditscher@de.bosch.com"),
+        ("work-machine", "christian.ditscher@de.bosch.com"),
         ("home-laptop", "chris@ditscher.me"),
         ("container", "chris@ditscher.me"),
     ],

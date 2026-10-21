@@ -17,7 +17,7 @@
 - name: Add work packages
   ansible.builtin.set_fact:
     install_packages: "{{ install_packages + packages_work }}"
-  when: profile | default('') == 'work-laptop'
+  when: profile | default('') == 'work-machine'
 
 - name: Add packages of the selected features
   ansible.builtin.set_fact:

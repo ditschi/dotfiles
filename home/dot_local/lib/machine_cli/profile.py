@@ -19,7 +19,7 @@ from .core import (
     PROFILES,
     FEATURE_HELP,
     FEATURES,
-    ENV_CLASS,
+    ENV_GROUPS,
     SSH_CLASS,
     log,
     die,
@@ -44,7 +44,24 @@ class ProfileMixin:
 
     def current_profile(self) -> str:
         data = parse_profile_file(self.profile_path)
-        return str(data.get("profile") or "home-laptop")
+        profile = str(data.get("profile") or "home-laptop")
+        if profile in PROFILES:
+            return profile
+        return self.repair_unknown_profile(profile)
+
+    def repair_unknown_profile(self, profile: str) -> str:
+        if getattr(self, "unattended", False) or not system.is_tty():
+            die(
+                f"unknown profile {profile!r} in {self.profile_path}; "
+                f"valid: {', '.join(PROFILES)}. Run `machine setup` to fix it"
+            )
+        log(f"unknown profile {profile!r} in {self.profile_path}")
+        chosen = system.choose(
+            "Select the machine type", PROFILES, self.default_profile()
+        )
+        self.write_profile(chosen, self.saved_features())
+        log(f"profile updated to {chosen}")
+        return chosen
 
     def default_profile(self) -> str:
         for path in (self.profile_path, self.host_profile_path()):
@@ -58,7 +75,7 @@ class ProfileMixin:
             return inherited
         user = os.environ.get("SUDO_USER") or getpass.getuser()
         if re.fullmatch(r"[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}", user):
-            return "work-laptop"
+            return "work-machine"
         return "home-laptop"
 
     def saved_features(self) -> List[str]:
@@ -71,22 +88,16 @@ class ProfileMixin:
         allow = data.get("ssh_allow_from") or []
         return list(allow) if isinstance(allow, list) else []
 
-    def env_class(self, profile: Optional[str] = None) -> str:
-        profile = profile or self.current_profile()
-        return ENV_CLASS.get(profile, "home")
-
     def ssh_class(self, profile: Optional[str] = None) -> str:
         profile = profile or self.current_profile()
         return SSH_CLASS.get(profile, "home")
 
     def env_item_names(self) -> List[str]:
-        profile = self.current_profile()
-        env_class = self.env_class(profile)
-        if not env_class:
+        groups = ENV_GROUPS.get(self.current_profile(), [])
+        if not groups:
             return []
         return [
-            f"env/{env_class}-shared",
-            f"env/profiles/{profile}",
+            *(f"env/groups/{group}" for group in groups),
             f"env/hosts/{system.hostname_short()}",
         ]
 

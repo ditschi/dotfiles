@@ -9,10 +9,10 @@ if [ -f "$HOME/.config/machine/profile.yml" ]; then
 fi
 
 # Work laptops, plus dev containers running as a Bosch user id (e.g. abc1de).
-if [ "$_machine_profile" = "work-laptop" ] ||
+if [ "$_machine_profile" = "work-machine" ] ||
     printf '%s\n' "${USER:-$(id -un)}" | grep -Eq '^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$'; then
     export WORK_SETUP="true"
-    export MACHINE_PROFILE="${_machine_profile:-work-laptop}"
+    export MACHINE_PROFILE="${_machine_profile:-work-machine}"
 else
     unset WORK_SETUP
     export MACHINE_PROFILE="${_machine_profile:-home-laptop}"

@@ -107,7 +107,7 @@ def test_save_bitwarden_settings_preserves_other_local_exports(tmp_path, monkeyp
     machine.save_bitwarden_local_settings()
     assert path.read_bytes() == first
     assert path.stat().st_mode & 0o777 == 0o600
-    assert path.read_text().count("export BW_SESSION=") == 1
+    assert path.read_text().count("BW_SESSION=") == 1
     result = subprocess.run(
         [
             "bash",
@@ -176,7 +176,7 @@ def test_bitwarden_setup_configures_server_and_saves_only_with_consent(
     path = tmp_path / ".env.local"
     assert path.exists() == save
     if save:
-        assert "export BW_SESSION=test-unlock-token" in path.read_text()
+        assert "BW_SESSION=test-unlock-token" in path.read_text()
         assert path.stat().st_mode & 0o777 == 0o600
 
 
@@ -223,7 +223,7 @@ def test_bitwarden_setup_refreshes_expired_local_session(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.system, "run", run)
     assert machine.setup_bitwarden()
     assert ["bw", "unlock", "--raw"] in commands
-    assert "export BW_SESSION=refreshed-session" in path.read_text()
+    assert "BW_SESSION=refreshed-session" in path.read_text()
 
 
 def test_bitwarden_status_keeps_working_network_settings(tmp_path, monkeypatch):
@@ -303,14 +303,16 @@ def test_bitwarden_login_captures_token_without_printing(
     cli, machine = isolated_machine(tmp_path, monkeypatch)
     monkeypatch.setattr(cli.system, "is_tty", lambda: True)
     monkeypatch.setattr(cli.system, "have", lambda _: True)
+    monkeypatch.setattr("builtins.input", lambda _: "")
     commands = []
+    login = ["bw", "login", "chris@ditschers.de", "--raw"]
 
     def run(args, **kwargs):
         commands.append(args)
-        assert kwargs.get("capture")
+        assert kwargs.get("capture") or kwargs.get("interactive_stdout")
         if args == ["bw", "status"]:
             output = '{"status":"unauthenticated"}'
-        elif args == ["bw", "login", "--raw"]:
+        elif args == login:
             return subprocess.CompletedProcess(
                 args, 1 if fail_login else 0, "never-print-this-token", ""
             )
@@ -320,7 +322,7 @@ def test_bitwarden_login_captures_token_without_printing(
 
     monkeypatch.setattr(cli.system, "run", run)
     assert machine.unlock_bitwarden(allow_login=True) == (not fail_login)
-    assert ["bw", "login", "--raw"] in commands
+    assert login in commands
     if not fail_login:
         assert os.environ["BW_SESSION"] == "never-print-this-token"
     output = capsys.readouterr()
@@ -330,8 +332,8 @@ def test_bitwarden_login_captures_token_without_printing(
 @pytest.mark.parametrize(
     "user,expected",
     [
-        ("dci2lr", "work-laptop"),
-        ("abc12def", "work-laptop"),
+        ("dci2lr", "work-machine"),
+        ("abc12def", "work-machine"),
         ("ditschi", "home-laptop"),
     ],
 )
@@ -340,7 +342,7 @@ def test_profile_default_matches_work_account(tmp_path, monkeypatch, user, expec
     monkeypatch.setattr(getpass, "getuser", lambda: user)
     assert machine.default_profile() == expected
     machine.write_profile("home-server", ["zsh-full"], [])
-    monkeypatch.setenv("MACHINE_PROFILE", "work-laptop")
+    monkeypatch.setenv("MACHINE_PROFILE", "work-machine")
     assert machine.default_profile() == "home-server"
 
 

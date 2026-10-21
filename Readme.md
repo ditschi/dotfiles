@@ -14,7 +14,7 @@ Non-interactive:
 
 ```bash
 ./bootstrap --profile home-laptop --yes
-./bootstrap --profile work-laptop --yes
+./bootstrap --profile work-machine --yes
 ./bootstrap --profile rpi-zero --yes --no-become
 ```
 
@@ -49,7 +49,7 @@ Uncommitted local changes block `machine update` (unless `--force`).
 ### Git config
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.
-- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. chezmoi creates it once from the profile (`work-laptop` → work user, otherwise private) and never overwrites it. Signing key, `safe.directory`, credentials and proxy go here.
+- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. chezmoi creates it once from the profile (`work-machine` → work user, otherwise private) and never overwrites it. Signing key, `safe.directory`, credentials and proxy go here.
 - Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
 - `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
 - Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
@@ -226,20 +226,21 @@ content, the pull leaves both generated files unchanged, exits with an error, an
 for manual review. Existing overlays are never overwritten; secret values are
 not printed in warnings.
 
+Each profile belongs to groups (`ENV_GROUPS` in `machine_cli/core.py`): `work-machine` → `work`; `home-laptop` → `private`; `home-server` → `private`, `server`; `rpi` → `private`, `server`, `iot`; `rpi-zero` → `private`, `iot`; `container` → none.
+
 Item names (secure note, or login with note + custom fields). Later items and custom fields win for identical keys:
 
 | Layer | Item name | Example |
 | --- | --- | --- |
-| Class shared | `env/<class>-shared` | `env/work-shared`, `env/home-shared`, `env/iot-shared` |
-| Profile | `env/profiles/<profile>` | `env/profiles/work-laptop` |
+| Groups (in order) | `env/groups/<group>` | `env/groups/work`, `env/groups/private`, `env/groups/server`, `env/groups/iot` |
 | This host | `env/hosts/<hostname>` | `env/hosts/ditschi-ThinkPad-L13-Yoga-Gen-2` |
 | Infra | `ansible-vault` | vault password |
 
 **Folders in Bitwarden** (personal vault) or collections (organization), same names:
 
-- `work` — work laptops only (`env/work-shared`, `env/profiles/work-laptop`, SSH/VPN)
+- `work` — work laptops only (`env/groups/work`, SSH/VPN)
 - `home` — private machines and shared home secrets
-- `iot` — Pis / Zero (`env/iot-shared`, `env/hosts/rpi-zero-1`)
+- `iot` — Pis / Zero (`env/groups/iot`, `env/hosts/rpi-zero-1`)
 - `infra` — `ansible-vault`, host password hashes, not for shell `.env`
 
 Contents of an `env/…` item:
@@ -248,7 +249,7 @@ Contents of an `env/…` item:
 - **Custom fields** (hidden): frequently changed passwords, e.g. `VPN_PASSWORD` — override the same key from the notes
 
 Existing `.env` contents can be transferred manually into an approved work-vault
-secure note named `env/work-shared`, or the profile/host item for narrower scope.
+secure note named `env/groups/work`, or the host item for narrower scope.
 Secrets should never be committed to dotfiles. The current pull does not resolve
 references to other Bitwarden items: custom-field values are literal values.
 Vault folders are organizational labels, not enforced access boundaries; namespaced
@@ -288,7 +289,7 @@ machine ssh restore           # restore private key
 
 ## Profiles / features
 
-`work-laptop`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
+`work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
 Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
@@ -320,11 +321,11 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 | Ansible | apt, `/etc`, Telegraf, user_tools, stylus-touch-guard, sshd-home |
 | Inventory | Reachability only — no features |
 
-Work modules (`01_work.zsh`) are only linked for profile `work-laptop`.
+Work modules (`01_work.zsh`) are only linked for profile `work-machine`.
 
 Fresh setup uses the shell's work-account naming rule
 (`^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`), so `dci2lr` defaults to
-`work-laptop`. Explicit `--profile` / `MACHINE_PROFILE_NAME` choices and saved
+`work-machine`. Explicit `--profile` / `MACHINE_PROFILE_NAME` choices and saved
 host profiles take precedence. Containers default to `container`.
 
 Working Azure CLI and GitHub CLI installations are kept, including their

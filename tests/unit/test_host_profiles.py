@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import os
 import textwrap
 from importlib.machinery import SourceFileLoader
@@ -465,3 +466,50 @@ def test_package_table_only_names_known_features():
 
     unknown = set(load_group_vars()["packages_by_feature"]) - set(_cli().FEATURES)
     assert not unknown, f"packages_by_feature has unknown features: {unknown}"
+
+
+def test_local_run_reuses_sudo_ticket_before_prompting(tmp_path: Path, monkeypatch):
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo")
+    ticket = {"ok": True}
+
+    def fake_run(cmd, **_k):
+        if cmd[0] == "sudo":
+            code = 0 if ticket["ok"] else 1
+            return subprocess.CompletedProcess(cmd, code)
+        commands.append(list(cmd))
+
+    commands: list[list[str]] = []
+    monkeypatch.setattr(cli_mod.system, "run", fake_run)
+    machine.run_ansible("workstation")
+    assert "--ask-become-pass" not in commands[-1]
+    ticket["ok"] = False
+    machine.run_ansible("workstation")
+    assert "--ask-become-pass" in commands[-1]
+
+
+def test_require_bitwarden_offers_install_then_login(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    present = {"bw": False}
+    monkeypatch.setattr(cli_mod.system, "have", lambda name: present.get(name, False))
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    assert machine.require_bitwarden() is False
+
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "prompt_yes_no", lambda *_a, **_k: True)
+    steps: list[str] = []
+
+    def install():
+        present["bw"] = True
+        steps.append("install")
+        return True
+
+    monkeypatch.setattr(machine, "ensure_bitwarden_cli", install)
+    monkeypatch.setattr(
+        machine, "setup_bitwarden", lambda: steps.append("setup") or True
+    )
+    assert machine.require_bitwarden() is True
+    assert steps == ["install", "setup"]

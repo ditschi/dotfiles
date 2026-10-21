@@ -98,7 +98,7 @@ def test_yazi_release_policy_with_mocked_mutations(
             "tag_name": "v" + target,
             "assets": [
                 {
-                    "name": "yazi-x86_64-unknown-linux-gnu.deb",
+                    "name": "yazi-x86_64-unknown-linux-musl.deb",
                     "browser_download_url": "https://example.invalid/yazi.deb",
                     "digest": "sha256:fixture",
                 }

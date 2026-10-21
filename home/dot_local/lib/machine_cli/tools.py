@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import getpass
+import hashlib
 import json
 import os
 import platform
@@ -98,21 +99,25 @@ class ToolsMixin:
         if system.have("bw"):
             return True
         arch = platform.machine()
-        arch_map = {"x86_64": "x64", "aarch64": "arm64"}
-        bw_arch = arch_map.get(arch)
-        if not bw_arch:
+        # Bitwarden publishes a Linux CLI build for x86_64 only.
+        if arch != "x86_64":
             log(f"no Bitwarden CLI build for {arch}")
             return False
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True, exist_ok=True)
-        url = (
-            "https://github.com/bitwarden/clients/releases/download/"
-            f"cli-v2024.12.0/bw-linux-{bw_arch}.zip"
-        )
+        version = "2024.12.0"
+        base = f"https://github.com/bitwarden/clients/releases/download/cli-v{version}/"
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 archive = Path(tmp) / "bw.zip"
-                urllib.request.urlretrieve(url, archive)
+                urllib.request.urlretrieve(f"{base}bw-linux-{version}.zip", archive)
+                with urllib.request.urlopen(
+                    f"{base}bw-linux-sha256-{version}.txt", timeout=30
+                ) as response:
+                    expected = response.read().decode().split()[0].lower()
+                if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
+                    log("Bitwarden CLI checksum mismatch; not installed")
+                    return False
                 system.run(["unzip", "-o", "-q", str(archive), "-d", tmp], check=True)
                 binary = Path(tmp) / "bw"
                 if not binary.is_file():
@@ -123,7 +128,7 @@ class ToolsMixin:
                 os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
                 log(f"installed bw to {dest}")
                 return True
-        except (OSError, subprocess.CalledProcessError):
+        except (OSError, subprocess.CalledProcessError, IndexError):
             log("could not install Bitwarden CLI")
             return False
 
@@ -259,12 +264,26 @@ class ToolsMixin:
         else:
             cmd.extend(["--limit", limit])
         if ask_become and playbook_name != "homelab" and system.is_tty():
-            cmd.append("--ask-become-pass")
+            local = force_local or not limit
+            # Local runs reuse sudo's cached ticket (like plain sudo); a password
+            # is only requested when it has expired. Ansible then runs `sudo -n`.
+            if not (local and self.sudo_ticket_valid()):
+                cmd.append("--ask-become-pass")
         if debug_enabled():
             cmd.append("-v")
         cmd.extend(extra)
         log(f"ansible-playbook {playbook_name}.yml")
         system.run(cmd, cwd=self.ansible_dir)
+
+    def sudo_ticket_valid(self) -> bool:
+        sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"
+        if not system.have(sudo):
+            return False
+        # `sudo -v` prompts on the terminal only if the ticket expired and
+        # refreshes the timeout otherwise.
+        if system.run([sudo, "-v"], check=False).returncode != 0:
+            return False
+        return system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0
 
     def run_chezmoi_apply(self) -> None:
         if not system.have("chezmoi"):

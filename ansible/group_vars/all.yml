@@ -21,7 +21,6 @@ packages_rpi_zero:
 
 # Every profile except rpi-zero and container.
 packages_host:
-  - eza
   - fonts-firacode
   - fonts-powerline
   - git-lfs

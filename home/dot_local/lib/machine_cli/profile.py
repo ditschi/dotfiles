@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import getpass
 import os
 import re
@@ -192,8 +193,17 @@ class ProfileMixin:
         if path.is_file():
             if yes:
                 return
+            rel = path.relative_to(self.repo)
+            if system.is_tty():
+                diff = difflib.unified_diff(
+                    path.read_text(encoding="utf-8").splitlines(keepends=True),
+                    new_text.splitlines(keepends=True),
+                    fromfile=f"{rel} (repo)",
+                    tofile=f"{rel} (new settings)",
+                )
+                sys.stdout.write("".join(diff))
             if not system.is_tty() or not system.prompt_yes_no(
-                f"Overwrite repo host profile {path.relative_to(self.repo)}?",
+                f"Update versioned host profile {rel} with the changes above?",
                 False,
             ):
                 log("left repo host profile unchanged; " "run: machine profile save")

@@ -22,14 +22,15 @@
         url: "https://api.github.com/repos/sxyazi/yazi/releases/{{ 'latest' if yazi_version == 'latest' else 'tags/v' ~ yazi_version }}"
         return_content: true
         timeout: 20
+        headers: "{{ {'Authorization': 'Bearer ' ~ lookup('ansible.builtin.env', 'GITHUB_TOKEN')} if lookup('ansible.builtin.env', 'GITHUB_TOKEN') else {} }}"
       register: yazi_release
       changed_when: false
       failed_when: false
       check_mode: false
 
-    - name: Select architecture-specific GNU package
+    - name: Select architecture-specific static (musl) package
       ansible.builtin.set_fact:
-        yazi_assets: "{{ yazi_release.json.assets | default([]) | selectattr('name', 'equalto', 'yazi-' ~ ansible_facts.architecture ~ '-unknown-linux-gnu.deb') | list }}"
+        yazi_assets: "{{ yazi_release.json.assets | default([]) | selectattr('name', 'equalto', 'yazi-' ~ ansible_facts.architecture ~ '-unknown-linux-musl.deb') | list }}"
         yazi_target_version: "{{ yazi_release.json.tag_name | default('') | regex_replace('^v', '') }}"
         yazi_current_version: "{{ (yazi_installed.stdout | default('') | regex_findall('[0-9]+(?:\\.[0-9]+)+') | first) | default('') }}"
 

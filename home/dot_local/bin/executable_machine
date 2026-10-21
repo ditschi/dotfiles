@@ -56,6 +56,57 @@ from machine_cli.machine import Machine  # noqa: E402
 completion_init()
 
 
+def _choices(values: Sequence[str]):
+    def complete(incomplete: str) -> List[str]:
+        return [value for value in values if value.startswith(incomplete)]
+
+    return complete
+
+
+def _host_names(incomplete: str) -> List[str]:
+    try:
+        hosts = Machine().repo / "machine/hosts"
+        names = [path.stem for path in hosts.glob("*.yml")]
+    except Exception:  # completion must never print a traceback
+        return []
+    return sorted(n for n in names if not n.startswith("_") and n.startswith(incomplete))
+
+
+def _offer_options_for_flag_only_commands() -> None:
+    """Typer completes options only after `-`; also offer them on an empty word
+    for commands without positional arguments (e.g. `machine setup <tab>`)."""
+    # typer vendors click as typer._click (pinned version, see header).
+    from typer.core import TyperArgument, TyperGroup
+    from typer._click.shell_completion import _resolve_context, add_completion_class
+    from typer._completion_classes import BashComplete, ZshComplete
+
+    def extend(base):
+        class WithOptions(base):
+            def get_completions(self, args, incomplete):
+                items = super().get_completions(args, incomplete)
+                if items or incomplete:
+                    return items
+                ctx = _resolve_context(self.cli, self.ctx_args, self.prog_name, args)
+                command = ctx.command
+                if isinstance(command, TyperGroup) or any(
+                    isinstance(param, TyperArgument) for param in command.params
+                ):
+                    return items
+                return super().get_completions(args, "-")
+
+        WithOptions.__name__ = base.__name__
+        return WithOptions
+
+    add_completion_class(extend(BashComplete), BashComplete.name)
+    add_completion_class(extend(ZshComplete), ZshComplete.name)
+
+
+try:
+    _offer_options_for_flag_only_commands()
+except (ImportError, AttributeError):
+    pass  # plain typer behaviour on a changed click/typer layout
+
+
 app = typer.Typer(
     name="machine",
     help="Dotfiles and host setup",
@@ -111,16 +162,25 @@ def _setup_or_migrate(command: str, args: types.SimpleNamespace) -> None:
 
 @app.command(help="Bootstrap this host or --limit HOST")
 def setup(
-    profile: Optional[str] = typer.Option(None, "--profile", help="machine profile"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="machine profile", autocompletion=_choices(PROFILES)
+    ),
     features: Optional[List[str]] = typer.Option(
-        None, "--features", help="repeat to select several"
+        None,
+        "--features",
+        help="repeat to select several",
+        autocompletion=_choices(FEATURES),
     ),
     yes: bool = typer.Option(
         False, "--yes", "--non-interactive", help="non-interactive"
     ),
     local: bool = typer.Option(False, "--local", help="force local connection"),
-    limit: str = typer.Option("", "--limit", help="ansible host"),
-    playbook: str = typer.Option("workstation", "--playbook"),
+    limit: str = typer.Option(
+        "", "--limit", help="ansible host", autocompletion=_host_names
+    ),
+    playbook: str = typer.Option(
+        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
+    ),
     skip_ansible: bool = typer.Option(False, "--skip-ansible"),
     skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
     no_become: bool = typer.Option(False, "--no-become"),
@@ -146,16 +206,25 @@ def setup(
 
 @app.command(help="Backup old layout, write rollback.sh, run setup")
 def migrate(
-    profile: Optional[str] = typer.Option(None, "--profile", help="machine profile"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="machine profile", autocompletion=_choices(PROFILES)
+    ),
     features: Optional[List[str]] = typer.Option(
-        None, "--features", help="repeat to select several"
+        None,
+        "--features",
+        help="repeat to select several",
+        autocompletion=_choices(FEATURES),
     ),
     yes: bool = typer.Option(
         False, "--yes", "--non-interactive", help="non-interactive"
     ),
     local: bool = typer.Option(False, "--local", help="force local connection"),
-    limit: str = typer.Option("", "--limit", help="ansible host"),
-    playbook: str = typer.Option("workstation", "--playbook"),
+    limit: str = typer.Option(
+        "", "--limit", help="ansible host", autocompletion=_host_names
+    ),
+    playbook: str = typer.Option(
+        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
+    ),
     skip_ansible: bool = typer.Option(False, "--skip-ansible"),
     skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
     no_become: bool = typer.Option(False, "--no-become"),
@@ -197,8 +266,12 @@ def update(
     help="Sync host profile + ansible (local revert on fail; --limit for remote)"
 )
 def apply(
-    limit: str = typer.Option("", "--limit", help="ansible host"),
-    playbook: str = typer.Option("workstation", "--playbook"),
+    limit: str = typer.Option(
+        "", "--limit", help="ansible host", autocompletion=_host_names
+    ),
+    playbook: str = typer.Option(
+        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
+    ),
     no_become: bool = typer.Option(False, "--no-become"),
 ) -> None:
     _check_choice(playbook, PLAYBOOKS, "--playbook")
@@ -209,25 +282,31 @@ def apply(
 @app.command(
     name="profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
 )
-def profile_cmd(action: str = typer.Argument("show")) -> None:
+def profile_cmd(
+    action: str = typer.Argument(
+        "show", autocompletion=_choices(["show", "sync", "save"])
+    ),
+) -> None:
     _check_choice(action, ["show", "sync", "save"], "action")
     args = types.SimpleNamespace(action=action)
     _exit(Machine().cmd_profile(args))
 
 
 @app.command(name="env", help="Bitwarden -> ~/.env")
-def env_cmd(action: str = typer.Argument("pull")) -> None:
+def env_cmd(
+    action: str = typer.Argument("pull", autocompletion=_choices(["pull", "status"])),
+) -> None:
     _check_choice(action, ["pull", "status"], "action")
     cli = Machine()
     if action == "status":
         _exit(cli.cmd_env_status())
     else:
-        _exit(cli.cmd_env_pull())
+        _exit(cli.cmd_env_pull(interactive=True))
 
 
 @app.command(name="ssh", help="publish/restore per-host SSH keys")
 def ssh_cmd(
-    action: str = typer.Argument(...),
+    action: str = typer.Argument(..., autocompletion=_choices(["publish", "restore"])),
     private: bool = typer.Option(False, "--private", help="also store private key"),
     yes: bool = typer.Option(False, "--yes"),
 ) -> None:
@@ -256,7 +335,9 @@ def push() -> None:
 
 @app.command(name="inventory", help="ansible-vault helpers")
 def inventory_cmd(
-    action: str = typer.Argument(...),
+    action: str = typer.Argument(
+        ..., autocompletion=_choices(["edit", "encrypt", "decrypt", "view"])
+    ),
     file: str = typer.Argument(...),
 ) -> None:
     _check_choice(action, ["edit", "encrypt", "decrypt", "view"], "action")
@@ -265,7 +346,9 @@ def inventory_cmd(
 
 
 @app.command(name="completion", help="print bash/zsh completion")
-def completion_cmd(shell: str = typer.Argument(...)) -> None:
+def completion_cmd(
+    shell: str = typer.Argument(..., autocompletion=_choices(["bash", "zsh"])),
+) -> None:
     typer.echo(_completion_script(shell), nl=False)
 
 

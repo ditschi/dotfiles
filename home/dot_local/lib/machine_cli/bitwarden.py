@@ -56,6 +56,32 @@ class BitwardenMixin:
             return False
         return True
 
+    def require_bitwarden(self) -> bool:
+        """Explicit commands: report what is missing and offer to set it up."""
+        interactive = system.is_tty() and not getattr(self, "unattended", False)
+        if not system.have("bw"):
+            if not interactive:
+                log(
+                    "Bitwarden CLI (bw) is not installed; run `machine env pull` "
+                    "in a terminal to install and set it up"
+                )
+                return False
+            if not system.prompt_yes_no(
+                "Bitwarden CLI (bw) is not installed. Install it now?", True
+            ) or not self.ensure_bitwarden_cli():
+                log("Bitwarden CLI not installed; nothing done")
+                return False
+        if os.environ.get("BW_SESSION"):
+            return True
+        if not interactive:
+            log(
+                "Bitwarden is installed but not unlocked (no BW_SESSION); "
+                "run `machine env pull` in a terminal to log in"
+            )
+            return False
+        log("Bitwarden is installed but not logged in/unlocked yet")
+        return self.setup_bitwarden()
+
     def setup_bitwarden(self) -> bool:
         if getattr(self, "unattended", False) or not system.is_tty():
             log(
@@ -514,10 +540,8 @@ class BitwardenMixin:
             log("skipped; later: sudo tailscale up")
 
     def cmd_env_status(self) -> int:
-        if not system.have("bw"):
-            die("bw CLI not found; install Bitwarden CLI")
-        if not self.unlock_bitwarden(allow_login=system.is_tty()):
-            die("Bitwarden is locked")
+        if not self.require_bitwarden() or not self.unlock_bitwarden():
+            die("Bitwarden is not ready; see the messages above")
         print(f"profile: {self.current_profile()}")
         print(f"host: {system.hostname_short()}")
         found = missing = 0
@@ -534,16 +558,19 @@ class BitwardenMixin:
         )
         return 0
 
-    def cmd_env_pull(self) -> int:
-        if not system.have("bw"):
-            log("bw not installed; skip ~/.env sync")
-            return 0
+    def cmd_env_pull(self, interactive: bool = False) -> int:
         if self.current_profile() == "container":
             log("container profile: skip ~/.env sync")
             return 0
-        if not self.unlock_bitwarden():
-            log("Bitwarden locked; skip ~/.env sync")
+        if interactive:
+            if not self.require_bitwarden():
+                return 1
+        elif not system.have("bw"):
+            log("Bitwarden CLI (bw) not installed; skip ~/.env sync (machine env pull)")
             return 0
+        if not self.unlock_bitwarden():
+            log("Bitwarden not unlocked; skip ~/.env sync (run machine env pull)")
+            return 1 if interactive else 0
         system.run(["bw", "sync"], capture=True)
         names = self.env_item_names()
         assignment = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=")
@@ -660,8 +687,10 @@ class BitwardenMixin:
             store = bool(args.private)
             if not args.yes and system.is_tty() and not store:
                 store = system.prompt_yes_no("Also store the private key?", False)
+            self.require_bitwarden()
             return self.publish_ssh_key(store_private=store)
         if args.action == "restore":
+            self.require_bitwarden()
             return self.restore_ssh_key()
         die(f"unknown ssh action: {args.action}")
         return 1

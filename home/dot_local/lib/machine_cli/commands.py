@@ -167,7 +167,11 @@ class CommandsMixin:
         features = self.saved_features()
         allow_from = self.saved_ssh_allow_from()
         try:
-            self.ensure_bootstrap_tools(False, True, False)
+            self.ensure_bootstrap_tools(
+                False,
+                True,
+                not system.in_docker() and os.environ.get("MACHINE_SKIP_BW") != "1",
+            )
             self.run_ansible(playbook, force_local=True, ask_become=ask_become)
             if "ssh-host-key" in features:
                 self.apply_authorized_keys_from_bw(allow_from)

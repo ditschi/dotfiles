@@ -19,6 +19,7 @@ Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 | Role | Feature / gate |
 | --- | --- |
 | `user_tools` | non-container profiles |
+| `node_tools` | all profiles: NVM + Node LTS/npm; optional `claude-code` / `copilot-cli` |
 | `monitoring` | `monitoring` |
 | `sshd_home` | `sshd-home` — Port 5115 + authorized_keys |
 | `stylus_touch_guard` | `stylus-touch-guard` |

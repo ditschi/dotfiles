@@ -2,6 +2,8 @@
 profile: work-machine
 features:
   - zsh-full
+  - claude-code
+  - copilot-cli
   - fonts
   - starship
   - yazi

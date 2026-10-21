@@ -31,6 +31,8 @@ FEATURE_HELP = {
     "cosmic": "Cosmic desktop packages (Pop OS)",
     "docker": "Docker engine packages",
     "gh-cli": "GitHub CLI (gh)",
+    "claude-code": "Claude Code CLI",
+    "copilot-cli": "GitHub Copilot CLI",
     "kerberos": "krb5-user + ldap-utils (work)",
     "azure-cli": "Azure CLI (work)",
     "monitoring": "Telegraf agent (home profiles)",

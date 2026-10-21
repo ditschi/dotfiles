@@ -2,6 +2,7 @@
 profile: home-laptop
 features:
   - zsh-full
+  - claude-code
   - fonts
   - starship
   - yazi

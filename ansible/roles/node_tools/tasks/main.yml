@@ -1,0 +1,94 @@
+---
+- name: Check NVM installation
+  ansible.builtin.stat:
+    path: "{{ node_tools_nvm_dir }}/nvm.sh"
+  register: node_tools_nvm
+
+- name: Install NVM without modifying managed shell files
+  when: not node_tools_nvm.stat.exists
+  block:
+    - name: Ensure NVM directory exists
+      ansible.builtin.file:
+        path: "{{ node_tools_nvm_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure installer cache directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_facts.env.HOME }}/.cache"
+        state: directory
+        mode: "0755"
+
+    - name: Download pinned NVM installer
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ node_tools_nvm_version }}/install.sh"
+        dest: "{{ ansible_facts.env.HOME }}/.cache/machine-nvm-install.sh"
+        mode: "0700"
+
+    - name: Run NVM installer
+      ansible.builtin.command: bash "{{ ansible_facts.env.HOME }}/.cache/machine-nvm-install.sh"
+      environment:
+        NVM_DIR: "{{ node_tools_nvm_dir }}"
+        PROFILE: /dev/null
+      args:
+        creates: "{{ node_tools_nvm_dir }}/nvm.sh"
+
+- name: Install and select Node LTS with bundled npm
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source "$NVM_DIR/nvm.sh" --no-use
+    before="$(nvm version default)" || before=N/A
+    if nvm use --silent default && node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' && npm --version; then
+      exit 0
+    fi
+    if [ "$before" = N/A ]; then
+      nvm install --lts
+    else
+      nvm install --lts --reinstall-packages-from="$before"
+    fi
+    nvm alias default 'lts/*'
+    nvm use default
+    node --version
+    npm --version
+    echo MACHINE_NODE_CHANGED
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_DIR: "{{ node_tools_nvm_dir }}"
+  register: node_tools_runtime
+  changed_when: "'MACHINE_NODE_CHANGED' in node_tools_runtime.stdout"
+
+- name: Inspect installed LLM commands in the default Node environment
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source "$NVM_DIR/nvm.sh" --no-use
+    nvm use --silent default
+    for tool in {{ node_tools_cli_packages | map(attribute='command') | map('quote') | join(' ') }}; do
+      if command -v "$tool" >/dev/null 2>&1; then
+        printf '%s\n' "$tool"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_DIR: "{{ node_tools_nvm_dir }}"
+    PATH: "{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+  register: node_tools_existing
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Install selected LLM CLIs without replacing existing installations
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source "$NVM_DIR/nvm.sh" --no-use
+    nvm use --silent default
+    npm install --global {{ item.package | quote }}
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_DIR: "{{ node_tools_nvm_dir }}"
+  loop: "{{ node_tools_cli_packages }}"
+  when:
+    - item.feature in (features | default([]))
+    - item.command not in (node_tools_existing.stdout_lines | default([]))
+  changed_when: true

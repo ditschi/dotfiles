@@ -232,3 +232,7 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if command -v starship >/dev/null 2>&1; then
     eval "$(starship init bash)"
 fi
+
+# Local bashrc extension point (host-only additions, e.g. externally managed blocks)
+# shellcheck source=/dev/null
+[[ ! -f ~/.bashrc-local ]] || source ~/.bashrc-local

@@ -196,12 +196,20 @@ def setup(
     _run_setup(args)
 
 
-@app.command(help="git pull, sync host profile, chezmoi; apply if profile changed")
+@app.command(
+    help="Run only the steps the incoming changes need (--check: show them, change nothing)"
+)
 def update(
     apply_system: bool = typer.Option(False, "--system"),
-    force: bool = typer.Option(False, "--force"),
+    force: bool = typer.Option(
+        False, "--force", help="stash local changes that overlap incoming ones"
+    ),
+    check: bool = typer.Option(False, "--check", help="read-only plan"),
+    json: bool = typer.Option(False, "--json", help="with --check: machine-readable"),
 ) -> None:
-    args = types.SimpleNamespace(system=apply_system, force=force)
+    args = types.SimpleNamespace(
+        system=apply_system, force=force, check=check, json=json
+    )
     _exit(Machine().cmd_update(args))
 
 

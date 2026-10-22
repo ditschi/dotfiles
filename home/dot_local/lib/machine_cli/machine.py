@@ -10,6 +10,7 @@ from .profile import ProfileMixin
 from .tools import ToolsMixin
 from .bitwarden import BitwardenMixin
 from .commands import CommandsMixin
+from .updates import UpdateMixin
 
 
 class Machine(
@@ -17,6 +18,7 @@ class Machine(
     ToolsMixin,
     BitwardenMixin,
     CommandsMixin,
+    UpdateMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()

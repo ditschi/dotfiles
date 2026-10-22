@@ -138,38 +138,131 @@ def test_update_system_flag_applies_without_profile_change(update_env):
     assert calls[-1] == "apply"
 
 
-def test_update_refuses_dirty_tree(update_env, capsys):
+def test_update_stops_when_local_change_overlaps_incoming(update_env, capsys):
     machine, repo, other, _home, calls = update_env
-    _push_change(other, "home/dot_new", "x\n")
-    (repo / "local-edit.txt").write_text("wip\n")
+    _push_change(other, "home/dot_placeholder", "remote\n")
+    (repo / "home/dot_placeholder").write_text("local\n")
 
     with pytest.raises(SystemExit):
         _update(machine)
-    assert "uncommitted changes" in capsys.readouterr().err
-    assert not (repo / "home/dot_new").exists()
+    assert "manual attention needed" in capsys.readouterr().err
+    assert (repo / "home/dot_placeholder").read_text() == "local\n"
     assert calls == []
 
 
-def test_update_force_pulls_despite_dirty_tree(update_env):
+def test_update_keeps_unrelated_local_change(update_env):
     machine, repo, other, _home, _calls = update_env
     _push_change(other, "home/dot_new", "x\n")
     (repo / "local-edit.txt").write_text("wip\n")
 
-    assert _update(machine, force=True) == 0
+    assert _update(machine) == 0
     assert (repo / "home/dot_new").is_file()
     assert (repo / "local-edit.txt").read_text() == "wip\n"
 
 
-def test_update_stops_on_diverged_history(update_env):
+def test_update_force_stashes_and_restores_overlapping_change(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_placeholder", "remote\n")
+    (repo / "home/dot_placeholder").write_text("local\n")
+
+    with pytest.raises(SystemExit):
+        _update(machine, force=True)  # the stash pop conflicts: local work is kept
+    assert _git("stash", "list", cwd=repo).strip()
+
+
+def test_update_stops_on_diverged_history(update_env, capsys):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_remote", "r\n")
     (repo / "home/dot_local").write_text("l\n")
     _git("add", "-A", cwd=repo)
     _git("commit", "-q", "-m", "local", cwd=repo)
 
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(SystemExit):
         _update(machine)
+    assert "diverged" in capsys.readouterr().err
     assert calls == []
+
+
+def test_update_content_change_skips_chezmoi_and_apply(update_env):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_placeholder", "changed\n")
+
+    assert _update(machine) == 0
+    assert calls == ["env"]
+
+
+def test_update_runs_system_step_when_ansible_changed(update_env):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine) == 0
+    assert calls == ["env", "apply"]
+
+
+def test_update_check_changes_nothing(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    head = _git("rev-parse", "HEAD", cwd=repo)
+
+    assert (
+        machine.cmd_update(
+            argparse.Namespace(force=False, system=False, check=True, json=True)
+        )
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["steps"] == ["chezmoi", "shell"] and plan["blockers"] == []
+    assert _git("rev-parse", "HEAD", cwd=repo) == head
+    assert calls == []
+
+
+def test_update_refuses_second_update_while_locked(update_env, capsys):
+    import fcntl
+
+    machine, _repo, _other, _home, _calls = update_env
+    machine.state_dir.mkdir(parents=True, exist_ok=True)
+    with open(machine.state_dir / "update.lock", "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        with pytest.raises(SystemExit):
+            _update(machine)
+    assert "already running" in capsys.readouterr().err
+
+
+def test_update_moves_bashrc_managed_block_to_local_file(update_env):
+    machine, repo, other, home, _calls = update_env
+    bashrc = repo / "home/dot_bashrc"
+    bashrc.write_text("echo base\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "bashrc", cwd=repo)
+    _git("push", "-q", "origin", "HEAD:main", cwd=repo)
+    _git("pull", "-q", cwd=other)
+    block = (
+        "## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->\n"
+        "export X=1\n"
+        "## <!-- END ANSIBLE MANAGED BLOCK - colors -->\n"
+    )
+    bashrc.write_text("echo base\n" + block)
+    _push_change(other, "home/dot_new", "x\n")
+
+    assert _update(machine) == 0
+    assert bashrc.read_text() == "echo base\n"
+    assert (home / ".bashrc-local").read_text() == block
+    assert (repo / "home/dot_new").is_file()
+
+
+def test_classify_incoming_paths():
+    _cli()  # puts machine_cli on sys.path
+    from machine_cli.local_changes import classify_paths as classify
+
+    assert classify([("M", "home/dot_zshrc")]) == ["shell"]
+    assert classify([("A", "home/dot_new")]) == ["chezmoi", "shell"]
+    assert classify([("M", "home/.chezmoiignore")]) == ["chezmoi", "shell"]
+    assert classify([("M", "home/dot_local/bin/executable_machine")]) == []
+    assert classify([("M", "ansible/site.yml"), ("M", "machine/hosts/h.yml")]) == [
+        "profile",
+        "system",
+    ]
+    assert classify([("M", "docs/x.md")]) == []
 
 
 # --- machine env pull ------------------------------------------------------

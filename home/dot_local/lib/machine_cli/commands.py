@@ -186,40 +186,6 @@ class CommandsMixin:
         log("apply finished")
         return 0
 
-    def cmd_update(self, args: types.SimpleNamespace) -> int:
-        self.sanitize_git_config()
-        if self.git_dirty() and not args.force:
-            system.run(["git", "-C", str(self.repo), "status", "--short"])
-            die(f"uncommitted changes in {self.repo} (commit/stash, or --force)")
-        system.run(["git", "-C", str(self.repo), "pull", "--ff-only"])
-        self.sanitize_git_config()
-
-        profile_backup = self.backup_local_profile()
-        profile_changed = self.sync_host_profile_from_repo()
-
-        if self.chezmoi_config.is_file() and system.have("chezmoi"):
-            self.run_chezmoi_apply()
-        self.cmd_env_pull()
-        if self.update_marker.exists():
-            self.update_marker.unlink()
-
-        if profile_changed or args.system:
-            apply_args = types.SimpleNamespace(
-                limit="",
-                playbook="workstation",
-                no_become=False,
-                profile_backup=profile_backup,
-                profile_changed=profile_changed,
-            )
-            log(
-                "applying system changes"
-                + (" (host profile changed)" if profile_changed else " (--system)")
-            )
-            return self.cmd_apply(apply_args)
-
-        log("update finished")
-        return 0
-
     def cmd_status(self) -> int:
         print(f"repo: {self.repo}")
         system.run(["git", "-C", str(self.repo), "status", "-sb"])
@@ -230,6 +196,7 @@ class CommandsMixin:
             print("last check: never")
         marker = "set" if self.update_marker.is_file() else "unset"
         print(f"update marker: {marker}")
+        self.print_update_plan(self.update_plan(fetch=False))
         repo_host = self.host_profile_path()
         print(f"repo host profile: {repo_host}")
         print(f"  exists: {repo_host.is_file()}")

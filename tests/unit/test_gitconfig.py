@@ -164,13 +164,12 @@ def test_machine_commands_move_shared_host_settings_before_git(
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(cli.system, "run", fake_git)
-    monkeypatch.setattr(machine, "git_dirty", lambda: False)
     monkeypatch.setattr(machine, "sync_host_profile_from_repo", lambda: False)
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: 0)
     monkeypatch.setattr(machine, "run_chezmoi_apply", lambda: None)
     if operation == "update":
         assert machine.cmd_update(SimpleNamespace(force=False, system=False)) == 0
-        assert any("pull" in args for args in calls)
+        assert any("fetch" in args for args in calls)
     else:
         assert machine.cmd_commit(SimpleNamespace(message="test")) == 0
         assert any("commit" in args for args in calls)

@@ -44,14 +44,6 @@ class ToolsMixin:
                 log(f"health check: telegraf status={status or 'unknown'} (warn)")
         return ok
 
-    def git_dirty(self) -> bool:
-        result = system.run(
-            ["git", "-C", str(self.repo), "status", "--porcelain"],
-            capture=True,
-            check=False,
-        )
-        return bool((result.stdout or "").strip())
-
     def git_head(self) -> str:
         result = system.run(
             ["git", "-C", str(self.repo), "rev-parse", "HEAD"],
@@ -283,7 +275,9 @@ class ToolsMixin:
         # refreshes the timeout otherwise.
         if system.run([sudo, "-v"], check=False).returncode != 0:
             return False
-        return system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0
+        return (
+            system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0
+        )
 
     def run_chezmoi_apply(self) -> None:
         if not system.have("chezmoi"):

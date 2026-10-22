@@ -31,7 +31,7 @@ From the laptop to a reachable device:
 | Action | Command |
 | --- | --- |
 | Change an alias for all hosts | Edit the file in `$HOME` (it is the repo file), `machine commit -m "..." && machine push` |
-| Bring other hosts up to date | `machine update` (pulls host profile, applies on drift) |
+| Bring other hosts up to date | `machine update` (pulls, runs only the affected steps) |
 | Packages/system | `machine update --system` or `machine apply` |
 | Apply a host profile remotely | `machine apply --limit homeserver` |
 | Full setup / change features | `machine setup` (saved answers as defaults) |
@@ -42,7 +42,7 @@ From the laptop to a reachable device:
 | SSH public key to Bitwarden | `machine ssh publish` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
-Uncommitted local changes block `machine update` (unless `--force`).
+`machine update` only runs what changed upstream: `chezmoi apply` for added/removed files under `home/`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
 `~/.zshrc-local` is only for genuine single-host exceptions and is not in git.
 

@@ -13,7 +13,7 @@ import pytest
 
 from package_sets import REPO
 
-MACHINE = REPO / "home/dot_local/bin/executable_machine"
+MACHINE = REPO / "machine_cli/machine"
 
 HOST_YAML = """\
 ---
@@ -510,7 +510,8 @@ def test_classify_incoming_paths():
     assert classify([("M", "home/dot_zshrc")]) == ["shell"]
     assert classify([("A", "home/dot_new")]) == ["chezmoi", "shell"]
     assert classify([("M", "home/.chezmoiignore")]) == ["chezmoi", "shell"]
-    assert classify([("M", "home/dot_local/bin/executable_machine")]) == []
+    assert classify([("M", "machine_cli/machine")]) == []
+    assert classify([("A", "machine_cli/updates.py")]) == []
     assert classify([("M", "ansible/site.yml"), ("M", "machine/hosts/h.yml")]) == [
         "profile",
         "system",

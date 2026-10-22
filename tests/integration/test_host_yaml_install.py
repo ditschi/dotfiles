@@ -45,9 +45,7 @@ def host_yaml_container(docker_image, request):
 
 def assert_second_apply_is_idempotent(host) -> None:
     """A second `machine apply` must not change anything (changed=0 in the recap)."""
-    result = host.run(
-        "cd /dotfiles && home/dot_local/bin/executable_machine apply --no-become 2>&1"
-    )
+    result = host.run("cd /dotfiles && machine_cli/machine apply --no-become 2>&1")
     assert result.rc == 0, result.stdout
     recap = result.stdout.split("PLAY RECAP", 1)
     assert len(recap) == 2, f"no PLAY RECAP in output:\n{result.stdout[-3000:]}"

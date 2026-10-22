@@ -1,0 +1,2 @@
+{{- /* The CLI package is no longer deployed by chezmoi; it runs from the checkout. */ -}}
+.local/lib/machine_cli

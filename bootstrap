@@ -1,18 +1,44 @@
 #!/usr/bin/env bash
-# One-command bootstrap. Run on the new host, or with --limit from a control node.
+# One-command bootstrap. Run from a checkout, or piped:
+#   curl -fsSL https://raw.githubusercontent.com/ditschi/dotfiles/main/bootstrap | bash
+# Piped runs clone the (public) repository to $DOTFILES_DIR (default ~/dotfiles).
+# An existing clone is used as is; `machine update` is what updates it.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MACHINE="$ROOT/home/dot_local/bin/executable_machine"
+REPO_URL="${DOTFILES_REPO_URL:-https://github.com/ditschi/dotfiles.git}"
 
+script="${BASH_SOURCE[0]:-}"
+if [[ -n $script && -f $script ]] &&
+    ROOT="$(cd "$(dirname "$script")" && pwd)" &&
+    [[ -f $ROOT/machine_cli/machine ]]; then
+    :
+else
+    ROOT="${DOTFILES_DIR:-$HOME/dotfiles}"
+    if [[ ! -e $ROOT ]]; then
+        if ! command -v git >/dev/null 2>&1; then
+            echo "bootstrap: git is required to clone $REPO_URL; install it and run again" >&2
+            exit 1
+        fi
+        echo "bootstrap: cloning $REPO_URL to $ROOT"
+        git clone "$REPO_URL" "$ROOT"
+    fi
+    if [[ ! -f $ROOT/machine_cli/machine ]]; then
+        echo "bootstrap: $ROOT is not a dotfiles checkout" >&2
+        exit 1
+    fi
+fi
+
+MACHINE="$ROOT/machine_cli/machine"
 if [[ ! -x $MACHINE ]]; then
     chmod +x "$MACHINE"
 fi
-
 if ! command -v uv >/dev/null 2>&1; then
     echo "bootstrap: installing uv (https://astral.sh/uv)"
     curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
+
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$MACHINE" "$HOME/.local/bin/machine"
 
 exec "$MACHINE" setup "$@"

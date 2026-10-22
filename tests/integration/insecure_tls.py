@@ -8,7 +8,7 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
-MACHINE = Path(__file__).resolve().parents[2] / "home/dot_local/bin/executable_machine"
+MACHINE = Path(__file__).resolve().parents[2] / "machine_cli/machine"
 
 
 def _default_profile() -> Optional[str]:

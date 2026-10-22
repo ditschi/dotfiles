@@ -11,7 +11,7 @@ import pytest
 
 from package_sets import REPO
 
-MACHINE = REPO / "home/dot_local/bin/executable_machine"
+MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():
@@ -29,6 +29,21 @@ def test_help_lists_setup_update_and_env():
     assert "update" in result.stdout
     assert "env" in result.stdout
     assert "ssh" in result.stdout
+
+
+def test_symlinked_entry_point_finds_the_checkout(tmp_path):
+    link = tmp_path / "bin" / "machine"
+    link.parent.mkdir()
+    link.symlink_to(MACHINE)
+    result = subprocess.run(
+        ["python3", str(link), "status"],
+        cwd=tmp_path,
+        env={**os.environ, "DOTFILES_REPO": ""},
+        capture_output=True,
+        text=True,
+    )
+    assert "No module named" not in result.stderr
+    assert "cannot find dotfiles repository" not in result.stderr
 
 
 def test_zsh_completion_registers_machine():

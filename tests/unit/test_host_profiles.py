@@ -10,7 +10,7 @@ import pytest
 
 from package_sets import REPO
 
-MACHINE = REPO / "home/dot_local/bin/executable_machine"
+MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():

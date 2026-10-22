@@ -72,8 +72,8 @@ dotfiles-update-status() {
 dotfiles-update() {
     if command -v machine >/dev/null 2>&1; then
         machine update "$@"
-    elif [ -x "$DOTFILES_REPO/home/dot_local/bin/executable_machine" ]; then
-        "$DOTFILES_REPO/home/dot_local/bin/executable_machine" update "$@"
+    elif [ -x "$DOTFILES_REPO/machine_cli/machine" ]; then
+        "$DOTFILES_REPO/machine_cli/machine" update "$@"
     else
         echo "machine helper not found; run $DOTFILES_REPO/bootstrap"
         return 1

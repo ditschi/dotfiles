@@ -12,6 +12,16 @@ cd ~/dotfiles
 ./bootstrap
 ```
 
+Or in one step, which clones the repository to `~/dotfiles` (override with `DOTFILES_DIR`; needs `git` and a public repository):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ditschi/dotfiles/main/bootstrap | bash
+```
+
+Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout. An existing clone is used as it is; update it with `machine update`.
+
+Hosts that still have the CLI deployed by chezmoi: run `~/dotfiles/bootstrap` (or `chezmoi apply`) once after pulling this change; `git pull` alone then no longer breaks `machine`.
+
 Non-interactive:
 
 ```bash
@@ -107,7 +117,8 @@ be explicit, e.g. `sdx bash -lc 'echo ready && make test'`.
 ## Layout
 
 ```
-bootstrap                 # installs uv if missing, then calls machine setup
+bootstrap                 # clones if piped, installs uv, links machine, calls machine setup
+machine_cli/              # the machine CLI: `machine` script + package (not chezmoi-managed)
 home/                     # chezmoi source, mode=symlink
 machine/
   hosts/                  # versioned host answers (<hostname>.yml)
@@ -133,16 +144,19 @@ ansible/
 tests/                    # unit + Docker/CI
 ```
 
-`home/dot_local/bin/executable_machine` is a [PEP 723](https://peps.python.org/pep-0723/)
+`machine_cli/machine` is a [PEP 723](https://peps.python.org/pep-0723/)
 script (shebang `uv run --script`, Python 3.11–3.13) — its dependencies (typer, rich,
 PyYAML, questionary) are declared inline and resolved by [uv](https://astral.sh/uv) on first
-run, no manual venv. `./bootstrap` installs `uv` itself if it's missing.
+run, no manual venv. `./bootstrap` installs `uv` itself if it's missing. `~/.local/bin/machine`
+is a symlink to it, so the checkout is found by resolving the link and can be anywhere; because
+chezmoi does not deploy the CLI, a plain `git pull` cannot leave it half updated. `machine_cli/`
+(code) is not to be confused with `machine/` (host data).
 
 `machine --debug <command>` (or `DEBUG=1`) prints every command the CLI
 runs and passes `-v` to Ansible.
 
 The script itself only defines the command line. The implementation is the package
-`home/dot_local/lib/machine_cli/` (deployed to `~/.local/lib/machine_cli/`):
+`machine_cli/` next to it:
 
 | Module | Content |
 | --- | --- |

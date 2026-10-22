@@ -232,7 +232,7 @@ def test_cli_defaults_match_ansible_profiles(monkeypatch, tmp_path: Path):
 
     machine_mod = SourceFileLoader(
         "machine_cli_presets",
-        str(REPO / "home/dot_local/bin/executable_machine"),
+        str(REPO / "machine_cli/machine"),
     ).load_module()
     monkeypatch.setenv("DOTFILES_REPO", str(REPO))
     monkeypatch.setenv("HOME", str(tmp_path))

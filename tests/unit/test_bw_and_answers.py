@@ -10,7 +10,7 @@ import pytest
 
 from package_sets import REPO
 
-MACHINE = REPO / "home/dot_local/bin/executable_machine"
+MACHINE = REPO / "machine_cli/machine"
 
 
 def test_fake_bw_publish_ssh_public_key(tmp_path: Path, fake_bw, monkeypatch):
@@ -365,7 +365,7 @@ def test_container_ignores_saved_profile_unless_overridden(tmp_path, monkeypatch
 def test_company_user_regex_is_identical_in_cli_and_shell():
     pattern = "[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}"
     assert pattern in (REPO / "home/dot_zsh/machine-profile.sh").read_text()
-    assert pattern in (REPO / "home/dot_local/lib/machine_cli/profile.py").read_text()
+    assert pattern in (REPO / "machine_cli/profile.py").read_text()
 
 
 @pytest.mark.parametrize(

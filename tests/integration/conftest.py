@@ -68,7 +68,7 @@ def docker_image():
     return IMAGE
 
 
-MACHINE_CLI = ["uv", "run", "--script", "home/dot_local/bin/executable_machine"]
+MACHINE_CLI = ["uv", "run", "--script", "machine_cli/machine"]
 
 
 def wants_apt(request) -> bool:

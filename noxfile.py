@@ -29,9 +29,9 @@ def compile(session: nox.Session) -> None:
         "python",
         "-m",
         "py_compile",
-        "home/dot_local/bin/executable_machine",
+        "machine_cli/machine",
     )
-    session.run("python", "-m", "compileall", "-q", "home/dot_local/lib/machine_cli")
+    session.run("python", "-m", "compileall", "-q", "machine_cli")
 
 
 @nox.session(python=PYTHON)

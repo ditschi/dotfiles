@@ -22,9 +22,10 @@ import types
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-# The implementation lives next to this script: ~/.local/lib/machine_cli when
-# deployed by chezmoi, home/dot_local/lib/machine_cli in the repository.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+# The implementation is the package next to this script (machine_cli/ in the
+# checkout). ~/.local/bin/machine is a symlink to this file, so resolving it
+# yields the checkout wherever it is.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import typer  # noqa: E402
 from typer._completion_classes import completion_init  # noqa: E402

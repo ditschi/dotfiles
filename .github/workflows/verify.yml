@@ -24,8 +24,7 @@ jobs:
               - '.github/workflows/verify.yml'
             hosts:
               - 'machine/hosts/**'
-              - 'home/dot_local/bin/executable_machine'
-              - 'home/dot_local/lib/machine_cli/**'
+              - 'machine_cli/**'
               - 'tests/integration/test_host_yaml_install.py'
               - 'tests/unit/test_host_profiles.py'
 
@@ -47,8 +46,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and CLI smoke
         run: |
-          python3 -m py_compile home/dot_local/bin/executable_machine
-          python3 -m compileall -q home/dot_local/lib/machine_cli
+          python3 -m py_compile machine_cli/machine
+          python3 -m compileall -q machine_cli
           pytest tests/unit -q
       - name: Ansible syntax
         run: |
@@ -74,7 +73,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from importlib.machinery import SourceFileLoader
-          cli = SourceFileLoader("m", "home/dot_local/bin/executable_machine").load_module()
+          cli = SourceFileLoader("m", "machine_cli/machine").load_module()
           hosts = Path("machine/hosts")
           for path in sorted(hosts.glob("*.yml")):
               if path.name.startswith("_"):
@@ -179,8 +178,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and Ansible syntax on ARM
         run: |
-          python3 -m py_compile home/dot_local/bin/executable_machine
-          python3 -m compileall -q home/dot_local/lib/machine_cli
+          python3 -m py_compile machine_cli/machine
+          python3 -m compileall -q machine_cli
           pytest tests/unit -q
           ansible-galaxy collection install -r ansible/requirements.yml
           ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml

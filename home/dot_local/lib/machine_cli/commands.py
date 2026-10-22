@@ -154,8 +154,12 @@ class CommandsMixin:
             return 0
 
         # Local apply: backup first, then repo host file wins
-        backup = self.backup_local_profile()
-        profile_changed = self.sync_host_profile_from_repo()
+        # `machine update` syncs the profile before calling us; it hands over the
+        # pre-sync backup so a failed apply can still revert that change.
+        backup = getattr(args, "profile_backup", None) or self.backup_local_profile()
+        profile_changed = self.sync_host_profile_from_repo() or bool(
+            getattr(args, "profile_changed", False)
+        )
         if not self.profile_path.is_file():
             die("no local profile; run machine setup first")
 
@@ -239,6 +243,7 @@ class CommandsMixin:
             )
             return self.cmd_migrate(migrate_args)
 
+        profile_backup = self.backup_local_profile()
         profile_changed = self.sync_host_profile_from_repo()
 
         if self.chezmoi_config.is_file() and system.have("chezmoi"):
@@ -252,6 +257,8 @@ class CommandsMixin:
                 limit="",
                 playbook="workstation",
                 no_become=False,
+                profile_backup=profile_backup,
+                profile_changed=profile_changed,
             )
             log(
                 "applying system changes"

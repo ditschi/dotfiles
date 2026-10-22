@@ -337,6 +337,42 @@ def test_git_host_settings_preserve_multivalue_and_existing_local_override(
     assert get("safe.directory") == ["/old"]
 
 
+@pytest.mark.parametrize("passed_state", [True, False])
+def test_apply_reverts_profile_synced_by_update(tmp_path, monkeypatch, passed_state):
+    import subprocess as sp
+    import types
+
+    from test_bw_and_answers import isolated_machine
+
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    machine.write_profile("home-laptop", ["zsh-full"])
+    backup = machine.backup_local_profile()
+    machine.write_profile("work-machine", ["zsh-full"])
+    calls = []
+
+    def fail_ansible(*_args, **_kwargs):
+        calls.append(machine.current_profile())
+        if len(calls) == 1:
+            raise sp.CalledProcessError(2, "ansible")
+
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *a: None)
+    monkeypatch.setattr(machine, "run_ansible", fail_ansible)
+    args = types.SimpleNamespace(
+        limit="",
+        playbook="workstation",
+        no_become=False,
+        profile_backup=backup if passed_state else None,
+        profile_changed=passed_state,
+    )
+    with pytest.raises(SystemExit):
+        machine.cmd_apply(args)
+    expected = "home-laptop" if passed_state else "work-machine"
+    assert machine.current_profile() == expected
+    assert calls == (
+        ["work-machine", "home-laptop"] if passed_state else ["work-machine"]
+    )
+
+
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
 def test_sde_prefers_repository_script_and_uses_shared_fallback(tmp_path, shell):
     if not shutil.which(shell):

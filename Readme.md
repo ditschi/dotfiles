@@ -375,6 +375,7 @@ this also avoids downgrading an existing installation.
 ```bash
 uvx nox                         # compile + unit + Ansible lint + Docker smoke (without full APT), in uv venvs
 uvx nox -l                      # list sessions; run one with `uvx nox -s tests -- -k handoff`
+DOTFILES_TEST_INSECURE_TLS=1 uvx nox -s docker   # test containers skip TLS verification (hosts that intercept TLS)
 pytest tests/unit -q            # logic incl. apply revert, host YAML schema (needs tests/requirements.txt)
 pytest tests/integration -m "docker and not apt and not apt_gnome"
 pytest tests/integration -m apt # rpi-zero APT + machine/hosts/ci-rpi-zero.yml

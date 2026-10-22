@@ -14,6 +14,15 @@ REPO = Path(__file__).resolve().parents[2]
 # UBUNTU_VERSION=<version>.
 UBUNTU_VERSIONS = ("26.04", "24.04")
 UBUNTU_VERSION = os.environ.get("UBUNTU_VERSION", UBUNTU_VERSIONS[0])
+# Test-only escape hatch for hosts that intercept TLS; containers are thrown away.
+INSECURE_TLS = os.environ.get("DOTFILES_TEST_INSECURE_TLS") == "1"
+INSECURE_TLS_ENV = (
+    "PYTHONHTTPSVERIFY=0",
+    "GIT_SSL_NO_VERIFY=1",
+    "ANSIBLE_GALAXY_IGNORE_CERTS=1",
+    "UV_NATIVE_TLS=0",
+    "UV_INSECURE_HOST=*",
+)
 IMAGE = (
     "dotfiles-preset-test:local"
     if UBUNTU_VERSION == UBUNTU_VERSIONS[0]
@@ -46,6 +55,8 @@ def docker_image():
             "build",
             "--build-arg",
             f"UBUNTU_VERSION={UBUNTU_VERSION}",
+            "--build-arg",
+            f"INSECURE_TLS={int(INSECURE_TLS)}",
             "-t",
             IMAGE,
             str(REPO / "tests/docker"),
@@ -85,7 +96,12 @@ def running_container(
     if hostname:
         cmd += ["--hostname", hostname]
     cmd += ["-v", f"{repo}:/dotfiles:{repo_mode}"]
-    for item in ("DOTFILES_REPO=/dotfiles", "DEBIAN_FRONTEND=noninteractive", *env):
+    for item in (
+        "DOTFILES_REPO=/dotfiles",
+        "DEBIAN_FRONTEND=noninteractive",
+        *env,
+        *(INSECURE_TLS_ENV if INSECURE_TLS else ()),
+    ):
         cmd += ["-e", item]
     subprocess.run(
         [*cmd, image, "sleep", "infinity"], check=True, capture_output=True, text=True

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import testinfra
+from insecure_tls import insecure_tls
 
 REPO = Path(__file__).resolve().parents[2]
 # Ubuntu releases the container tests run on, default first; pick another with
@@ -15,7 +16,8 @@ REPO = Path(__file__).resolve().parents[2]
 UBUNTU_VERSIONS = ("26.04", "24.04")
 UBUNTU_VERSION = os.environ.get("UBUNTU_VERSION", UBUNTU_VERSIONS[0])
 # Test-only escape hatch for hosts that intercept TLS; containers are thrown away.
-INSECURE_TLS = os.environ.get("DOTFILES_TEST_INSECURE_TLS") == "1"
+# On by default on work machines; DOTFILES_TEST_INSECURE_TLS=0|1 overrides.
+INSECURE_TLS = insecure_tls()
 INSECURE_TLS_ENV = (
     "PYTHONHTTPSVERIFY=0",
     "GIT_SSL_NO_VERIFY=1",

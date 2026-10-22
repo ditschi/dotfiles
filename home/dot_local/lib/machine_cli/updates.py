@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import getpass
 import json
 import sys
 import time
@@ -305,6 +306,28 @@ class UpdateMixin:
             check=False,
             capture=True,
         )
+        self.ensure_linger()
+
+    def ensure_linger(self) -> None:
+        """Keep the user manager running without a login so the timer fires on headless hosts."""
+        if not system.have("loginctl") or system.in_docker():
+            return
+        user = getpass.getuser()
+        state = system.run(
+            ["loginctl", "show-user", user, "--property=Linger", "--value"],
+            check=False,
+            capture=True,
+        )
+        if (state.stdout or "").strip() == "yes":
+            return
+        result = system.run(
+            ["loginctl", "enable-linger", user], check=False, capture=True
+        )
+        if result.returncode != 0:
+            log(
+                "could not enable linger; the update timer runs only while you are "
+                f"logged in (run: sudo loginctl enable-linger {user})"
+            )
 
     # --- commands ---------------------------------------------------------
 

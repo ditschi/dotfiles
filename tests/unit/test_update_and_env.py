@@ -252,6 +252,18 @@ def test_auto_update_reverts_when_zsh_breaks(update_env, monkeypatch):
     assert (repo / "home/dot_new").is_file()
 
 
+def test_auto_update_reverts_when_chezmoi_apply_fails(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "home/dot_added", "x\n")  # a new file needs chezmoi apply
+    monkeypatch.setattr(machine, "_chezmoi_apply_quiet", lambda: False)
+
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "chezmoi apply failed" in state["reason"]
+
+
 def test_auto_update_skips_when_another_update_runs(update_env):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")
@@ -270,6 +282,107 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
     assert "profile: home-server" in machine.profile_path.read_text()
     # new chezmoi config from the synced profile is applied before ansible
     assert calls == ["chezmoi", "env", "apply"]
+
+
+def _failing_ansible_env(machine, monkeypatch, calls):
+    monkeypatch.delattr(
+        machine, "cmd_apply"
+    )  # use the real apply, not the fixture stub
+
+    def ansible(*_a, **_k):
+        calls.append("ansible")
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, ["ansible-playbook"])
+
+    monkeypatch.setattr(machine, "run_ansible", ansible)
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
+
+
+def test_update_restores_profile_when_ansible_fails(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    ansible_calls: list[str] = []
+    _failing_ansible_env(machine, monkeypatch, ansible_calls)
+    _push_change(
+        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+    )
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert "profile: home-laptop" in machine.profile_path.read_text()
+    assert ansible_calls == ["ansible", "ansible"]  # failed apply + revert run
+
+
+def test_update_restores_profile_when_health_check_fails(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    ansible_calls: list[str] = []
+    monkeypatch.delattr(machine, "cmd_apply")
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: ansible_calls.append("ansible")
+    )
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
+    monkeypatch.setattr(machine, "health_check_after_apply", lambda: False)
+    _push_change(
+        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+    )
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert "profile: home-laptop" in machine.profile_path.read_text()
+    assert ansible_calls == ["ansible", "ansible"]
+
+
+def test_update_keeps_unchanged_profile_when_ansible_fails(update_env, monkeypatch):
+    machine, _repo, _other, _home, _calls = update_env
+    ansible_calls: list[str] = []
+    _failing_ansible_env(machine, monkeypatch, ansible_calls)
+    before = machine.profile_path.read_bytes()
+
+    with pytest.raises(SystemExit):
+        _update(machine, system=True)
+    assert machine.profile_path.read_bytes() == before
+    assert ansible_calls == ["ansible"]  # not retried
+
+
+def _fake_loginctl(directory: Path, linger: str) -> Path:
+    log = directory / "loginctl.log"
+    directory.mkdir(parents=True, exist_ok=True)
+    tool = directory / "loginctl"
+    tool.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{log}"\n'
+        f'[ "$1" = show-user ] && echo {linger}\n'
+        "exit 0\n"
+    )
+    tool.chmod(0o755)
+    return log
+
+
+def _linger_machine(update_env, tmp_path, monkeypatch, linger: str):
+    machine, *_ = update_env
+    log = _fake_loginctl(tmp_path / "bin", linger)
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+    monkeypatch.setattr(
+        machine.ensure_linger.__func__.__globals__["system"], "in_docker", lambda: False
+    )
+    return machine, log
+
+
+def test_ensure_linger_enables_it_when_off(update_env, tmp_path, monkeypatch):
+    machine, log = _linger_machine(update_env, tmp_path, monkeypatch, "no")
+    machine.ensure_linger()
+    assert "enable-linger" in log.read_text()
+
+
+def test_ensure_linger_leaves_enabled_linger_alone(update_env, tmp_path, monkeypatch):
+    machine, log = _linger_machine(update_env, tmp_path, monkeypatch, "yes")
+    machine.ensure_linger()
+    assert "enable-linger" not in log.read_text()
+
+
+def test_ensure_linger_is_skipped_without_loginctl(update_env, tmp_path, monkeypatch):
+    machine, *_ = update_env
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    machine.ensure_linger()  # must not raise
 
 
 def test_update_system_flag_applies_without_profile_change(update_env):

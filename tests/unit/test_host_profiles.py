@@ -330,6 +330,29 @@ def test_health_check_ignores_sshd_without_root(tmp_path: Path, monkeypatch):
     assert machine.health_check_after_apply() is True
 
 
+def test_health_check_fails_when_zsh_is_unhealthy(tmp_path: Path, monkeypatch):
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
+    assert machine.health_check_after_apply() is False
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "")
+    assert machine.health_check_after_apply() is True
+
+
+def test_health_check_fails_when_chezmoi_cannot_read_source(
+    tmp_path: Path, monkeypatch
+):
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    _fake_tool(bin_dir, "chezmoi", 1)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    machine.chezmoi_config.parent.mkdir(parents=True)
+    machine.chezmoi_config.write_text("{}\n")
+    assert machine.health_check_after_apply() is False
+
+    _fake_tool(bin_dir, "chezmoi", 0)
+    assert machine.health_check_after_apply() is True
+
+
 def _fake_tool(directory: Path, name: str, exit_code: int) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     tool = directory / name

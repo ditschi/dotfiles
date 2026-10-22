@@ -42,7 +42,7 @@ From the laptop to a reachable device:
 | SSH public key to Bitwarden | `machine ssh publish` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
-`machine update` only runs what changed upstream: `chezmoi apply` for added/removed files under `home/`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs `chezmoi apply` when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
+`machine update` only runs what changed upstream: `chezmoi apply` for added/removed files under `home/`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs `chezmoi apply` when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
 The background update check (`dotfiles-update-check-job`) and `machine update` write `~/.dotfiles-update-state` (`state`, `reason`, `revision`). Interactive zsh (Powerlevel10k segment `dotfiles_update`) and bash (Starship `env_var` module, or a `PS1` prefix without it) show it in the prompt, re-read before every prompt without forking: `⬆ dotfiles update` (run `machine update`), `↻ reload shell` (an update was applied after this shell started; run `reload`), `⚠ dotfiles: check` (needs attention, e.g. diverged history; a line with the reason is also printed at shell start). A shell started after the update shows nothing. `machine status` prints the state, the reason and the fix.
 
@@ -176,7 +176,7 @@ machine update                # pull → sync profile → apply on drift
 machine apply --limit homeserver
 ```
 
-`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
+`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. The health check fails when the zsh startup check fails or when `chezmoi managed` cannot read the config or source (unprivileged checks only; telegraf is a warning). The same restore applies to the apply step of `machine update`. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
 
 The recovery Ansible run only happens when syncing the host profile changed it;
 an unchanged profile is restored without repeating the same failed command.
@@ -378,6 +378,7 @@ this also avoids downgrading an existing installation.
 uvx nox                         # compile + unit + Ansible lint + Docker smoke (without full APT), in uv venvs
 uvx nox -l                      # list sessions; run one with `uvx nox -s tests -- -k handoff`
 DOTFILES_TEST_INSECURE_TLS=1 uvx nox -s docker   # test containers skip TLS verification (hosts that intercept TLS)
+# automatic on work machines; DOTFILES_TEST_INSECURE_TLS=0 forces verification there
 pytest tests/unit -q            # logic incl. apply revert, host YAML schema (needs tests/requirements.txt)
 pytest tests/integration -m "docker and not apt and not apt_gnome"
 pytest tests/integration -m apt # rpi-zero APT + machine/hosts/ci-rpi-zero.yml

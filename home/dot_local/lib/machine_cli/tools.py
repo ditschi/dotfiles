@@ -26,8 +26,40 @@ from .core import (
 
 
 class ToolsMixin:
+    def chezmoi_health_failure(self) -> str:
+        """Reason why chezmoi cannot read its config or source, or an empty string."""
+        if not (system.have("chezmoi") and self.chezmoi_config.exists()):
+            return ""
+        try:
+            self.chezmoi_config.read_bytes()
+        except OSError as exc:
+            return f"chezmoi config unreadable: {exc}"
+        # `managed` fails on a broken config or source; unlike `verify` it does
+        # not fail on files that merely differ, e.g. before the next chezmoi apply.
+        result = system.run(
+            [
+                "chezmoi",
+                "managed",
+                "--source",
+                str(self.chezmoi_source),
+                "--destination",
+                str(self.home),
+                "--config",
+                str(self.chezmoi_config),
+            ],
+            check=False,
+            capture=True,
+        )
+        if result.returncode != 0:
+            return f"chezmoi managed failed: {(result.stderr or '').strip()}"
+        return ""
+
     def health_check_after_apply(self) -> bool:
         ok = True
+        for reason in (self.zsh_health_failure(), self.chezmoi_health_failure()):
+            if reason:
+                log(f"health check failed: {reason}")
+                ok = False
         # sshd config is validated as root inside the playbook (role sshd_home,
         # "Validate sshd configuration"). Here as a normal user `sshd -t` always
         # fails (host keys unreadable) and `sudo -n` fails without cached

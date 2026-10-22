@@ -86,21 +86,8 @@ class CommandsMixin:
 
         if not args.skip_chezmoi:
             self.run_chezmoi_apply()
-            if system.have("systemctl") and profile != "container":
-                system.run(
-                    ["systemctl", "--user", "daemon-reload"], check=False, capture=True
-                )
-                system.run(
-                    [
-                        "systemctl",
-                        "--user",
-                        "enable",
-                        "--now",
-                        "dotfiles-update-check.timer",
-                    ],
-                    check=False,
-                    capture=True,
-                )
+            if profile != "container":
+                self.ensure_update_timer()
             self.cmd_env_pull()
         log("setup finished")
         return 0

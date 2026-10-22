@@ -136,6 +136,9 @@ def profile_env(docker_image, request):
     setup_cmd = ["./bootstrap", "--profile", profile, "--yes"]
     if not wants_apt(request):
         setup_cmd.extend(["--skip-ansible", "--no-become"])
-    with running_container(docker_image, profile) as (name, exec_cmd):
+    # Docker means "container" unless the profile is overridden explicitly.
+    with running_container(
+        docker_image, profile, env=(f"MACHINE_PROFILE_OVERRIDE={profile}",)
+    ) as (name, exec_cmd):
         run_checked(exec_cmd, setup_cmd, f"bootstrap for {profile}")
         yield testinfra.get_host(f"docker://{name}"), profile

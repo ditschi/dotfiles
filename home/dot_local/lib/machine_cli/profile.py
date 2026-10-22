@@ -64,12 +64,13 @@ class ProfileMixin:
         return chosen
 
     def default_profile(self) -> str:
+        if system.in_docker():
+            override = os.environ.get("MACHINE_PROFILE_OVERRIDE", "")
+            return override if override in PROFILES else "container"
         for path in (self.profile_path, self.host_profile_path()):
             profile = str(parse_profile_file(path).get("profile") or "")
             if profile in PROFILES:
                 return profile
-        if system.in_docker():
-            return "container"
         inherited = os.environ.get("MACHINE_PROFILE", "")
         if inherited in PROFILES:
             return inherited

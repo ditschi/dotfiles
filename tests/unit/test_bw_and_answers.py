@@ -353,6 +353,57 @@ def test_container_default_beats_work_username(tmp_path, monkeypatch):
     assert machine.default_profile() == "container"
 
 
+def test_container_ignores_saved_profile_unless_overridden(tmp_path, monkeypatch):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    machine.write_profile("work-machine", ["zsh-full"], [])
+    monkeypatch.setattr(cli.system, "in_docker", lambda: True)
+    assert machine.default_profile() == "container"
+    monkeypatch.setenv("MACHINE_PROFILE_OVERRIDE", "home-server")
+    assert machine.default_profile() == "home-server"
+
+
+def test_company_user_regex_is_identical_in_cli_and_shell():
+    pattern = "[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}"
+    assert pattern in (REPO / "home/dot_zsh/machine-profile.sh").read_text()
+    assert pattern in (REPO / "home/dot_local/lib/machine_cli/profile.py").read_text()
+
+
+@pytest.mark.parametrize(
+    "saved,env,user,expected",
+    [
+        ("work-machine", {}, "tester", "work-machine|true"),
+        ("home-laptop", {}, "abc1de", "home-laptop|true"),
+        ("work-machine", {"MACHINE_IN_DOCKER": "1"}, "tester", "container|"),
+        ("home-laptop", {"MACHINE_IN_DOCKER": "1"}, "abc1de", "container|"),
+        (
+            "home-laptop",
+            {"MACHINE_IN_DOCKER": "1", "MACHINE_PROFILE_OVERRIDE": "work-machine"},
+            "tester",
+            "work-machine|true",
+        ),
+    ],
+)
+def test_shell_profile_follows_docker_rule(tmp_path, saved, env, user, expected):
+    profile = tmp_path / ".config/machine/profile.yml"
+    profile.parent.mkdir(parents=True)
+    profile.write_text(f"---\nprofile: {saved}\n")
+    script = REPO / "home/dot_zsh/machine-profile.sh"
+    result = subprocess.run(
+        [
+            "sh",
+            "-c",
+            '. "$1"; echo "$MACHINE_PROFILE|${WORK_SETUP:-}"',
+            "_",
+            str(script),
+        ],
+        env={"PATH": os.environ["PATH"], "HOME": str(tmp_path), "USER": user, **env},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == expected
+
+
 def generate_test_key(path, passphrase=""):
     subprocess.run(
         ["ssh-keygen", "-q", "-t", "ed25519", "-N", passphrase, "-f", str(path)],

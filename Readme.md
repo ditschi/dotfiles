@@ -354,7 +354,10 @@ Work modules (`01_work.zsh`) are only linked for profile `work-machine`.
 Fresh setup uses the shell's work-account naming rule
 (`^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`), so `dci2lr` defaults to
 `work-machine`. Explicit `--profile` / `MACHINE_PROFILE_NAME` choices and saved
-host profiles take precedence. Containers default to `container`.
+host profiles take precedence outside Docker. In Docker (`/.dockerenv` or
+`MACHINE_IN_DOCKER=1`) the profile is always `container`, in the CLI and the
+shell, and `WORK_SETUP` stays off; set `MACHINE_PROFILE_OVERRIDE=<profile>` to
+test another profile in a container.
 
 Working Azure CLI and GitHub CLI installations are kept, including their
 authentication and package sources. Docker provisioning preserves an existing

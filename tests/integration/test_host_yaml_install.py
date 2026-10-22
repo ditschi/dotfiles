@@ -27,12 +27,13 @@ def host_yaml_container(docker_image, request):
     if not wants_apt(request):
         setup_cmd.append("--skip-ansible")
 
+    profile = re.search(r"^profile:\s*(\S+)", host_file.read_text(), re.M).group(1)
     with running_container(
         docker_image,
         f"hy-{hostname}",
         hostname=hostname,
         user=user,
-        env=("MACHINE_SKIP_BW=1",),
+        env=("MACHINE_SKIP_BW=1", f"MACHINE_PROFILE_OVERRIDE={profile}"),
         exec_env=exec_env,
     ) as (name, exec_cmd):
         run_checked(

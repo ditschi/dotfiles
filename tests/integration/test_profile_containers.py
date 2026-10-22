@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-PROFILES = ["home-laptop", "work-machine", "home-server", "rpi", "rpi-zero", "container"]
+PROFILES = [
+    "home-laptop",
+    "work-machine",
+    "home-server",
+    "rpi",
+    "rpi-zero",
+    "container",
+]
 
 # zinit clones ~10 plugins from GitHub on first start. A no-op stub keeps the
 # startup test offline and deterministic while all of our own config still runs.
@@ -104,22 +111,22 @@ def test_shells_start_cleanly(profile_env):
 @pytest.mark.docker
 @pytest.mark.parametrize("profile_env", ["container"], indirect=True)
 def test_dev_container_with_work_user_starts_cleanly(profile_env):
-    # sdx dev containers run as the Bosch user id: WORK_SETUP is on, but chezmoi
-    # does not link the work modules for the container profile.
+    # sdx dev containers run as the Bosch user id: the container profile keeps
+    # WORK_SETUP off, and chezmoi does not link the work modules for it.
     host, _profile = profile_env
     host.run_test(ZINIT_STUB)
     for shell in (
         'XDG_DATA_HOME="$HOME/.cache/zinit-stub" USER=abc1de TERM=xterm zsh -i -c',
         "USER=abc1de TERM=xterm bash -i -c",
     ):
-        res = host.run(f"{shell} 'echo \"$MACHINE_PROFILE|$WORK_SETUP\"'")
+        res = host.run(f"{shell} 'echo \"$MACHINE_PROFILE|${{WORK_SETUP:-}}\"'")
         errors = [
             line
             for line in res.stderr.splitlines()
             if not any(noise in line for noise in BASH_TTY_NOISE)
         ]
         assert res.rc == 0 and errors == [], f"{shell}:\n{res.stderr}"
-        assert res.stdout.strip().splitlines()[-1] == "container|true"
+        assert res.stdout.strip().splitlines()[-1] == "container|"
 
 
 @pytest.mark.docker

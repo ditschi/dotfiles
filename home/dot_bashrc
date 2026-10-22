@@ -29,20 +29,35 @@ if [ -z "$ZSH_VERSION" ]; then
             if [ -f "$HOME/.preferred-shell" ]; then
                 preferred_shell=$(cat "$HOME/.preferred-shell" | tr -d '[:space:]')
                 if [ "$preferred_shell" != "bash" ] && [ "$preferred_shell" != "/bin/bash" ] && command -v "$preferred_shell" >/dev/null 2>&1; then
-                    SHELL=$(command -v "$preferred_shell")
-                    export SHELL
-                    exec "$preferred_shell" -l
-                fi
-            fi
-            if [ ! -f /.dockerenv ]; then
-                if command -v zsh >/dev/null 2>&1; then
-                    if [ -z "$BASH_EXECUTION_STRING" ]; then
-                        SHELL=$(command -v zsh)
+                    handoff_ok=yes
+                    if [ "${preferred_shell##*/}" = "zsh" ] && [ -r "$HOME/.zsh/zsh-handoff-check.sh" ]; then
+                        . "$HOME/.zsh/zsh-handoff-check.sh"
+                        dotfiles_zsh_handoff_ok || handoff_ok=no
+                    fi
+                    if [ "$handoff_ok" = yes ]; then
+                        SHELL=$(command -v "$preferred_shell")
                         export SHELL
-                        exec zsh -l
+                        exec "$preferred_shell" -l
                     fi
                 fi
             fi
+            if [ ! -f /.dockerenv ] && [ "${handoff_ok:-yes}" = yes ]; then
+                if command -v zsh >/dev/null 2>&1; then
+                    if [ -z "$BASH_EXECUTION_STRING" ]; then
+                        handoff_ok=yes
+                        if [ -r "$HOME/.zsh/zsh-handoff-check.sh" ]; then
+                            . "$HOME/.zsh/zsh-handoff-check.sh"
+                            dotfiles_zsh_handoff_ok || handoff_ok=no
+                        fi
+                        if [ "$handoff_ok" = yes ]; then
+                            SHELL=$(command -v zsh)
+                            export SHELL
+                            exec zsh -l
+                        fi
+                    fi
+                fi
+            fi
+            unset handoff_ok preferred_shell
             ;;
     esac
 fi

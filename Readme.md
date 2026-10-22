@@ -2,6 +2,8 @@
 
 One repo for shell dotfiles and machine bootstrap. Git is the source of truth: files under `$HOME` are symlinks into this repo. Commit and push changes from any host; other hosts run `machine update`.
 
+Behaviour and its motivation live in [openspec/specs/](openspec/specs) and the archived changes; open investigations are in [openspec/investigations/](openspec/investigations); new features are planned with [OpenSpec](openspec/config.yaml); agent rules in [AGENTS.md](AGENTS.md).
+
 ## Quick start (on the new host, no control node)
 
 ```bash
@@ -45,6 +47,8 @@ From the laptop to a reachable device:
 Uncommitted local changes block `machine update` (unless `--force`).
 
 `~/.zshrc-local` is only for genuine single-host exceptions and is not in git.
+
+Before bash hands over to zsh, a startup health check runs. If zsh fails or loads only partly, the shell stays in bash and prints one line with the reason. The result is cached until the zsh config, the zsh binary or `~/.preferred-shell` changes, or dotfiles are updated. After fixing the cause, run `zsh-recheck` to clear the cache and check again.
 
 ### Node and LLM tools
 
@@ -430,8 +434,9 @@ The `install.py` of **that** commit recreates the root symlinks. After that, the
 ### Automated
 
 ```bash
-./tests/run.sh                  # unit + Docker smoke (without full APT)
-pytest tests/unit -q            # logic incl. apply revert, host YAML schema
+uvx nox                         # compile + unit + Ansible lint + Docker smoke (without full APT), in uv venvs
+uvx nox -l                      # list sessions; run one with `uvx nox -s tests -- -k handoff`
+pytest tests/unit -q            # logic incl. apply revert, host YAML schema (needs tests/requirements.txt)
 pytest tests/integration -m "docker and not apt and not apt_gnome"
 pytest tests/integration -m apt # rpi-zero APT + machine/hosts/ci-rpi-zero.yml
 pytest tests/integration -m apt_gnome  # home-laptop APT + ci-home-laptop.yml (~10+ min)

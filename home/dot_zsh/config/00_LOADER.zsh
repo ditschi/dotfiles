@@ -22,3 +22,6 @@ for __file__ in "$ZSH"/config/*.zsh; do
     source "$__file__"
 done
 unset __file__
+
+# Lets the bash handoff check (zsh-handoff-check.sh) see that the config loaded completely.
+typeset -g DOTFILES_ZSH_LOADED=1

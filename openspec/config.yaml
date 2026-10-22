@@ -1,0 +1,44 @@
+---
+schema: spec-driven
+githubCopilot:
+  cloudAgent: false
+
+# Constraints an agent cannot infer from the code. Facts about the code live in Readme.md.
+context: |
+  Personal dotfiles + machine setup for one owner, shared by work and private hosts
+  (profiles: work-machine, home-laptop, home-server, rpi, rpi-zero, container).
+  Secrets and host-only Git settings must never be committed.
+  Changes must keep work and private hosts working; work machines may not allow
+  Ansible to become root.
+
+  Artifacts are self-contained and read as the lasting record of intent. Content in
+  proposal Why, design Decisions and specs is owner-confirmed because the owner was
+  asked; do not tag it. Anything unconfirmed goes only under an explicit Open Questions
+  or Assumptions section, never stated as fact.
+
+  The former decision log (docs/decisions/) is retired; its content lives in specs and
+  archived design.md files. Cite sources as plain text (commit hash).
+
+  Git history and legacy records are evidence, not wording. Commits are incremental
+  steps toward a result and are often badly worded. Abstract the intended behaviour or
+  outcome, propose the most plausible motivation in clean prose, and have the owner
+  confirm or reword it before it is written as fact.
+
+rules:
+  proposal:
+    - The Why states only motivation confirmed by the owner, in clean prose. For motivation inferred from history, propose a wording and ask before writing it; otherwise list it as an assumption.
+    - Name the affected capabilities and profiles.
+  design:
+    - List alternatives that were considered and why they were rejected, as stated by the owner.
+    - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
+  tasks:
+    - Include validation - pre-commit run --all-files and pytest tests/unit -q; ansible-lint ansible/*.yml for Ansible changes.
+  # Applies to every artifact and to explore/propose/update conversations.
+  open-questions:
+    - Ask unresolved questions and history-derived motivations with the ask_user form, not prose - one selectable option per answer (confirm / reword / reject for proposed wordings), the recommended option as default, plus a choice to confirm all recommendations.
+    - Write confirmed answers as plain prose; leave unanswered ones under Open Questions.
+
+operations:
+  archive:
+    guidance:
+      - If the change introduced or altered a lasting design decision, make sure the archived design.md states the decision and its rationale in plain prose.

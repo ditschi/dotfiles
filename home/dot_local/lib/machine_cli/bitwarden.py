@@ -51,7 +51,9 @@ class BitwardenMixin:
                     os.environ["BW_SESSION"] = session
                     return self.unlock_bitwarden()
             log("unlocking Bitwarden")
-            result = system.run(["bw", "unlock", "--raw"], interactive_stdout=True, check=False)
+            result = system.run(
+                ["bw", "unlock", "--raw"], interactive_stdout=True, check=False
+            )
             session = (result.stdout or "").strip()
             if result.returncode != 0 or not session:
                 log("WARNING: Bitwarden unlock failed; environment sync skipped")
@@ -75,9 +77,12 @@ class BitwardenMixin:
                     "in a terminal to install and set it up"
                 )
                 return False
-            if not system.prompt_yes_no(
-                "Bitwarden CLI (bw) is not installed. Install it now?", True
-            ) or not self.ensure_bitwarden_cli():
+            if (
+                not system.prompt_yes_no(
+                    "Bitwarden CLI (bw) is not installed. Install it now?", True
+                )
+                or not self.ensure_bitwarden_cli()
+            ):
                 log("Bitwarden CLI not installed; nothing done")
                 return False
         self.load_local_bitwarden_settings()

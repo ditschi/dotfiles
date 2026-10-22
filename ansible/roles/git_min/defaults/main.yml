@@ -1,4 +1,4 @@
 ---
 # ~/.gitconfig owner rules use includeIf "hasconfig:remote.*.url:" (git >= 2.36).
 git_min_version: "2.36"
-git_min_ppa_key: E1DD270288B4E6030699E45FA1715D88E1DF1F24
+git_min_ppa_key: E1DD270288B4E6030699E45FA1715D88E1DF1F24 # pragma: allowlist secret

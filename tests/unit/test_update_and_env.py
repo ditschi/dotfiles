@@ -120,6 +120,146 @@ def test_update_pulls_and_skips_apply_when_profile_unchanged(update_env):
     assert not marker.exists()
 
 
+def test_update_writes_updated_state_with_new_revision(update_env):
+    machine, repo, other, home, _calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    machine.write_update_state("available")
+
+    assert _update(machine) == 0
+    state = machine.read_update_state()
+    assert state["state"] == "updated"
+    assert state["revision"] == machine.repo_revision() != ""
+
+
+def test_update_blocked_by_divergence_writes_attention_state(update_env):
+    machine, repo, other, home, _calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    (repo / "home/dot_local").write_text("y\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "local", cwd=repo)
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    state = machine.read_update_state()
+    assert state["state"] == "attention"
+    assert "diverged" in state["reason"]
+
+
+def test_status_explains_state_and_fix(update_env, capsys):
+    machine, *_ = update_env
+    machine.write_update_state("attention", "history has diverged")
+    machine.cmd_status()
+    out = capsys.readouterr().out
+    assert "update state: attention" in out
+    assert "reason: history has diverged" in out
+    assert "fix: " in out
+
+
+def _auto(machine) -> int:
+    return machine.cmd_update(argparse.Namespace(auto=True))
+
+
+def test_auto_update_applies_home_only_changes(update_env):
+    machine, repo, other, home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    machine.update_marker.write_text("")
+
+    assert _auto(machine) == 0
+    assert (repo / "home/dot_new").is_file()
+    assert calls == ["chezmoi"]
+    assert machine.read_update_state()["state"] == "updated"
+    assert not machine.update_marker.exists()
+
+
+def test_auto_update_leaves_system_change_pending(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "ansible/new.yml", "x\n")
+
+    assert _auto(machine) == 0
+    assert not (repo / "ansible/new.yml").exists()
+    assert calls == []
+    assert machine.read_update_state()["state"] == "available"
+    assert machine.update_marker.exists()
+
+
+def test_auto_update_stops_before_first_system_commit(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_first", "1\n")
+    _push_change(other, "ansible/new.yml", "x\n")
+    _push_change(other, "home/dot_last", "2\n")
+
+    assert _auto(machine) == 0
+    assert (repo / "home/dot_first").is_file()
+    assert not (repo / "ansible/new.yml").exists()
+    assert not (repo / "home/dot_last").exists()
+    assert calls == ["chezmoi"]
+    assert machine.read_update_state()["state"] == "available"
+
+
+def test_auto_update_treats_own_host_profile_as_system_change(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(
+        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+    )
+    assert _auto(machine) == 0
+    assert machine.read_update_state()["state"] == "available"
+    # another host's profile does not block the automatic update
+    _push_change(other, "machine/hosts/other.yml", HOST_YAML.format(profile="rpi"))
+    assert machine.safe_update_target("origin/main") is None
+
+
+def test_auto_update_blocked_by_local_changes(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    (repo / "home/dot_placeholder").write_text("edited\n")
+
+    assert _auto(machine) == 0
+    assert not (repo / "home/dot_new").exists()
+    assert calls == []
+    state = machine.read_update_state()
+    assert state["state"] == "attention"
+    assert "home/dot_placeholder" in state["reason"]
+
+
+def test_auto_update_reports_diverged_history(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    (repo / "home/dot_mine").write_text("y\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "local", cwd=repo)
+
+    assert _auto(machine) == 0
+    assert calls == []
+    assert machine.read_update_state()["state"] == "attention"
+
+
+def test_auto_update_reverts_when_zsh_breaks(update_env, monkeypatch):
+    machine, repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "home/dot_new", "x\n")
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
+
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "reverted" in state["reason"]
+
+    # the broken revision is not retried until the owner runs `machine update`
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "")
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    assert _update(machine) == 0
+    assert (repo / "home/dot_new").is_file()
+
+
+def test_auto_update_skips_when_another_update_runs(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    with machine.update_lock():
+        assert _auto(machine) == 0
+    assert calls == []
+
+
 def test_update_applies_when_host_profile_changed_upstream(update_env):
     machine, _repo, other, _home, calls = update_env
     _push_change(

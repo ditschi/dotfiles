@@ -11,6 +11,7 @@ import pytest
 def isolate_machine_environment(monkeypatch):
     for name in (
         "DOTFILES_UPDATE_MARKER",
+        "DOTFILES_UPDATE_STATE",
         "DOTFILES_UPDATE_LAST_CHECK",
         "MACHINE_PROFILE",
         "MACHINE_PROFILE_NAME",

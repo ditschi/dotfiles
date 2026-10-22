@@ -11,6 +11,7 @@ from .tools import ToolsMixin
 from .bitwarden import BitwardenMixin
 from .commands import CommandsMixin
 from .updates import UpdateMixin
+from .auto_update import AutoUpdateMixin
 
 
 class Machine(
@@ -19,6 +20,7 @@ class Machine(
     BitwardenMixin,
     CommandsMixin,
     UpdateMixin,
+    AutoUpdateMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()
@@ -40,6 +42,11 @@ class Machine(
         self.update_marker = Path(
             os.environ.get(
                 "DOTFILES_UPDATE_MARKER", self.home / ".dotfiles-update-available"
+            )
+        )
+        self.update_state = Path(
+            os.environ.get(
+                "DOTFILES_UPDATE_STATE", self.home / ".dotfiles-update-state"
             )
         )
         self.update_last_check = Path(

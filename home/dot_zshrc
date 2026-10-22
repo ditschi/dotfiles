@@ -31,9 +31,7 @@ autoload -Uz _zinit
 export ZSH=~/.zsh
 source $ZSH/config/00_LOADER.zsh
 
-if [ -f "$HOME/.dotfiles-update-available" ]; then
-    echo "Hint: Dotfiles update available (run: machine update)"
-fi
+dotfiles_update_startup
 
 # Local zshrc extension point
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local

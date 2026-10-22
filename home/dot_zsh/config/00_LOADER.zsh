@@ -12,6 +12,9 @@ ZSH=${ZSH:-$HOME/.zsh}
 # MACHINE_PROFILE / WORK_SETUP, shared with bash
 source "$ZSH/machine-profile.sh"
 
+# Update state indicator (prompt segment, see 03_theme.zsh)
+source "$ZSH/update-state.sh"
+
 for __file__ in "$ZSH"/config/*.zsh; do
     log "Running for $__file__"
     if [[ "$__file__" == "$ZSH/config/00_LOADER.zsh" ]]; then

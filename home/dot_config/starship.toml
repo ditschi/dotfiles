@@ -1,5 +1,5 @@
 format = """
-$directory$git_branch$git_status$fill$status$python$cmd_duration$time
+$directory$git_branch$git_status$fill$env_var$status$python$cmd_duration$time
 $character
 """
 
@@ -15,6 +15,10 @@ format = "[$branch]($style) "
 
 [git_status]
 format = "([$all_status$ahead_behind]($style) )"
+
+[env_var.DOTFILES_UPDATE_SEGMENT]
+format = "[$env_value]($style) "
+style = "yellow"
 
 [fill]
 symbol = "─"

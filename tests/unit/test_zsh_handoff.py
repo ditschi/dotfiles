@@ -231,11 +231,72 @@ def test_bashrc_skips_check_for_nested_shell(env):
     assert trial_calls(home) == 0
 
 
-def test_bash_prints_update_hint_once_only_when_marker_exists(env):
+def test_bash_has_no_generic_update_hint(env):
     home, _, environ = env
     install_helper(home)
     (home / "mode").write_text("plain")
-    hint = "Hint: Dotfiles update available"
-    assert hint not in run_bashrc(environ).stdout
     (home / ".dotfiles-update-available").touch()
-    assert run_bashrc(environ).stdout.count(hint) == 1
+    assert "Hint: Dotfiles update available" not in run_bashrc(environ).stdout
+
+
+STATE_SH = REPO / "home/dot_zsh/update-state.sh"
+
+
+def write_state(home: Path, state: str, reason: str = "", revision: str = "r1") -> None:
+    (home / ".dotfiles-update-state").write_text(
+        f"state={state}\nreason={reason}\nrevision={revision}\n"
+    )
+
+
+def indicator(shell: str, home: Path, steps: str = "") -> str:
+    """Start a shell (reads the state), apply `steps`, then evaluate the prompt segment."""
+    script = (
+        f'. "{STATE_SH}"; dotfiles_update_startup; {steps}\n'
+        'dotfiles_update_prompt; echo "SEG=$DOTFILES_UPDATE_SEGMENT_KIND"'
+    )
+    result = subprocess.run(
+        [shutil.which(shell), "-c", script],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def write_state_cmd(home: Path, state: str, revision: str) -> str:
+    return (
+        f"printf 'state={state}\\nreason=\\nrevision={revision}\\n' "
+        f'> "{home}/.dotfiles-update-state"'
+    )
+
+
+SHELLS = [s for s in ("bash", "zsh") if shutil.which(s)]
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_indicator_states(shell, tmp_path):
+    assert indicator(shell, tmp_path).strip() == "SEG="
+    write_state(tmp_path, "none")
+    assert indicator(shell, tmp_path).strip() == "SEG="
+    write_state(tmp_path, "available")
+    out = indicator(shell, tmp_path)
+    assert "SEG=available" in out and "Dotfiles update" not in out
+    write_state(tmp_path, "attention", "history has diverged")
+    out = indicator(shell, tmp_path)
+    assert "needs attention: history has diverged" in out
+    assert "SEG=attention" in out
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_indicator_follows_state_in_open_shell(shell, tmp_path):
+    write_state(tmp_path, "available", revision="r1")
+    update = write_state_cmd(tmp_path, "updated", "r2")
+    assert "SEG=reload" in indicator(shell, tmp_path, update)
+    # a shell started after the update shows nothing
+    write_state(tmp_path, "updated", revision="r2")
+    assert indicator(shell, tmp_path).strip() == "SEG="
+    back = write_state_cmd(tmp_path, "none", "r1")
+    write_state(tmp_path, "attention", "x")
+    assert "SEG=" in indicator(shell, tmp_path, back)

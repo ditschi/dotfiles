@@ -196,6 +196,7 @@ class CommandsMixin:
             print("last check: never")
         marker = "set" if self.update_marker.is_file() else "unset"
         print(f"update marker: {marker}")
+        self.print_update_state()
         self.print_update_plan(self.update_plan(fetch=False))
         repo_host = self.host_profile_path()
         print(f"repo host profile: {repo_host}")

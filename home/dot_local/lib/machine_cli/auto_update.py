@@ -1,0 +1,183 @@
+"""Unattended update run by the background job (`machine update --auto`)."""
+
+from __future__ import annotations
+
+import contextlib
+import fcntl
+import subprocess
+import types
+from typing import Iterator, Optional
+
+from . import system
+from .core import log, warn
+from .local_changes import classify_paths
+
+
+class AutoUpdateMixin:
+    def _git(self, *args: str) -> subprocess.CompletedProcess:
+        return system.run(
+            ["git", "-C", str(self.repo), *args], capture=True, check=False
+        )
+
+    @property
+    def auto_update_failed_file(self):
+        return self.state_dir / "auto-update-failed"
+
+    def is_system_commit(self, commit: str) -> bool:
+        """System commits need Ansible or a profile apply and are never applied unattended."""
+        own_profile = self.host_profile_path().relative_to(self.repo).as_posix()
+        result = self._git(
+            "diff-tree",
+            "--root",
+            "-r",
+            "-m",
+            "--no-renames",
+            "--name-only",
+            "--no-commit-id",
+            commit,
+        )
+        paths = [line for line in (result.stdout or "").splitlines() if line]
+        return any(path.startswith("ansible/") or path == own_profile for path in paths)
+
+    def safe_update_target(self, upstream: str) -> Optional[str]:
+        """Last incoming commit before the first system commit (None if there is none)."""
+        result = self._git("rev-list", "--reverse", "--topo-order", f"HEAD..{upstream}")
+        target = None
+        for commit in (result.stdout or "").split():
+            if self.is_system_commit(commit):
+                break
+            target = commit
+        if target and not self._is_ancestor("HEAD", target):
+            return None
+        return target
+
+    @contextlib.contextmanager
+    def try_update_lock(self) -> Iterator[bool]:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.state_dir / "update.lock", "w") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+
+    def update_auto(self, args: types.SimpleNamespace) -> int:
+        with self.try_update_lock() as acquired:
+            if not acquired:
+                log("another update is running; skipping the background update")
+                return 0
+            return self._update_auto_locked()
+
+    def _set_pending_marker(self, pending: bool) -> None:
+        if pending:
+            self.update_marker.touch()
+        elif self.update_marker.exists():
+            self.update_marker.unlink()
+
+    def _update_auto_locked(self) -> int:
+        self.run_local_resolvers()
+        plan = self.update_plan(fetch=True)
+        if plan["state"] == "no-upstream":
+            return 0  # nothing to compare with; no state change, like a failed fetch
+        if plan["state"] == "diverged":
+            self.write_update_state("attention", plan["blockers"][0])
+            return 0
+        if plan["state"] == "up-to-date":
+            self._set_pending_marker(False)
+            self.write_update_state("none")
+            return 0
+
+        self._set_pending_marker(True)
+        if plan["local_changes"]:
+            self.write_update_state(
+                "attention",
+                "local changes block the automatic update: "
+                + ", ".join(plan["local_changes"]),
+            )
+            return 0
+
+        target = self.safe_update_target(plan["upstream"])
+        if target is None:
+            self.write_update_state("available")
+            return 0
+        failed = (
+            self.auto_update_failed_file.read_text(encoding="utf-8").strip()
+            if self.auto_update_failed_file.is_file()
+            else ""
+        )
+        if failed == target:
+            self.write_update_state(
+                "attention",
+                f"the automatic update to {target[:8]} broke zsh and was reverted; "
+                "run: machine update",
+            )
+            return 0
+        return self._apply_auto(plan["upstream"], target)
+
+    def _apply_auto(self, upstream: str, target: str) -> int:
+        previous = self.repo_revision()
+        steps = set(classify_paths(self.incoming_changes(target)))
+        merged = self._git("merge", "--ff-only", target)
+        if merged.returncode != 0:
+            self.write_update_state(
+                "attention", "fast-forward failed; run: machine update"
+            )
+            return 0
+        if "chezmoi" in steps and not self._chezmoi_apply_quiet():
+            return self._revert_auto(previous, target, "chezmoi apply failed")
+
+        reason = self.zsh_health_failure()
+        if reason:
+            return self._revert_auto(previous, target, reason)
+
+        remaining = (
+            self.repo_revision() != self._git("rev-parse", upstream).stdout.strip()
+        )
+        self._set_pending_marker(remaining)
+        self.write_update_state("available" if remaining else "updated")
+        log(f"updated automatically to {self.repo_revision()[:8]}")
+        return 0
+
+    def _chezmoi_apply_quiet(self) -> bool:
+        if not (system.have("chezmoi") and self.chezmoi_config.is_file()):
+            return True
+        try:
+            self.run_chezmoi_apply()
+        except SystemExit:
+            return False
+        return True
+
+    def zsh_health_failure(self) -> str:
+        """Reason why zsh no longer starts cleanly, or an empty string."""
+        helper = self.home / ".zsh/zsh-handoff-check.sh"
+        if not helper.is_file() or not system.have("zsh"):
+            return ""
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                '. "$1"; _zhc_run_checks "$(command -v zsh)"',
+                "bash",
+                str(helper),
+            ],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+        )
+        return (
+            "" if result.returncode == 0 else (result.stdout.strip() or "zsh unhealthy")
+        )
+
+    def _revert_auto(self, previous: str, target: str, reason: str) -> int:
+        warn(f"automatic update failed ({reason}); reverting to {previous[:8]}")
+        self._git("reset", "--hard", previous)
+        self._chezmoi_apply_quiet()
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.auto_update_failed_file.write_text(target + "\n", encoding="utf-8")
+        self.write_update_state(
+            "attention",
+            f"the automatic update to {target[:8]} was reverted: {reason}; "
+            "check it, then run: machine update",
+        )
+        return 0

@@ -208,8 +208,12 @@ if [ -d "$DOTFILES_DIR" ]; then
     fi
 fi
 
-if [ -f "$HOME/.dotfiles-update-available" ]; then
-    echo "Hint: Dotfiles update available (run: machine update)"
+# Update state: segment in the prompt (Starship env_var module, or a PS1 prefix), one line at start
+# only for needs-attention.
+if [ -r "$HOME/.zsh/update-state.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.zsh/update-state.sh"
+    dotfiles_update_startup
 fi
 
 # Tab completion for machine (Python CLI)
@@ -223,6 +227,10 @@ if [ "$color_prompt" = yes ]; then
 fi
 LS_COLORS=$LS_COLORS:'di=0;32' ; export LS_COLORS
 export PROMPT_COMMAND='history -a;history -r'
+if declare -F dotfiles_update_prompt >/dev/null; then
+    PROMPT_COMMAND="$PROMPT_COMMAND;dotfiles_update_prompt"
+    PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }'"$PS1"
+fi
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -231,6 +239,10 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # Optional prompt: initialize Starship only when installed.
 if command -v starship >/dev/null 2>&1; then
     eval "$(starship init bash)"
+    # Without starship.toml (rpi-zero, container) there is no env_var module; prefix PS1 instead.
+    if declare -F dotfiles_update_prompt >/dev/null && [ ! -f "${STARSHIP_CONFIG:-$HOME/.config/starship.toml}" ]; then
+        PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }'"$PS1"
+    fi
 fi
 
 # Local bashrc extension point (host-only additions, e.g. externally managed blocks)

@@ -6,26 +6,54 @@ Defines how a user learns about dotfiles updates and how `machine update` applie
 ## Requirements
 
 ### Requirement: Update hint at shell start
-When the marker file `~/.dotfiles-update-available` exists, a new interactive zsh or bash SHALL print "Hint: Dotfiles update available (run: machine update)". The shell SHALL NOT run the update check itself, so that startup stays fast.
+Interactive zsh and bash SHALL show the update state as a persistent prompt segment: update available, updated and shell reload needed, or needs attention. A shell started after the update was applied SHALL show nothing. At shell start a one-line message SHALL be printed only for needs-attention. The segment SHOULD follow state changes in an open shell, re-evaluated after each command without reloading the shell, as long as this stays lightweight and the prompt stays fast. The shell SHALL NOT run the update check itself, so that startup stays fast.
 
 #### Scenario: Update available
-- **WHEN** the marker exists and a zsh starts
-- **THEN** the hint is printed
+- **WHEN** an update is pending and not applied automatically and a zsh starts
+- **THEN** the prompt segment shows that an update is available and no text is printed at shell start
 
 #### Scenario: Update available in bash
-- **WHEN** the marker exists and an interactive bash starts and stays in bash
-- **THEN** the hint is printed once
+- **WHEN** an update is pending and not applied automatically and an interactive bash starts and stays in bash
+- **THEN** the prompt segment shows that an update is available
+
+#### Scenario: Shell older than the applied update
+- **WHEN** an update was applied after the shell started
+- **THEN** the prompt segment tells the user to reload the shell
+
+#### Scenario: Needs attention
+- **WHEN** the update needs manual checking
+- **THEN** the prompt segment shows it and a one-line message is printed at shell start
 
 #### Scenario: No update
-- **WHEN** the marker does not exist
-- **THEN** no hint is printed
+- **WHEN** no update is pending and the shell is current
+- **THEN** nothing is shown
+
+#### Scenario: State changes in an open shell
+- **WHEN** the update state changes while a shell is open
+- **THEN** the prompt segment shows the new state after the next command
 
 ### Requirement: Explicit update
-`machine update` SHALL fast-forward the checkout, sync the host profile and apply the setup, running chezmoi before Ansible. Updates SHALL stay explicit: nothing is applied without the user running the command.
+`machine update` SHALL fast-forward the checkout, sync the host profile and apply the setup, running chezmoi before Ansible. System changes and host-profile changes SHALL stay explicit: they are not applied without the user running the command. Changes that only touch home files MAY be applied automatically in the background when the checkout has no local changes after the resolvers.
 
 #### Scenario: Clean fast-forward
 - **WHEN** a user runs `machine update` on a clean checkout that is behind its upstream
 - **THEN** the checkout is fast-forwarded and the setup is applied
+
+#### Scenario: Home-only change, clean checkout
+- **WHEN** the background job finds only home-file changes and the checkout has no local changes
+- **THEN** the changes are pulled and applied and the state tells the user to reload the shell
+
+#### Scenario: System change pending
+- **WHEN** the incoming changes include a system or host-profile change
+- **THEN** nothing at or after the first such commit is applied in the background and the state shows that an update is available
+
+#### Scenario: Home changes before a system change
+- **WHEN** the incoming commits are home-only up to a commit that touches `ansible/**`, packages or the host profile
+- **THEN** the checkout is fast-forwarded to just before that commit and applied, and the remaining commits stay pending for a manual `machine update`
+
+#### Scenario: Blocked automatic update
+- **WHEN** local changes remain after the resolvers
+- **THEN** nothing is applied and the state is needs-attention with the reason
 
 ### Requirement: Update never discards local work
 `machine update` SHALL first run the known local-change resolvers (host-only Git settings into local config, externally managed `~/.bashrc` blocks into `~/.bashrc-local`), then fast-forward without touching local changes. It SHALL stop and report why only when a locally changed file is also changed upstream or the history diverged. Other local changes SHALL be a notice. `--force` overrides a stop.

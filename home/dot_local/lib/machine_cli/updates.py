@@ -229,6 +229,46 @@ class UpdateMixin:
             "blockers": blockers,
         }
 
+    def repo_revision(self) -> str:
+        result = system.run(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"],
+            check=False,
+            capture=True,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    def write_update_state(self, state: str, reason: str = "") -> None:
+        """Same file format as dotfiles-update-check-job; shells read it for the prompt segment."""
+        tmp = self.update_state.with_name(self.update_state.name + ".tmp")
+        tmp.write_text(
+            f"state={state}\nreason={reason}\nrevision={self.repo_revision()}\n",
+            encoding="utf-8",
+        )
+        tmp.replace(self.update_state)
+
+    def read_update_state(self) -> dict[str, str]:
+        values = {"state": "none", "reason": "", "revision": ""}
+        if self.update_state.is_file():
+            for line in self.update_state.read_text(encoding="utf-8").splitlines():
+                key, _, value = line.partition("=")
+                if key in values:
+                    values[key] = value
+        return values
+
+    def print_update_state(self) -> None:
+        values = self.read_update_state()
+        state = values["state"]
+        print(f"update state: {state}")
+        if state == "attention":
+            print(f"  reason: {values['reason']}")
+        fixes = {
+            "available": "run: machine update",
+            "updated": "run: reload (restarts the current shell) or open a new shell",
+            "attention": "run: machine update --check, resolve the reason, then machine update",
+        }
+        if state in fixes:
+            print(f"  fix: {fixes[state]}")
+
     def print_update_plan(self, plan: dict) -> None:
         print(f"upstream: {plan['upstream']} ({plan['state']})")
         print(f"incoming files: {len(plan['incoming'])}")
@@ -304,6 +344,8 @@ class UpdateMixin:
     def cmd_update(self, args: types.SimpleNamespace) -> int:
         if getattr(args, "check", False):
             return self.update_check(getattr(args, "json", False))
+        if getattr(args, "auto", False):
+            return self.update_auto(args)
         with self.update_lock():
             return self._update_locked(args)
 
@@ -312,7 +354,10 @@ class UpdateMixin:
         self.run_local_resolvers()
         plan = self.update_plan(fetch=True)
         if plan["state"] in ("diverged", "no-upstream"):
+            self.write_update_state("attention", plan["blockers"][0])
             die(plan["blockers"][0])
+        if plan["overlap"] and not args.force:
+            self.write_update_state("attention", plan["blockers"][0])
         self.merge_upstream(plan, args.force)
         steps = set(plan["steps"])
 
@@ -328,6 +373,8 @@ class UpdateMixin:
         self.cmd_env_pull()
         if self.update_marker.exists():
             self.update_marker.unlink()
+        self.write_update_state("updated")
+        self.auto_update_failed_file.unlink(missing_ok=True)
 
         if profile_changed or args.system or "system" in steps:
             apply_args = types.SimpleNamespace(

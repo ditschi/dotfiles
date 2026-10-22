@@ -206,9 +206,12 @@ def update(
     ),
     check: bool = typer.Option(False, "--check", help="read-only plan"),
     json: bool = typer.Option(False, "--json", help="with --check: machine-readable"),
+    auto: bool = typer.Option(
+        False, "--auto", help="background mode: apply home-only changes unattended"
+    ),
 ) -> None:
     args = types.SimpleNamespace(
-        system=apply_system, force=force, check=check, json=json
+        system=apply_system, force=force, check=check, json=json, auto=auto
     )
     _exit(Machine().cmd_update(args))
 

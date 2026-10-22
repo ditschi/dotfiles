@@ -229,3 +229,13 @@ def test_bashrc_skips_check_for_nested_shell(env):
     result = run_bashrc({**environ, "SHLVL": "1"})
     assert "zsh handoff skipped" not in result.stderr
     assert trial_calls(home) == 0
+
+
+def test_bash_prints_update_hint_once_only_when_marker_exists(env):
+    home, _, environ = env
+    install_helper(home)
+    (home / "mode").write_text("plain")
+    hint = "Hint: Dotfiles update available"
+    assert hint not in run_bashrc(environ).stdout
+    (home / ".dotfiles-update-available").touch()
+    assert run_bashrc(environ).stdout.count(hint) == 1

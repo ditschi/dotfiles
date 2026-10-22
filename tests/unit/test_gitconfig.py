@@ -164,7 +164,6 @@ def test_machine_commands_move_shared_host_settings_before_git(
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(cli.system, "run", fake_git)
-    monkeypatch.setattr(machine, "handle_layout_gate", lambda **kwargs: None)
     monkeypatch.setattr(machine, "git_dirty", lambda: False)
     monkeypatch.setattr(machine, "sync_host_profile_from_repo", lambda: False)
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: 0)

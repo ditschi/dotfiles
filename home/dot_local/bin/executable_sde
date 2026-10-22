@@ -37,7 +37,7 @@ prepare_extended_setup() {
     local script_path repo repo_name cache container_home
     script_path="$(readlink -f "${BASH_SOURCE[0]}")"
     repo="${DOTFILES_REPO:-$(cd "$(dirname "$script_path")/../../.." && pwd)}"
-    if [[ ! -f "$repo/install.py" ]]; then
+    if [[ ! -f "$repo/bootstrap" ]]; then
         echo "[SDE] Dotfiles installer not found in $repo" >&2
         return 1
     fi
@@ -104,7 +104,7 @@ docker_compose_run_new_container() {
         dotfiles="$2"
         shift 2
         if [[ "$mode" == extended ]]; then
-            python3 "$dotfiles/install.py"
+            bash "$dotfiles/bootstrap" --profile container --yes --no-become
         fi
         if [[ -f .devcontainer/post-start-command.sh ]]; then
             bash .devcontainer/post-start-command.sh

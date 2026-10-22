@@ -36,8 +36,6 @@ From the laptop to a reachable device:
 | Apply a host profile remotely | `machine apply --limit homeserver` |
 | Full setup / change features | `machine setup` (saved answers as defaults) |
 | Save host profile to the repo | `machine profile save` |
-| Layout from `main` → chezmoi | `machine migrate` |
-| Undo migration | `machine rollback` |
 | Status / drift | `machine status` / `machine profile show` |
 | Inventory (vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` from Bitwarden | `machine env pull` |
@@ -151,7 +149,6 @@ The script itself only defines the command line. The implementation is the packa
 | `profile` | local profile, versioned host files, prompts |
 | `tools` | bootstrap tools, git / ansible / chezmoi runners |
 | `bitwarden` | `~/.env`, per-host SSH keys, authorized_keys |
-| `migration` | migration from the old layout and rollback |
 | `commands` | setup, apply, update, status, commit, push |
 | `machine` | the `Machine` class combining the modules above |
 
@@ -371,67 +368,6 @@ lookup fails. Its user configuration is not replaced. Set `yazi_version` to an
 explicit release in Ansible variables to opt out of latest-release tracking;
 this also avoids downgrading an existing installation.
 
-## Migration (from the old root layout)
-
-On a host still running `main` with symlinks to `~/dotfiles/.zshrc`:
-
-```bash
-cd ~/dotfiles
-git fetch && git checkout feat/machine-setup   # or main, once merged
-./bootstrap          # or: machine migrate
-```
-
-`machine update` detects broken/old root symlinks and asks interactively whether to run a full setup. Non-interactively it aborts with the hint `machine migrate --yes`.
-
-Migration automatically finds a verified legacy-layout commit from the reflog
-or first-parent history. If history is unavailable, fetch it or provide
-`--rollback-ref <legacy-commit>`; an unverified recovery target aborts migration.
-
-Backup under `~/.local/share/machine/migration/<stamp>/` includes affected
-root files, root symlink targets, host-local Git/environment files, package
-versions, tool paths/versions, relevant apt/system configuration and service
-state. The directory is private (`0700`), and backup files are private (`0600`).
-Broken old links recover committed contents where available; already-lost
-uncommitted contents cannot be reconstructed. Versioned nested dotfiles are
-recovered by reinstalling from the old Git commit, not from a HOME snapshot.
-
-Review the printed live/backup paths and `migration-report.txt`, especially
-Git signing, identity, credentials, proxy settings and included configuration.
-Host-only Git settings are transferred to `~/.gitconfig.local`; existing local
-overrides win. Unreadable system files are reported for administrator backup.
-
-Rollback:
-
-```bash
-machine rollback
-# or: ~/.local/share/machine/rollback.sh
-```
-
-Hosts **already** on the chezmoi layout don't need a second migration — just `machine update`, or `machine setup` when features change.
-
-Rollback checks out the verified legacy commit and runs its installer with
-`--update --force` to overwrite the managed dotfile links. Git checkout is not
-forced; preserve repository edits first if they would prevent switching commits.
-Unversioned host-local settings are not automatically restored; use the printed
-backup paths for manual recovery where needed. Packages, system configuration
-and service changes are not automatically undone.
-
-## Revert
-
-```bash
-~/.local/share/machine/rollback.sh
-# or manually:
-cd ~/dotfiles
-git checkout <old-sha>            # listed in rollback.sh / migration meta.json
-python3 install.py --update --force
-```
-
-The `install.py` of **that** commit recreates the root symlinks. After that, the old update path runs.
-
-## Legacy commands
-
-`python3 install.py` remains a wrapper around `machine setup` / `machine update`.
-
 ## Tests
 
 ### Automated
@@ -466,7 +402,4 @@ docker compose -f tests/compose.yaml run --rm shell
 ./bootstrap --profile home-laptop --yes    # quiet
 machine setup                              # previous answers preselected
 machine update                             # only bring up to date
-
-docker compose -f tests/compose.yaml run --rm migrate
-# prepared old symlinks → prompt "Run full setup / migration now?" / machine migrate
 ```

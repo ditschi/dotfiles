@@ -18,7 +18,7 @@ def _cli():
     return SourceFileLoader("machine_entry", str(MACHINE)).load_module()
 
 
-def test_help_lists_setup_migrate_and_env():
+def test_help_lists_setup_update_and_env():
     result = subprocess.run(
         ["python3", str(MACHINE), "--help"],
         check=True,
@@ -26,7 +26,7 @@ def test_help_lists_setup_migrate_and_env():
         text=True,
     )
     assert "setup" in result.stdout
-    assert "migrate" in result.stdout
+    assert "update" in result.stdout
     assert "env" in result.stdout
     assert "ssh" in result.stdout
 
@@ -49,7 +49,7 @@ def test_zsh_completion_registers_machine():
 def test_dynamic_completion_resolves_subcommands():
     env = {
         **os.environ,
-        "COMP_WORDS": "machine mig",
+        "COMP_WORDS": "machine upd",
         "COMP_CWORD": "1",
         "_MACHINE_COMPLETE": "complete_bash",
     }
@@ -60,7 +60,7 @@ def test_dynamic_completion_resolves_subcommands():
         text=True,
         env=env,
     )
-    assert "migrate" in result.stdout.split()
+    assert "update" in result.stdout.split()
 
 
 def test_env_groups_by_profile(tmp_path: Path, monkeypatch):
@@ -147,194 +147,6 @@ def test_parse_empty_ssh_allow_from(tmp_path: Path):
     )
     data = cli.parse_profile_file(path)
     assert data["ssh_allow_from"] == []
-
-
-def test_needs_layout_migration_detects_old_root_symlink(tmp_path: Path, monkeypatch):
-    cli_mod = _cli()
-    repo = tmp_path / "dotfiles"
-    (repo / "home").mkdir(parents=True)
-    (repo / "home" / "dot_zshrc").write_text("# new\n", encoding="utf-8")
-    (repo / ".git").mkdir()
-    (repo / "bootstrap").write_text("#!/bin/sh\n", encoding="utf-8")
-    home = tmp_path / "home"
-    home.mkdir()
-    # old-style symlink into repo root
-    (home / ".zshrc").symlink_to(repo / ".zshrc")
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
-    monkeypatch.setenv(
-        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
-    )
-    monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-
-    machine = cli_mod.Machine()
-    assert machine.needs_layout_migration() is True
-
-
-def test_write_rollback_script(tmp_path: Path, monkeypatch):
-    cli_mod = _cli()
-    repo = tmp_path / "dotfiles"
-    (repo / "home").mkdir(parents=True)
-    (repo / ".git").mkdir()
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
-    monkeypatch.setenv(
-        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
-    )
-
-    machine = cli_mod.Machine()
-    path = machine.write_rollback_script("abc123")
-    text = path.read_text(encoding="utf-8")
-    assert "abc123" in text
-    assert "install.py" in text
-    assert path.stat().st_mode & 0o100
-
-
-def test_migration_uses_verified_legacy_commit_not_checked_out_head(
-    tmp_path, monkeypatch
-):
-    cli = _cli()
-    repo = tmp_path / "dotfiles"
-    repo.mkdir()
-
-    def git(*args):
-        return subprocess.run(
-            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-        ).stdout.strip()
-
-    git("init", "-q")
-    git("config", "user.name", "Test")
-    git("config", "user.email", "test@example.com")
-    (repo / ".zshrc").write_text("legacy\n")
-    (repo / "install.py").write_text("def create_links_for_directory():\n    pass\n")
-    git("add", ".")
-    git("commit", "-qm", "legacy")
-    old_sha = git("rev-parse", "HEAD")
-    (repo / ".zshrc").unlink()
-    (repo / "home").mkdir()
-    (repo / "home/dot_zshrc").write_text("new\n")
-    (repo / "install.py").write_text("print('new wrapper')\n")
-    git("add", "-A")
-    git("commit", "-qm", "new layout")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    machine = cli.Machine()
-    assert machine.legacy_rollback_sha() == old_sha
-    assert machine.legacy_rollback_sha(old_sha) == old_sha
-    import pytest
-
-    with pytest.raises(SystemExit):
-        machine.legacy_rollback_sha("HEAD")
-
-
-def test_migration_backs_up_local_settings_and_reinstalls_legacy_dotfiles(
-    tmp_path, monkeypatch
-):
-    import json
-    from test_bw_and_answers import isolated_machine
-
-    cli, machine = isolated_machine(tmp_path, monkeypatch)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    def git(*args):
-        return subprocess.run(
-            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-        ).stdout.strip()
-
-    git("init", "-q")
-    git("config", "user.name", "Test")
-    git("config", "user.email", "test@example.com")
-    (repo / ".zshrc").write_text("legacy\n")
-    (repo / "install.py").write_text(
-        "from pathlib import Path\n"
-        "import sys\n"
-        "def create_links_for_directory():\n    pass\n"
-        "assert sys.argv[1:] == ['--update', '--force']\n"
-        "repo = Path(__file__).parent\n"
-        "for name in ('.zshrc', '.zsh/config/custom.zsh'):\n"
-        "    target = Path.home() / name\n"
-        "    target.parent.mkdir(parents=True, exist_ok=True)\n"
-        "    target.unlink(missing_ok=True)\n"
-        "    target.symlink_to(repo / name)\n"
-    )
-    (repo / ".zsh/config").mkdir(parents=True)
-    (repo / ".zsh/config/custom.zsh").write_text("old alias\n")
-    git("add", ".")
-    git("commit", "-qm", "legacy")
-    old_sha = git("rev-parse", "HEAD")
-    git("rm", "-r", ".zsh", ".zshrc")
-    (repo / "home/dot_zsh/config").mkdir(parents=True)
-    (repo / "home/dot_zshrc").write_text("new\n")
-    (repo / "home/dot_zsh/config/custom.zsh").write_text("new alias\n")
-    (repo / "install.py").write_text(
-        "raise RuntimeError('new installer must not run')\n"
-    )
-    git("add", ".")
-    git("commit", "-qm", "new")
-    machine.repo = repo
-    machine.chezmoi_source = repo / "home"
-    nested = tmp_path / ".zsh/config/custom.zsh"
-    nested.parent.mkdir(parents=True)
-    nested.symlink_to(repo / ".zsh/config/custom.zsh")
-    env = tmp_path / ".env"
-    env.write_text("SECRET=keep\n")
-    env.chmod(0o640)
-    backup = machine.backup_migration_state(old_sha)
-    rollback = machine.write_rollback_script(old_sha)
-    assert json.loads((backup / "meta.json").read_text())["old_sha"] == old_sha
-    assert backup.stat().st_mode & 0o777 == 0o700
-    assert (backup / "files/.env").stat().st_mode & 0o777 == 0o600
-    assert (backup / "files/.env").read_text() == "SECRET=keep\n"
-    nested.unlink()
-    nested.symlink_to(repo / "home/dot_zsh/config/custom.zsh")
-    env.write_text("SECRET=new\n")
-    subprocess.run(["bash", str(rollback)], check=True)
-    assert git("rev-parse", "HEAD") == old_sha
-    assert os.readlink(nested) == str(repo / ".zsh/config/custom.zsh")
-    assert nested.read_text() == "old alias\n"
-    assert env.read_text() == "SECRET=new\n"
-    assert env.stat().st_mode & 0o777 == 0o640
-
-
-def test_git_host_settings_preserve_multivalue_and_existing_local_override(
-    tmp_path, monkeypatch
-):
-    from test_bw_and_answers import isolated_machine
-
-    cli, machine = isolated_machine(tmp_path, monkeypatch)
-    backup = tmp_path / "snapshot"
-    (backup / "files").mkdir(parents=True)
-    (backup / "files/.gitconfig").write_text(
-        "[user]\n email = old@example.com\n[credential]\n helper = first\n helper = second\n[safe]\n directory = /old\n"
-    )
-    (backup / "files/.gitconfig.local").write_text(
-        "[user]\n email = explicit@example.com\n"
-    )
-    local = tmp_path / ".gitconfig.local"
-    local.write_text(
-        "[user]\n email = explicit@example.com\n[credential]\n helper = template\n"
-    )
-    machine.migration_backup = backup
-    machine.preserve_git_host_settings()
-
-    def get(key):
-        return subprocess.run(
-            ["git", "config", "-f", str(local), "--get-all", key],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.splitlines()
-
-    assert get("user.email") == ["explicit@example.com"]
-    assert get("credential.helper") == ["first", "second"]
-    assert get("safe.directory") == ["/old"]
 
 
 @pytest.mark.parametrize("passed_state", [True, False])
@@ -484,9 +296,7 @@ def test_shared_sde_one_off_commands_and_extended_mounts(tmp_path, extended, ima
     if extended:
         fixture = tmp_path / "fixture"
         fixture.mkdir()
-        (fixture / "install.py").write_text(
-            "from pathlib import Path\nPath('sequence').write_text('setup\\n')\n"
-        )
+        (fixture / "bootstrap").write_text("#!/bin/sh\nprintf 'setup\\n' > sequence\n")
         payload[payload.index("/mnt/dotfiles")] = str(fixture)
     executed = subprocess.run(payload, cwd=project, capture_output=True, text=True)
     assert executed.returncode == 0

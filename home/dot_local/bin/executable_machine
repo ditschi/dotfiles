@@ -147,17 +147,13 @@ def _check_choice(value: str, choices: Sequence[str], label: str) -> str:
     return value
 
 
-def _setup_or_migrate(command: str, args: types.SimpleNamespace) -> None:
+def _run_setup(args: types.SimpleNamespace) -> None:
     if args.profile:
         _check_choice(args.profile, PROFILES, "--profile")
     for feature in args.features or []:
         _check_choice(feature, FEATURES, "--features")
     _check_choice(args.playbook, PLAYBOOKS, "--playbook")
-    cli = Machine()
-    if command == "migrate":
-        _exit(cli.cmd_migrate(args))
-    else:
-        _exit(cli.cmd_setup(args))
+    _exit(Machine().cmd_setup(args))
 
 
 @app.command(help="Bootstrap this host or --limit HOST")
@@ -184,9 +180,6 @@ def setup(
     skip_ansible: bool = typer.Option(False, "--skip-ansible"),
     skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
     no_become: bool = typer.Option(False, "--no-become"),
-    rollback_ref: str = typer.Option(
-        "", "--rollback-ref", help="verified legacy commit for recovery"
-    ),
 ) -> None:
     args = types.SimpleNamespace(
         profile=profile,
@@ -198,59 +191,9 @@ def setup(
         skip_ansible=skip_ansible,
         skip_chezmoi=skip_chezmoi,
         no_become=no_become,
-        rollback_ref=rollback_ref,
         command="setup",
     )
-    _setup_or_migrate("setup", args)
-
-
-@app.command(help="Backup old layout, write rollback.sh, run setup")
-def migrate(
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="machine profile", autocompletion=_choices(PROFILES)
-    ),
-    features: Optional[List[str]] = typer.Option(
-        None,
-        "--features",
-        help="repeat to select several",
-        autocompletion=_choices(FEATURES),
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "--non-interactive", help="non-interactive"
-    ),
-    local: bool = typer.Option(False, "--local", help="force local connection"),
-    limit: str = typer.Option(
-        "", "--limit", help="ansible host", autocompletion=_host_names
-    ),
-    playbook: str = typer.Option(
-        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
-    ),
-    skip_ansible: bool = typer.Option(False, "--skip-ansible"),
-    skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
-    no_become: bool = typer.Option(False, "--no-become"),
-    rollback_ref: str = typer.Option(
-        "", "--rollback-ref", help="verified legacy commit for recovery"
-    ),
-) -> None:
-    args = types.SimpleNamespace(
-        profile=profile,
-        features=features,
-        yes=yes,
-        local=local,
-        limit=limit,
-        playbook=playbook,
-        skip_ansible=skip_ansible,
-        skip_chezmoi=skip_chezmoi,
-        no_become=no_become,
-        rollback_ref=rollback_ref,
-        command="migrate",
-    )
-    _setup_or_migrate("migrate", args)
-
-
-@app.command(help="Undo migrate via ~/.local/share/machine/rollback.sh")
-def rollback() -> None:
-    _exit(Machine().cmd_rollback())
+    _run_setup(args)
 
 
 @app.command(help="git pull, sync host profile, chezmoi; apply if profile changed")

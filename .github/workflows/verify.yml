@@ -47,7 +47,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and CLI smoke
         run: |
-          python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          python3 -m py_compile home/dot_local/bin/executable_machine
           python3 -m compileall -q home/dot_local/lib/machine_cli
           pytest tests/unit -q
       - name: Ansible syntax
@@ -130,8 +130,6 @@ jobs:
       - name: Clean install from machine/hosts/ci-container.yml
         run: |
           pytest -q tests/integration/test_host_yaml_install.py::test_clean_install_from_versioned_host_yaml_container
-      - name: Migration from old root layout
-        run: pytest -q tests/integration/test_migrate.py
 
   apt-rpi-zero:
     runs-on: ubuntu-latest
@@ -181,7 +179,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and Ansible syntax on ARM
         run: |
-          python3 -m py_compile home/dot_local/bin/executable_machine install.py
+          python3 -m py_compile home/dot_local/bin/executable_machine
           python3 -m compileall -q home/dot_local/lib/machine_cli
           pytest tests/unit -q
           ansible-galaxy collection install -r ansible/requirements.yml

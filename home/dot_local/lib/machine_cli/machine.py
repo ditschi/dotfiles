@@ -8,7 +8,6 @@ from pathlib import Path
 from . import system
 from .profile import ProfileMixin
 from .tools import ToolsMixin
-from .migration import MigrationMixin
 from .bitwarden import BitwardenMixin
 from .commands import CommandsMixin
 
@@ -16,7 +15,6 @@ from .commands import CommandsMixin
 class Machine(
     ProfileMixin,
     ToolsMixin,
-    MigrationMixin,
     BitwardenMixin,
     CommandsMixin,
 ):

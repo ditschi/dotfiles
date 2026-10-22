@@ -30,7 +30,6 @@ def compile(session: nox.Session) -> None:
         "-m",
         "py_compile",
         "home/dot_local/bin/executable_machine",
-        "install.py",
     )
     session.run("python", "-m", "compileall", "-q", "home/dot_local/lib/machine_cli")
 
@@ -78,6 +77,3 @@ def docker(session: nox.Session) -> None:
         "Host-YAML clean install: pytest tests/integration/test_host_yaml_install.py -q"
     )
     session.log("Interactive lab: docker compose -f tests/compose.yaml run --rm shell")
-    session.log(
-        "Migration lab:   docker compose -f tests/compose.yaml run --rm migrate"
-    )

@@ -18,22 +18,6 @@ from .core import (
 
 class CommandsMixin:
     def cmd_setup(self, args: types.SimpleNamespace) -> int:
-        if getattr(args, "command", "") != "migrate" and self.needs_layout_migration():
-            if args.yes:
-                log(
-                    "layout migration needed; continuing setup after clearing stale links"
-                )
-                old_sha = self.legacy_rollback_sha(getattr(args, "rollback_ref", ""))
-                self.backup_migration_state(old_sha)
-                self.write_rollback_script(old_sha)
-                self.clear_stale_root_links()
-            elif system.is_tty() and system.prompt_yes_no(
-                "Old root symlinks detected. Migrate now?", True
-            ):
-                return self.cmd_migrate(args)
-            elif not system.is_tty():
-                die("layout migration needed; run: machine migrate --yes")
-
         self.unattended = args.yes
         profile = args.profile or os.environ.get("MACHINE_PROFILE_NAME", "")
         if profile and profile not in PROFILES:
@@ -102,7 +86,6 @@ class CommandsMixin:
 
         if not args.skip_chezmoi:
             self.run_chezmoi_apply()
-            self.preserve_git_host_settings()
             if system.have("systemctl") and profile != "container":
                 system.run(
                     ["systemctl", "--user", "daemon-reload"], check=False, capture=True
@@ -204,44 +187,12 @@ class CommandsMixin:
         return 0
 
     def cmd_update(self, args: types.SimpleNamespace) -> int:
-        gate = self.handle_layout_gate(yes=False, force=args.force)
-        if gate == "migrate":
-            migrate_args = types.SimpleNamespace(
-                profile=None,
-                features=None,
-                yes=False,
-                local=False,
-                limit="",
-                playbook="workstation",
-                skip_ansible=False,
-                skip_chezmoi=False,
-                no_become=False,
-                command="migrate",
-            )
-            return self.cmd_migrate(migrate_args)
-
         self.sanitize_git_config()
         if self.git_dirty() and not args.force:
             system.run(["git", "-C", str(self.repo), "status", "--short"])
             die(f"uncommitted changes in {self.repo} (commit/stash, or --force)")
         system.run(["git", "-C", str(self.repo), "pull", "--ff-only"])
         self.sanitize_git_config()
-
-        gate = self.handle_layout_gate(yes=False, force=args.force)
-        if gate == "migrate":
-            migrate_args = types.SimpleNamespace(
-                profile=None,
-                features=None,
-                yes=False,
-                local=False,
-                limit="",
-                playbook="workstation",
-                skip_ansible=False,
-                skip_chezmoi=False,
-                no_become=False,
-                command="migrate",
-            )
-            return self.cmd_migrate(migrate_args)
 
         profile_backup = self.backup_local_profile()
         profile_changed = self.sync_host_profile_from_repo()
@@ -279,7 +230,6 @@ class CommandsMixin:
             print("last check: never")
         marker = "set" if self.update_marker.is_file() else "unset"
         print(f"update marker: {marker}")
-        print(f"needs migration: {self.needs_layout_migration()}")
         repo_host = self.host_profile_path()
         print(f"repo host profile: {repo_host}")
         print(f"  exists: {repo_host.is_file()}")
@@ -317,7 +267,6 @@ class CommandsMixin:
             "ansible",
             "machine",
             "bootstrap",
-            "install.py",
             "Readme.md",
             ".gitignore",
             ".pre-commit-config.yaml",

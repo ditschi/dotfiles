@@ -123,7 +123,7 @@ def test_backup_and_restore_profile(tmp_path: Path, monkeypatch):
     assert machine.current_profile() == "home-laptop"
 
 
-def test_help_lists_apply_profile_rollback():
+def test_help_lists_apply_and_profile_but_no_migration():
     import subprocess
 
     result = subprocess.run(
@@ -134,7 +134,8 @@ def test_help_lists_apply_profile_rollback():
     )
     assert "apply" in result.stdout
     assert "profile" in result.stdout
-    assert "rollback" in result.stdout
+    assert "migrate" not in result.stdout
+    assert "rollback" not in result.stdout
 
 
 def _machine_env(tmp_path: Path, monkeypatch, hostname: str = "testhost"):

@@ -29,7 +29,7 @@ repos:
       - id: shellcheck
         args: [-e, SC1090, -e, SC1091]
         exclude_types: [zsh]
-        exclude: ^openspec/changes/[^/]+/spike/
+        exclude: ^openspec/changes/(archive/)?[^/]+/spike/
       - id: shellcheck
         name: shellcheck (rc files without shebang)
         args: [-e, SC1090, -e, SC1091]
@@ -45,7 +45,7 @@ repos:
           - --case-indent
           - --simplify
           - --write
-        exclude: '\.bashrc|^openspec/changes/[^/]+/spike/'
+        exclude: '\.bashrc|^openspec/changes/(archive/)?[^/]+/spike/'
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:

@@ -8,7 +8,7 @@ import subprocess
 import types
 from typing import Iterator, Optional
 
-from . import system
+from . import events, system
 from .core import log, warn
 from .local_changes import classify_paths
 
@@ -82,6 +82,7 @@ class AutoUpdateMixin:
             return 0  # nothing to compare with; no state change, like a failed fetch
         if plan["state"] == "diverged":
             self.write_update_state("attention", plan["blockers"][0])
+            self.event("update-auto", "blocked", "diverged")
             return 0
         if plan["state"] == "up-to-date":
             self._set_pending_marker(False)
@@ -95,6 +96,7 @@ class AutoUpdateMixin:
                 "local changes block the automatic update: "
                 + ", ".join(plan["local_changes"]),
             )
+            self.event("update-auto", "blocked", "local-changes")
             return 0
 
         target = self.safe_update_target(plan["upstream"])
@@ -112,10 +114,12 @@ class AutoUpdateMixin:
                 f"the automatic update to {target[:8]} broke zsh and was reverted; "
                 "run: machine update",
             )
+            self.event("update-auto", "blocked", "previously-reverted")
             return 0
         return self._apply_auto(plan["upstream"], target)
 
     def _apply_auto(self, upstream: str, target: str) -> int:
+        timer = events.Timer()
         previous = self.repo_revision()
         steps = set(classify_paths(self.incoming_changes(target)))
         merged = self._git("merge", "--ff-only", target)
@@ -123,19 +127,23 @@ class AutoUpdateMixin:
             self.write_update_state(
                 "attention", "fast-forward failed; run: machine update"
             )
+            self.event("update-auto", "blocked", "fast-forward-failed")
             return 0
         if "chezmoi" in steps and not self._chezmoi_apply_quiet():
-            return self._revert_auto(previous, target, "chezmoi apply failed")
+            return self._revert_auto(
+                previous, target, "chezmoi apply failed", "apply-failed", timer
+            )
 
         reason = self.zsh_health_failure()
         if reason:
-            return self._revert_auto(previous, target, reason)
+            return self._revert_auto(previous, target, reason, "zsh-unhealthy", timer)
 
         remaining = (
             self.repo_revision() != self._git("rev-parse", upstream).stdout.strip()
         )
         self._set_pending_marker(remaining)
         self.write_update_state("available" if remaining else "updated")
+        self.event("update-auto", "applied", duration=timer.seconds())
         log(f"updated automatically to {self.repo_revision()[:8]}")
         return 0
 
@@ -169,9 +177,17 @@ class AutoUpdateMixin:
             "" if result.returncode == 0 else (result.stdout.strip() or "zsh unhealthy")
         )
 
-    def _revert_auto(self, previous: str, target: str, reason: str) -> int:
+    def _revert_auto(
+        self,
+        previous: str,
+        target: str,
+        reason: str,
+        code: str,
+        timer: events.Timer,
+    ) -> int:
         warn(f"automatic update failed ({reason}); reverting to {previous[:8]}")
         self._git("reset", "--hard", previous)
+        self.event("update-auto", "reverted", code, timer.seconds())
         self._chezmoi_apply_quiet()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.auto_update_failed_file.write_text(target + "\n", encoding="utf-8")

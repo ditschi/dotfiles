@@ -389,7 +389,26 @@ def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
     assert ["uv", "tool", "install", "--force", "ansible-core"] in commands
 
 
-def test_prompts_use_arrow_key_pickers_on_a_terminal(tmp_path: Path, monkeypatch):
+def test_pickers_take_numbers_and_defaults(monkeypatch):
+    system = _cli().system
+    monkeypatch.setattr(system, "is_tty", lambda: True)
+    answers = iter(["2", "rpi", "1,3", "", "-", "9", "2"])
+    monkeypatch.setattr(system.click, "prompt", lambda *_a, **_k: next(answers))
+
+    assert system.choose("t", ["a", "b"], "a") == "b"
+    assert system.choose("t", ["a", "rpi"], "a") == "rpi"
+    choices = {"x": "", "y": "", "z": ""}
+    assert system.choose_many("t", choices, ["y"]) == ["x", "z"]
+    assert system.choose_many("t", choices, ["y"]) == ["y"]
+    assert system.choose_many("t", choices, ["y"]) == []
+    assert system.choose_many("t", choices, []) == ["y"]  # "9" retried, then "2"
+
+    monkeypatch.setattr(system, "is_tty", lambda: False)
+    assert system.choose("t", ["a", "b"], "a") == "a"
+    assert system.choose_many("t", choices, ["y"]) == ["y"]
+
+
+def test_prompts_use_pickers_on_a_terminal(tmp_path: Path, monkeypatch):
     cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
     monkeypatch.setattr(cli_mod.system, "choose", lambda _t, choices, _d: choices[1])

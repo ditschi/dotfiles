@@ -10,7 +10,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -328,17 +327,3 @@ class ToolsMixin:
                 str(self.chezmoi_config),
             ]
         )
-
-    def sanitize_git_config(self) -> None:
-        shared = self.chezmoi_source / "dot_gitconfig"
-        if shared.is_file():
-            system.run(
-                [
-                    sys.executable,
-                    str(self.repo / "machine/gitconfig.py"),
-                    "--shared",
-                    str(shared),
-                    "--local",
-                    str(self.home / ".gitconfig.local"),
-                ]
-            )

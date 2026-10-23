@@ -2,14 +2,9 @@
 # /// script
 # requires-python = ">=3.11,<3.14"
 # dependencies = [
-#     # Pinned exactly: the `completion` subcommand reaches into typer's
-#     # private _completion_classes/_completion_shared modules, which are not
-#     # a stable API across typer releases. Bump deliberately and re-test
-#     # `machine completion bash|zsh` before relaxing this.
-#     "typer==0.27.2",
+#     "click>=8.2,<9",
 #     "rich>=13.9",
 #     "pyyaml>=6.0",
-#     "questionary>=2.0",
 # ]
 # ///
 """Unified machine CLI: orchestrate chezmoi + ansible; host answers; Bitwarden UX."""
@@ -20,16 +15,19 @@ import subprocess
 import sys
 import types
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 # The implementation is the package next to this script (machine_cli/ in the
 # checkout). ~/.local/bin/machine is a symlink to this file, so resolving it
 # yields the checkout wherever it is.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import typer  # noqa: E402
-from typer._completion_classes import completion_init  # noqa: E402
-from typer._completion_shared import get_completion_script  # noqa: E402
+import click  # noqa: E402
+from click.shell_completion import (  # noqa: E402
+    BashComplete,
+    ZshComplete,
+    add_completion_class,
+    get_completion_class,
+)
 
 from machine_cli import core, system  # noqa: E402,F401
 from machine_cli.core import (  # noqa: E402,F401
@@ -51,20 +49,8 @@ from machine_cli.core import (  # noqa: E402,F401
 )
 from machine_cli.machine import Machine  # noqa: E402
 
-# Registers the bash/zsh completion classes typer's own shell-completion
-# dispatch needs; normally a side effect of add_completion=True, which we
-# don't want (we expose our own `completion` subcommand instead).
-completion_init()
 
-
-def _choices(values: Sequence[str]):
-    def complete(incomplete: str) -> List[str]:
-        return [value for value in values if value.startswith(incomplete)]
-
-    return complete
-
-
-def _host_names(incomplete: str) -> List[str]:
+def _host_names(ctx, param, incomplete):
     try:
         hosts = Machine().repo / "machine/hosts"
         names = [path.stem for path in hosts.glob("*.yml")]
@@ -73,118 +59,68 @@ def _host_names(incomplete: str) -> List[str]:
     return sorted(n for n in names if not n.startswith("_") and n.startswith(incomplete))
 
 
-def _offer_options_for_flag_only_commands() -> None:
-    """Typer completes options only after `-`; also offer them on an empty word
-    for commands without positional arguments (e.g. `machine setup <tab>`)."""
-    # typer vendors click as typer._click (pinned version, see header).
-    from typer.core import TyperArgument, TyperGroup
-    from typer._click.shell_completion import _resolve_context, add_completion_class
-    from typer._completion_classes import BashComplete, ZshComplete
+def _offer_options_on_empty_word(base):
+    """Click completes options only after `-`; also offer them when an empty
+    word has no other candidates (e.g. `machine setup <tab>`)."""
 
-    def extend(base):
-        class WithOptions(base):
-            def get_completions(self, args, incomplete):
-                items = super().get_completions(args, incomplete)
-                if items or incomplete:
-                    return items
-                ctx = _resolve_context(self.cli, self.ctx_args, self.prog_name, args)
-                command = ctx.command
-                if isinstance(command, TyperGroup) or any(
-                    isinstance(param, TyperArgument) for param in command.params
-                ):
-                    return items
-                return super().get_completions(args, "-")
+    class WithOptions(base):
+        def get_completions(self, args, incomplete):
+            items = super().get_completions(args, incomplete)
+            if items or incomplete:
+                return items
+            return super().get_completions(args, "-")
 
-        WithOptions.__name__ = base.__name__
-        return WithOptions
-
-    add_completion_class(extend(BashComplete), BashComplete.name)
-    add_completion_class(extend(ZshComplete), ZshComplete.name)
+    WithOptions.__name__ = base.__name__
+    return WithOptions
 
 
-try:
-    _offer_options_for_flag_only_commands()
-except (ImportError, AttributeError):
-    pass  # plain typer behaviour on a changed click/typer layout
+add_completion_class(_offer_options_on_empty_word(BashComplete), BashComplete.name)
+add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name)
 
 
-app = typer.Typer(
-    name="machine",
-    help="Dotfiles and host setup",
-    add_completion=False,
-    no_args_is_help=True,
+@click.group(name="machine", help="Dotfiles and host setup", no_args_is_help=True)
+@click.option(
+    "--debug",
+    is_flag=True,
+    envvar="DEBUG",
+    help="show every command that is run; ansible runs with -v",
 )
-
-
-@app.callback()
-def _global_options(
-    debug: bool = typer.Option(
-        False,
-        "--debug",
-        envvar="DEBUG",
-        help="show every command that is run; ansible runs with -v",
-    ),
-) -> None:
+@click.pass_context
+def app(ctx: click.Context, debug: bool) -> None:
     core.set_debug(debug)
-
-
-def _completion_script(shell: str) -> str:
-    if shell not in ("bash", "zsh"):
-        die(f"unsupported shell: {shell}")
-    complete_var = f"_{MACHINE_PROG_NAME.upper()}_COMPLETE"
-    return get_completion_script(
-        prog_name=MACHINE_PROG_NAME, complete_var=complete_var, shell=shell
-    )
+    if ctx.invoked_subcommand not in (None, "update", "completion", "help"):
+        Machine().event("usage", "invoked", ctx.invoked_subcommand)
 
 
 def _exit(code: int) -> None:
     if code:
-        raise typer.Exit(code=code)
+        raise SystemExit(code)
 
 
-def _check_choice(value: str, choices: Sequence[str], label: str) -> str:
-    if value not in choices:
-        die(f"invalid {label} {value!r} (choices: {', '.join(choices)})")
-    return value
-
-
-def _run_setup(args: types.SimpleNamespace) -> None:
-    if args.profile:
-        _check_choice(args.profile, PROFILES, "--profile")
-    for feature in args.features or []:
-        _check_choice(feature, FEATURES, "--features")
-    _check_choice(args.playbook, PLAYBOOKS, "--playbook")
-    _exit(Machine().cmd_setup(args))
+PLAYBOOK_CHOICE = click.Choice(PLAYBOOKS)
 
 
 @app.command(help="Bootstrap this host or --limit HOST")
+@click.option("--profile", type=click.Choice(PROFILES), help="machine profile")
+@click.option(
+    "--features",
+    multiple=True,
+    type=click.Choice(FEATURES),
+    help="repeat to select several",
+)
+@click.option("--yes", "--non-interactive", "yes", is_flag=True, help="non-interactive")
+@click.option("--local", is_flag=True, help="force local connection")
+@click.option("--limit", default="", help="ansible host", shell_complete=_host_names)
+@click.option("--playbook", type=PLAYBOOK_CHOICE, default="workstation")
+@click.option("--skip-ansible", is_flag=True)
+@click.option("--skip-chezmoi", is_flag=True)
+@click.option("--no-become", is_flag=True)
 def setup(
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="machine profile", autocompletion=_choices(PROFILES)
-    ),
-    features: Optional[List[str]] = typer.Option(
-        None,
-        "--features",
-        help="repeat to select several",
-        autocompletion=_choices(FEATURES),
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "--non-interactive", help="non-interactive"
-    ),
-    local: bool = typer.Option(False, "--local", help="force local connection"),
-    limit: str = typer.Option(
-        "", "--limit", help="ansible host", autocompletion=_host_names
-    ),
-    playbook: str = typer.Option(
-        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
-    ),
-    skip_ansible: bool = typer.Option(False, "--skip-ansible"),
-    skip_chezmoi: bool = typer.Option(False, "--skip-chezmoi"),
-    no_become: bool = typer.Option(False, "--no-become"),
+    profile, features, yes, local, limit, playbook, skip_ansible, skip_chezmoi, no_become
 ) -> None:
     args = types.SimpleNamespace(
         profile=profile,
-        features=features,
+        features=list(features) or None,
         yes=yes,
         local=local,
         limit=limit,
@@ -194,25 +130,24 @@ def setup(
         no_become=no_become,
         command="setup",
     )
-    _run_setup(args)
+    _exit(Machine().cmd_setup(args))
 
 
 @app.command(
     help="Run only the steps the incoming changes need (--check: show them, change nothing)"
 )
-def update(
-    apply_system: bool = typer.Option(False, "--system"),
-    force: bool = typer.Option(
-        False, "--force", help="stash local changes that overlap incoming ones"
-    ),
-    check: bool = typer.Option(False, "--check", help="read-only plan"),
-    json: bool = typer.Option(False, "--json", help="with --check: machine-readable"),
-    auto: bool = typer.Option(
-        False, "--auto", help="background mode: apply home-only changes unattended"
-    ),
-) -> None:
+@click.option("--system", "apply_system", is_flag=True)
+@click.option(
+    "--force", is_flag=True, help="stash local changes that overlap incoming ones"
+)
+@click.option("--check", is_flag=True, help="read-only plan")
+@click.option("--json", "json_", is_flag=True, help="with --check: machine-readable")
+@click.option(
+    "--auto", is_flag=True, help="background mode: apply home-only changes unattended"
+)
+def update(apply_system, force, check, json_, auto) -> None:
     args = types.SimpleNamespace(
-        system=apply_system, force=force, check=check, json=json, auto=auto
+        system=apply_system, force=force, check=check, json=json_, auto=auto
     )
     _exit(Machine().cmd_update(args))
 
@@ -220,16 +155,10 @@ def update(
 @app.command(
     help="Sync host profile + ansible (local revert on fail; --limit for remote)"
 )
-def apply(
-    limit: str = typer.Option(
-        "", "--limit", help="ansible host", autocompletion=_host_names
-    ),
-    playbook: str = typer.Option(
-        "workstation", "--playbook", autocompletion=_choices(PLAYBOOKS)
-    ),
-    no_become: bool = typer.Option(False, "--no-become"),
-) -> None:
-    _check_choice(playbook, PLAYBOOKS, "--playbook")
+@click.option("--limit", default="", help="ansible host", shell_complete=_host_names)
+@click.option("--playbook", type=PLAYBOOK_CHOICE, default="workstation")
+@click.option("--no-become", is_flag=True)
+def apply(limit, playbook, no_become) -> None:
     args = types.SimpleNamespace(limit=limit, playbook=playbook, no_become=no_become)
     _exit(Machine().cmd_apply(args))
 
@@ -237,37 +166,32 @@ def apply(
 @app.command(
     name="profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
 )
-def profile_cmd(
-    action: str = typer.Argument(
-        "show", autocompletion=_choices(["show", "sync", "save"])
-    ),
-) -> None:
-    _check_choice(action, ["show", "sync", "save"], "action")
-    args = types.SimpleNamespace(action=action)
-    _exit(Machine().cmd_profile(args))
+@click.argument("action", type=click.Choice(["show", "sync", "save"]), default="show")
+def profile_cmd(action) -> None:
+    _exit(Machine().cmd_profile(types.SimpleNamespace(action=action)))
 
 
 @app.command(name="env", help="Bitwarden -> ~/.env")
-def env_cmd(
-    action: str = typer.Argument("pull", autocompletion=_choices(["pull", "status"])),
-) -> None:
-    _check_choice(action, ["pull", "status"], "action")
+@click.argument("action", type=click.Choice(["pull", "status"]), default="pull")
+def env_cmd(action) -> None:
     cli = Machine()
-    if action == "status":
-        _exit(cli.cmd_env_status())
-    else:
-        _exit(cli.cmd_env_pull(interactive=True))
+    code = cli.cmd_env_status() if action == "status" else cli.cmd_env_pull(interactive=True)
+    if code:
+        cli.event("env", "failed", action)
+    _exit(code)
 
 
 @app.command(name="ssh", help="publish/restore per-host SSH keys")
-def ssh_cmd(
-    action: str = typer.Argument(..., autocompletion=_choices(["publish", "restore"])),
-    private: bool = typer.Option(False, "--private", help="also store private key"),
-    yes: bool = typer.Option(False, "--yes"),
-) -> None:
-    _check_choice(action, ["publish", "restore"], "action")
+@click.argument("action", type=click.Choice(["publish", "restore"]))
+@click.option("--private", is_flag=True, help="also store private key")
+@click.option("--yes", is_flag=True)
+def ssh_cmd(action, private, yes) -> None:
     args = types.SimpleNamespace(action=action, private=private, yes=yes)
-    _exit(Machine().cmd_ssh(args))
+    cli = Machine()
+    code = cli.cmd_ssh(args)
+    if code:
+        cli.event("ssh", "failed", action)
+    _exit(code)
 
 
 @app.command(help="git / chezmoi / profile")
@@ -276,11 +200,9 @@ def status() -> None:
 
 
 @app.command(help="commit tracked changes")
-def commit(
-    message: Optional[str] = typer.Option(None, "-m", "--message"),
-) -> None:
-    args = types.SimpleNamespace(message=message)
-    _exit(Machine().cmd_commit(args))
+@click.option("-m", "--message", default=None)
+def commit(message) -> None:
+    _exit(Machine().cmd_commit(types.SimpleNamespace(message=message)))
 
 
 @app.command(help="git push")
@@ -289,27 +211,24 @@ def push() -> None:
 
 
 @app.command(name="inventory", help="ansible-vault helpers")
-def inventory_cmd(
-    action: str = typer.Argument(
-        ..., autocompletion=_choices(["edit", "encrypt", "decrypt", "view"])
-    ),
-    file: str = typer.Argument(...),
-) -> None:
-    _check_choice(action, ["edit", "encrypt", "decrypt", "view"], "action")
-    args = types.SimpleNamespace(action=action, file=file)
-    _exit(Machine().cmd_inventory(args))
+@click.argument("action", type=click.Choice(["edit", "encrypt", "decrypt", "view"]))
+@click.argument("file")
+def inventory_cmd(action, file) -> None:
+    _exit(Machine().cmd_inventory(types.SimpleNamespace(action=action, file=file)))
 
 
 @app.command(name="completion", help="print bash/zsh completion")
-def completion_cmd(
-    shell: str = typer.Argument(..., autocompletion=_choices(["bash", "zsh"])),
-) -> None:
-    typer.echo(_completion_script(shell), nl=False)
+@click.argument("shell", type=click.Choice(["bash", "zsh"]))
+def completion_cmd(shell) -> None:
+    complete_var = f"_{MACHINE_PROG_NAME.upper()}_COMPLETE"
+    cls = get_completion_class(shell)
+    click.echo(cls(app, {}, MACHINE_PROG_NAME, complete_var).source(), nl=False)
 
 
 @app.command(name="help", help="show help")
-def help_cmd(ctx: typer.Context) -> None:
-    typer.echo(ctx.parent.get_help() if ctx.parent else ctx.get_help())
+@click.pass_context
+def help_cmd(ctx) -> None:
+    click.echo(ctx.parent.get_help() if ctx.parent else ctx.get_help())
 
 
 if __name__ == "__main__":

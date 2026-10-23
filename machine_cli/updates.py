@@ -6,79 +6,114 @@ import contextlib
 import fcntl
 import getpass
 import json
-import sys
 import time
 import types
 from typing import Callable, Iterator
 
-from . import system
+from . import events, local_overrides, system
 from .core import die, log, warn
-from .local_changes import classify_paths, managed_blocks, relocate_managed_blocks
+from .local_changes import classify_paths
 
-Resolver = tuple[str, str, Callable[[], None], Callable[[], bool]]
+Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
 
 
 class UpdateMixin:
-    # --- local-change resolvers -------------------------------------------
+    # --- local overrides (host-local additions in shared files) -------------
 
     def local_resolvers(self) -> list[Resolver]:
-        """(name, repo-relative path, run, pending) for expected local changes."""
+        """(name, repo-relative path, run(interactive), pending) for shared files.
+
+        `pending` is true when text can be taken out without asking (it is known
+        in the `.local` file); everything else needs the user's choice."""
+        git_shared = self.chezmoi_source / "dot_gitconfig"
+        git_local = self.home / ".gitconfig.local"
+        bash_shared = self.chezmoi_source / "dot_bashrc"
+        bash_local = self.home / ".bashrc-local"
         return [
             (
                 "host-only Git settings",
                 "home/dot_gitconfig",
-                self.sanitize_git_config,
-                self.git_config_pending,
+                self.move_git_overrides,
+                lambda: local_overrides.git_pending(git_shared, git_local),
             ),
             (
-                "externally managed blocks in .bashrc",
+                "host-local text in .bashrc",
                 "home/dot_bashrc",
-                self.relocate_bashrc_blocks,
-                self.bashrc_blocks_pending,
+                self.move_bashrc_overrides,
+                lambda: local_overrides.text_pending(bash_shared, bash_local),
             ),
         ]
 
-    def run_local_resolvers(self) -> None:
+    def run_local_resolvers(self, interactive: bool = False) -> None:
+        interactive = interactive and system.is_tty()
         for _name, _path, run, _pending in self.local_resolvers():
-            run()
+            run(interactive)
 
-    def git_config_pending(self) -> bool:
-        shared = self.chezmoi_source / "dot_gitconfig"
-        script = self.repo / "machine/gitconfig.py"
-        if not shared.is_file() or not script.is_file():
-            return False
-        result = system.run(
-            [
-                sys.executable,
-                str(script),
-                "--check",
-                "--shared",
-                str(shared),
-                "--local",
-                str(self.home / ".gitconfig.local"),
-            ],
-            capture=True,
-            check=False,
+    def _overrides_backup(self):
+        return (
+            self.state_dir / "local-overrides-backup" / time.strftime("%Y%m%d-%H%M%S")
         )
-        return result.returncode == 1
 
-    def bashrc_blocks_pending(self) -> bool:
+    def _conflict_resolver(self, interactive: bool):
+        if not interactive:
+            return None
+
+        def resolve(kind: str, key: str, shared_text: str, local_text: str) -> str:
+            print(
+                f"\nConflict in {key}:\n  shared: {shared_text.strip()}\n  local:  {local_text.strip()}"
+            )
+            return system.choose(
+                "Keep which value", ["local", "shared", "skip"], "skip"
+            )
+
+        return resolve
+
+    def _report_overrides(self, kind: str, local_name: str, report) -> None:
+        for key in report.moved:
+            log(f"moved to {local_name}: {key}")
+        if report.moved:
+            self.event("local-overrides", "moved", kind)
+        if report.removed:
+            self.event("local-overrides", "removed", kind)
+        if report.conflicts:
+            log(
+                f"WARNING: {', '.join(report.conflicts)} differs from {local_name}; "
+                "nothing changed (run `machine update` in a terminal to choose)"
+            )
+            self.event("local-overrides", "conflict", kind)
+
+    def move_git_overrides(self, interactive: bool = False) -> None:
+        shared = self.chezmoi_source / "dot_gitconfig"
+        if not shared.is_file():
+            return
+        report = local_overrides.relocate_git(
+            shared,
+            self.home / ".gitconfig.local",
+            self._overrides_backup(),
+            self._conflict_resolver(interactive),
+        )
+        self._report_overrides("gitconfig", "~/.gitconfig.local", report)
+
+    def move_bashrc_overrides(self, interactive: bool = False) -> None:
         shared = self.chezmoi_source / "dot_bashrc"
         if not shared.is_file():
-            return False
-        lines = shared.read_text(encoding="utf-8").splitlines()
-        return bool(managed_blocks(lines))
+            return
 
-    def relocate_bashrc_blocks(self) -> None:
-        shared = self.chezmoi_source / "dot_bashrc"
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        moved = relocate_managed_blocks(
+        def select(chunks):
+            labels = {c.key: f"{c.text.count(chr(10))} line(s)" for c in chunks}
+            picked = system.choose_many(
+                "Move text added to .bashrc into ~/.bashrc-local", labels, []
+            )
+            return [c for c in chunks if c.key in picked]
+
+        report = local_overrides.relocate_text(
             shared,
             self.home / ".bashrc-local",
-            self.state_dir / "bashrc-backup" / stamp,
+            self._overrides_backup(),
+            select if interactive else None,
+            self._conflict_resolver(interactive),
         )
-        for begin in moved:
-            log(f"moved to ~/.bashrc-local: {begin}")
+        self._report_overrides("bashrc", "~/.bashrc-local", report)
 
     # --- plan -------------------------------------------------------------
 
@@ -370,11 +405,25 @@ class UpdateMixin:
         if getattr(args, "auto", False):
             return self.update_auto(args)
         with self.update_lock():
-            return self._update_locked(args)
+            timer = events.Timer()
+            try:
+                code = self._update_locked(args)
+            except SystemExit:
+                self.event(
+                    "update", "failed", "force" if args.force else "", timer.seconds()
+                )
+                raise
+            self.event(
+                "update",
+                "applied" if code == 0 else "failed",
+                "force" if args.force else "",
+                timer.seconds(),
+            )
+            return code
 
     def _update_locked(self, args: types.SimpleNamespace) -> int:
         self.ensure_update_timer()
-        self.run_local_resolvers()
+        self.run_local_resolvers(interactive=True)
         plan = self.update_plan(fetch=True)
         if plan["state"] in ("diverged", "no-upstream"):
             self.write_update_state("attention", plan["blockers"][0])

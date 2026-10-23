@@ -56,19 +56,21 @@ def test_gitconfig_relocation_preserves_local_overrides_and_multivalues(tmp_path
     env.pop("CI", None)
     command = [
         "python3",
-        str(REPO / "machine/gitconfig.py"),
+        "-m",
+        "machine_cli.local_overrides",
         "--shared",
         str(shared),
         "--local",
         str(local),
     ]
     rejected = subprocess.run(
-        [*command, "--check"], env=env, capture_output=True, text=True
+        [*command, "--check"], env=env, capture_output=True, text=True, cwd=REPO
     )
     assert rejected.returncode == 1
     assert "shared@example.com" not in rejected.stdout
     assert "email = shared@example.com" in shared.read_text()
-    subprocess.run(command, env=env, check=True)
+    moved = subprocess.run(command, env=env, cwd=REPO, capture_output=True, text=True)
+    assert moved.returncode == 1 and "user.email" in moved.stdout
     assert _git(
         "config", "-f", str(local), "--get-all", "credential.helper"
     ).stdout.splitlines() == ["first", "second"]
@@ -86,12 +88,13 @@ def test_gitconfig_relocation_preserves_local_overrides_and_multivalues(tmp_path
     assert _git("config", "-f", str(shared), "alias.st").stdout.strip() == "status"
     assert local.stat().st_mode & 0o777 == 0o600
     backups = list(
-        (tmp_path / ".local/share/machine/gitconfig-backup").glob("*/gitconfig")
+        (tmp_path / ".local/share/machine/local-overrides-backup").glob("*/shared")
     )
     assert len(backups) == 1
     assert backups[0].stat().st_mode & 0o777 == 0o600
-    subprocess.run([*command, "--check"], env=env, check=True)
-    subprocess.run(command, env=env, check=True)
+    _git("config", "-f", str(shared), "--unset", "user.email")
+    subprocess.run([*command, "--check"], env=env, check=True, cwd=REPO)
+    subprocess.run(command, env=env, check=True, cwd=REPO)
     assert len(list(backups[0].parent.parent.iterdir())) == 1
 
 
@@ -101,13 +104,15 @@ def test_gitconfig_check_rejects_malformed_config(tmp_path):
     result = subprocess.run(
         [
             "python3",
-            str(REPO / "machine/gitconfig.py"),
+            "-m",
+            "machine_cli.local_overrides",
             "--check",
             "--shared",
             str(shared),
         ],
         capture_output=True,
         text=True,
+        cwd=REPO,
     )
     assert result.returncode == 1
 
@@ -120,7 +125,8 @@ def test_gitconfig_hook_in_ci_checks_without_moving_settings(tmp_path):
     result = subprocess.run(
         [
             "python3",
-            str(REPO / "machine/gitconfig.py"),
+            "-m",
+            "machine_cli.local_overrides",
             "--shared",
             str(shared),
             "--local",
@@ -129,6 +135,7 @@ def test_gitconfig_hook_in_ci_checks_without_moving_settings(tmp_path):
         env={**os.environ, "HOME": str(tmp_path), "CI": "true"},
         capture_output=True,
         text=True,
+        cwd=REPO,
     )
     assert result.returncode == 1
     assert shared.read_text() == original
@@ -146,8 +153,6 @@ def test_machine_commands_move_shared_host_settings_before_git(
     monkeypatch.delenv("CI", raising=False)
     repo = tmp_path / "repo"
     (repo / "home").mkdir(parents=True)
-    (repo / "machine").mkdir()
-    shutil.copy2(REPO / "machine/gitconfig.py", repo / "machine/gitconfig.py")
     shared = repo / "home/dot_gitconfig"
     shared.write_text("[user]\n email = work@example.com\n")
     machine.repo = repo

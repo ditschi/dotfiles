@@ -26,6 +26,7 @@ repos:
       - id: shellcheck
         args: [-e, SC1090, -e, SC1091]
         exclude_types: [zsh]
+        exclude: ^openspec/changes/[^/]+/spike/
       - id: shellcheck
         name: shellcheck (rc files without shebang)
         args: [-e, SC1090, -e, SC1091]
@@ -41,7 +42,7 @@ repos:
           - --case-indent
           - --simplify
           - --write
-        exclude: '\.bashrc'
+        exclude: '\.bashrc|^openspec/changes/[^/]+/spike/'
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
@@ -63,7 +64,7 @@ repos:
     hooks:
       - id: gitconfig-no-host-settings
         name: move host-only Git settings to ~/.gitconfig.local
-        entry: python3 machine/gitconfig.py
+        entry: python3 -m machine_cli.local_overrides
         language: system
         files: ^home/dot_gitconfig$
         pass_filenames: false

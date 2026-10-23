@@ -60,6 +60,16 @@ Keep Ansible but thin the roles; find a route for work machines without root; ru
 
 Investigation: provisioning 1-5; architecture-and-profiles A1-A6; kerberos-and-quality B1-B3.
 
+### Bitwarden CLI: evaluate `rbw` as a full replacement
+
+Only switch if `rbw` can replace `bw` completely; two tools would mean maintaining the logic twice. Until then the CLI keeps `bw` only.
+
+Spike (2026-10-22, `rbw` 1.15.0 against Vaultwarden 1.37.4): login, sync, reading secure notes and hidden fields, prefix search and a silent unlock through a scripted pinentry work. `rbw add` and `rbw edit` fail with HTTP 422 because Vaultwarden 1.37 requires `encryptedFor`; tracked upstream as `doy/rbw#385` (open, a patch and a fork exist, no release yet).
+
+Still open after that fix: `add` and `edit` only handle Login items, not secure notes with custom fields, so the SSH items would need a format migration; a silent unlock needs the master password in the keyring, which contradicts the `secret-tools` spec (owner decision).
+
+Revisit when `doy/rbw#385` is fixed and released.
+
 ## New Features
 
 ### Automatic VPN on work machines outside the corporate network

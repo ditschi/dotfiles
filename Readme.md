@@ -90,9 +90,9 @@ reports a failure rather than silently substituting an obsolete runtime.
 - Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
 - `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
 - Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
-- `machine update` and `machine commit` move host-only entries from the shared config into `~/.gitconfig.local`. Existing local overrides win; repeated values are preserved. Backups live under `~/.local/share/machine/gitconfig-backup/`.
+- `machine update` and `machine commit` move host-only entries from the shared config into `~/.gitconfig.local`. A key that is absent locally moves, an equal value is dropped from the shared file, and a different local value is a conflict that `machine update` asks about (non-interactive runs keep both and leave the shared file dirty). Repeated values are preserved. Backups live under `~/.local/share/machine/local-overrides-backup/`. Text added to `~/.bashrc` is handled the same way: known text is removed silently, new text is moved only when you select it, and moved text stands between `# machine-local begin/end` markers in `~/.bashrc-local`.
 - The installed pre-commit hook does the same before an ordinary Git commit. If it changes the shared file, review and stage the cleaned file, then commit again.
-- CI runs `python3 machine/gitconfig.py --check` and fails on committed host-only entries or invalid config. Hooks also run read-only when `CI=true`. Restricted keys include user identity/signing keys, signing settings, `safe.*`, `credential.*`, `http.*`, `https.*` and `core.sshCommand`; `user.useConfigOnly` remains shared.
+- CI runs `python3 -m machine_cli.local_overrides --check` and fails on committed host-only entries or invalid config. Hooks also run read-only when `CI=true`. Restricted keys include user identity/signing keys, signing settings, `safe.*`, `credential.*`, `http.*`, `https.*` and `core.sshCommand`; `user.useConfigOnly` remains shared.
 
 ### Project Containers
 
@@ -145,8 +145,8 @@ tests/                    # unit + Docker/CI
 ```
 
 `machine_cli/machine` is a [PEP 723](https://peps.python.org/pep-0723/)
-script (shebang `uv run --script`, Python 3.11–3.13) — its dependencies (typer, rich,
-PyYAML, questionary) are declared inline and resolved by [uv](https://astral.sh/uv) on first
+script (shebang `uv run --script`, Python 3.11–3.13) — its dependencies (click, rich,
+PyYAML) are declared inline and resolved by [uv](https://astral.sh/uv) on first
 run, no manual venv. `./bootstrap` installs `uv` itself if it's missing. `~/.local/bin/machine`
 is a symlink to it, so the checkout is found by resolving the link and can be anywhere; because
 chezmoi does not deploy the CLI, a plain `git pull` cannot leave it half updated. `machine_cli/`

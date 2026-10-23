@@ -5,10 +5,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from . import system
+from . import events, system
+from .core import parse_profile_file
 from .profile import ProfileMixin
 from .tools import ToolsMixin
-from .bitwarden import BitwardenMixin
+from .bw_client import BwClientMixin
+from .env_pull import EnvPullMixin
+from .ssh_keys import SshKeysMixin
 from .commands import CommandsMixin
 from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
@@ -17,7 +20,9 @@ from .auto_update import AutoUpdateMixin
 class Machine(
     ProfileMixin,
     ToolsMixin,
-    BitwardenMixin,
+    BwClientMixin,
+    EnvPullMixin,
+    SshKeysMixin,
     CommandsMixin,
     UpdateMixin,
     AutoUpdateMixin,
@@ -60,3 +65,26 @@ class Machine(
         )
         self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
         os.environ["DOTFILES_REPO"] = str(self.repo)
+
+    def event(
+        self,
+        event: str,
+        outcome: str,
+        reason: str = "",
+        duration: float | None = None,
+    ) -> None:
+        """Append an event to the local log; best effort."""
+        try:
+            profile = str(parse_profile_file(self.profile_path).get("profile") or "")
+            revision = self.repo_revision()
+        except Exception:
+            profile = revision = ""
+        events.record(
+            self.state_dir,
+            event,
+            outcome,
+            reason=reason,
+            duration=duration,
+            revision=revision,
+            profile=profile,
+        )

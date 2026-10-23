@@ -481,7 +481,68 @@ def test_update_refuses_second_update_while_locked(update_env, capsys):
     assert "already running" in capsys.readouterr().err
 
 
-def test_update_moves_bashrc_managed_block_to_local_file(update_env):
+BLOCK = (
+    "## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->\n"
+    "export X=1\n"
+    "## <!-- END ANSIBLE MANAGED BLOCK - colors -->\n"
+)
+
+
+@pytest.fixture
+def overrides(tmp_path):
+    _cli()
+    from machine_cli import local_overrides
+
+    shared = tmp_path / "repo/dot_bashrc"
+    shared.parent.mkdir()
+    _git("init", "-q", cwd=shared.parent)
+    shared.write_text("echo base\n")
+    _git("add", "-A", cwd=shared.parent)
+    _git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "-m",
+        "x",
+        cwd=shared.parent,
+    )
+    return local_overrides, shared, tmp_path / "bashrc-local", tmp_path / "backup"
+
+
+def test_new_text_moves_only_when_selected(overrides):
+    lo, shared, local, backup = overrides
+    shared.write_text("echo base\n" + BLOCK)
+    assert lo.relocate_text(shared, local, backup).moved == []
+    assert shared.read_text().endswith(BLOCK) and not local.exists()
+    report = lo.relocate_text(shared, local, backup, select=lambda chunks: chunks)
+    assert len(report.moved) == 1
+    assert shared.read_text() == "echo base\n"
+    assert BLOCK in local.read_text() and "machine-local begin:" in local.read_text()
+    assert list(backup.iterdir())
+
+
+def test_known_text_is_removed_silently_and_conflict_is_kept(overrides):
+    lo, shared, local, backup = overrides
+    shared.write_text("echo base\n" + BLOCK)
+    lo.relocate_text(shared, local, backup, select=lambda chunks: chunks)
+    shared.write_text("echo base\n" + BLOCK)
+    assert lo.text_pending(shared, local)
+    report = lo.relocate_text(shared, local, backup)
+    assert report.removed and shared.read_text() == "echo base\n"
+
+    changed = BLOCK.replace("X=1", "X=2")
+    shared.write_text("echo base\n" + changed)
+    report = lo.relocate_text(shared, local, backup)
+    assert report.conflicts and changed in shared.read_text()
+    assert "X=1" in local.read_text()
+    lo.relocate_text(shared, local, backup, resolve=lambda *a: "shared")
+    assert "X=2" in local.read_text() and shared.read_text() == "echo base\n"
+
+
+def test_update_removes_known_bashrc_text_without_asking(update_env):
     machine, repo, other, home, _calls = update_env
     bashrc = repo / "home/dot_bashrc"
     bashrc.write_text("echo base\n")
@@ -489,17 +550,16 @@ def test_update_moves_bashrc_managed_block_to_local_file(update_env):
     _git("commit", "-q", "-m", "bashrc", cwd=repo)
     _git("push", "-q", "origin", "HEAD:main", cwd=repo)
     _git("pull", "-q", cwd=other)
-    block = (
-        "## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->\n"
-        "export X=1\n"
-        "## <!-- END ANSIBLE MANAGED BLOCK - colors -->\n"
+    (home / ".bashrc-local").write_text(
+        "# machine-local begin: ## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->\n"
+        + BLOCK
+        + "# machine-local end: ## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->\n"
     )
-    bashrc.write_text("echo base\n" + block)
+    bashrc.write_text("echo base\n" + BLOCK)
     _push_change(other, "home/dot_new", "x\n")
 
     assert _update(machine) == 0
     assert bashrc.read_text() == "echo base\n"
-    assert (home / ".bashrc-local").read_text() == block
     assert (repo / "home/dot_new").is_file()
 
 
@@ -843,4 +903,49 @@ def test_item_to_dotenv_skips_empty_fields():
         A=1
         B=2
         C=3"""
+    )
+
+
+# --- event log ----------------------------------------------------------------
+
+
+def _events(machine) -> list[dict]:
+    path = machine.state_dir / "events.jsonl"
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_auto_update_logs_applied_and_nothing_when_up_to_date(update_env):
+    machine, _repo, other, _home, _calls = update_env
+
+    assert _auto(machine) == 0
+    assert _events(machine) == []  # nothing new, nothing logged
+
+    _push_change(other, "home/dot_new", "x\n")
+    assert _auto(machine) == 0
+    (event,) = _events(machine)
+    assert (event["event"], event["outcome"]) == ("update-auto", "applied")
+
+
+def test_auto_update_logs_revert_with_reason(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
+
+    assert _auto(machine) == 0
+    (event,) = _events(machine)
+    assert event["outcome"] == "reverted" and event["reason"] == "zsh-unhealthy"
+
+
+def test_manual_update_logs_force(update_env):
+    machine, _repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+
+    assert _update(machine, force=True) == 0
+    (event,) = _events(machine)
+    assert (event["event"], event["outcome"], event["reason"]) == (
+        "update",
+        "applied",
+        "force",
     )

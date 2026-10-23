@@ -39,7 +39,7 @@ jobs:
         run: |
           pip install -r tests/requirements.txt
       - name: Reject committed host-only Git settings
-        run: python3 machine/gitconfig.py --check
+        run: python3 -m machine_cli.local_overrides --check
       - name: Install chezmoi
         run: |
           sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"

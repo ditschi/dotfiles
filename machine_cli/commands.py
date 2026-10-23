@@ -216,7 +216,7 @@ class CommandsMixin:
         return 0
 
     def cmd_commit(self, args: types.SimpleNamespace) -> int:
-        self.sanitize_git_config()
+        self.move_git_overrides(system.is_tty())
         files = [
             "home",
             "ansible",

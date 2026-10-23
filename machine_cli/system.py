@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-import questionary
+import click
 
 from .core import (
     debug,
@@ -98,30 +98,48 @@ def hostname_short() -> str:
 def prompt_yes_no(question: str, default: bool = False) -> bool:
     if not is_tty():
         return default
-    hint = "Y/n" if default else "y/N"
-    answer = input(f"{question} [{hint}]: ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
+    return click.confirm(question, default=default)
 
 
 def choose(title: str, choices: Sequence[str], default: str) -> str:
-    """Pick one of `choices` with the arrow keys; `default` on cancel."""
-    selected = questionary.select(title, choices=list(choices), default=default).ask()
-    return selected or default
+    """Pick one of `choices` by number or name; `default` when not on a terminal."""
+    if not is_tty():
+        return default
+    for index, name in enumerate(choices, 1):
+        click.echo(f"  {index}) {name}")
+    value = click.prompt(
+        title,
+        default=default,
+        show_default=True,
+        type=click.Choice([*choices, *map(str, range(1, len(choices) + 1))]),
+        show_choices=False,
+    )
+    return choices[int(value) - 1] if value.isdigit() else value
 
 
 def choose_many(
     title: str, choices: Dict[str, str], selected: Sequence[str]
 ) -> List[str]:
-    """Tick any of `choices` ({value: help text}); the pre-selection on cancel."""
-    answer = questionary.checkbox(
-        title,
-        choices=[
-            questionary.Choice(
-                f"{name:20} {text}", value=name, checked=name in selected
-            )
-            for name, text in choices.items()
-        ],
-    ).ask()
-    return list(selected) if answer is None else answer
+    """Tick any of `choices` ({value: help text}) by number, comma separated.
+
+    Enter keeps the pre-selection (marked `*`), `-` selects nothing."""
+    if not is_tty():
+        return list(selected)
+    names = list(choices)
+    for index, name in enumerate(names, 1):
+        mark = "*" if name in selected else " "
+        click.echo(f" {mark}{index}) {name:20} {choices[name]}")
+    while True:
+        answer = click.prompt(
+            f"{title} (numbers, Enter keeps *, - for none)",
+            default="",
+            show_default=False,
+        ).strip()
+        if not answer:
+            return list(selected)
+        if answer == "-":
+            return []
+        try:
+            return [names[int(part) - 1] for part in answer.split(",") if part.strip()]
+        except (ValueError, IndexError):
+            click.echo(f"enter numbers between 1 and {len(names)}")

@@ -1,0 +1,42 @@
+== mise (mise: fzf eza fd zoxide starship atuin delta; zinit gh-r: none)
+install: 10904 ms
+online:  fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+offline: fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  start+check: 118 ms
+no eza:  fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  start+check: 293 ms
+  installed after check: atuin delta eza fd fzf starship zoxide
+no eza, no download cache:  fzf=0.74.5; eza=MISSING; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  installed after check: atuin delta fd fzf starship zoxide
+== zinit (mise: none; zinit gh-r: fzf eza fd zoxide starship atuin delta)
+install: 36407 ms
+online:  fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=MISSING; delta=0.20.1;
+
+offline: fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=MISSING; delta=0.20.1;
+
+  start+check: 116 ms
+no eza:  ==> Downloading eza-community/eza  Error: gh-r: bpick ice found no release assets To fix, modify the bpick glob pattern *x86_64-unknown-linux-gnu.tar.gz Error: gh-r: No GitHub release assets found for  fzf=0.74.5; eza=MISSING; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=MISSING; delta=0.20.1;
+
+  start+check: 150 ms
+  installed after check:
+no eza, no download cache:  ==> Downloading eza-community/eza  Error: gh-r: bpick ice found no release assets To fix, modify the bpick glob pattern *x86_64-unknown-linux-gnu.tar.gz Error: gh-r: No GitHub release assets found for  fzf=0.74.5; eza=MISSING; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=MISSING; delta=0.20.1;
+
+  installed after check:
+== mix (mise: eza fd zoxide starship atuin delta; zinit gh-r: fzf)
+install: 17557 ms
+online:  fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+offline: fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  start+check: 141 ms
+no eza:  fzf=0.74.5; eza=0.23.5; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  start+check: 238 ms
+  installed after check: atuin delta eza fd starship zoxide
+no eza, no download cache:  fzf=0.74.5; eza=MISSING; fd=10.5.0; zoxide=0.10.0; starship=1.27.0; atuin=18.24.2; delta=0.20.1;
+
+  installed after check: atuin delta fd starship zoxide

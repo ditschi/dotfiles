@@ -2,6 +2,12 @@ alias zshenv="nano $0"
 
 export PATH="$PATH:$HOME/.local/bin"
 
+# Tools of the mise fragments (fzf, zoxide, starship, ...); a host without mise skips this.
+# dot_bashrc sources this file too and activates mise for bash itself.
+if [ -n "${ZSH_VERSION:-}" ] && command -v mise >/dev/null 2>&1; then
+    eval "$(mise activate zsh)"
+fi
+
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 

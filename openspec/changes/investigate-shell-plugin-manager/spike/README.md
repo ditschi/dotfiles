@@ -13,7 +13,11 @@ Harness for the investigation `investigate-shell-plugin-manager`. Nothing here t
 | `configs/_common/` | Shared: `setup.zsh` (install + warm runs), `.zshenv`, `.zsh/common.zsh` (options, keys, zstyles, helpers), `.zsh/spike-marker.zsh` (measurement only), `starship.toml` |
 | `configs/{base-prompt,zinit,antidote,sheldon}/` | The candidates (`setup` + `skel/` copied into `$HOME`) |
 | `configs/baseline-current/` | The current dotfiles setup, staged from `home/` by `bench.sh` |
-| `bash/` | Bash variants (task 5) |
+| `check-interactive.sh` | Key-driven feature checks in tmux, writes `results/<config>.interactive.txt` |
+| `bash/` | Bash variants (`fallback.bashrc`, `full.bashrc` with ble.sh, shared `common.bash`) and `bench-bash.sh` (task 5) |
+| `prompt-capture.sh` | Renders the shared Starship prompt for zsh and bash, host and container (task 5.3) |
+| `diff-compare.sh` | diff-so-fancy vs delta (task 3.3) |
+| `tools-install.sh` | Tool installation via mise / zinit gh-r / mix, offline and missing-tool checks (task 4.1) |
 | `results/` | Raw and summarised results |
 
 Task 2.x mentions `spike/<candidate>/`; the candidates live in `spike/configs/<candidate>/` because zsh-bench expects one config directory.
@@ -26,6 +30,8 @@ ITERS=13 ./bench.sh container base-prompt zinit antidote sheldon
 ITERS=13 ./bench.sh host baseline-current zinit antidote sheldon   # temporary HOME, ~/.zshrc untouched
 python3 gen-variants.py && ./bench.sh container $(cd configs && ls -d ladder-* alt-*)
 python3 summarize.py --line results/*.raw
+./check-interactive.sh zinit antidote sheldon
+./bash/bench-bash.sh && ./prompt-capture.sh && ./diff-compare.sh && ./tools-install.sh
 ```
 
 ## What is measured

@@ -1,0 +1,14 @@
+# zsh plugins, loaded by antidote from 02_plugins.zsh. One line per plugin; the order matters.
+# kind:defer plugins are loaded by zsh-defer after the first prompt, in this order.
+# pre:/post: name hook functions defined in 02_plugins.zsh (post: of a deferred plugin is deferred too).
+romkatv/zsh-defer post:dotfiles_check_mode_defer
+mattmc3/ez-compinit post:dotfiles_after_ez_compinit
+zsh-users/zsh-completions kind:fpath path:src
+trapd00r/LS_COLORS kind:clone
+paulirish/git-open kind:path
+paulirish/git-recent kind:path
+Fakerr/git-recall kind:path post:dotfiles_after_git_recall
+Aloxaf/fzf-tab kind:defer pre:dotfiles_defer_init
+zsh-users/zsh-history-substring-search kind:defer post:_history_substring_search_config
+zsh-users/zsh-autosuggestions kind:defer post:dotfiles_after_autosuggest
+zdharma-continuum/fast-syntax-highlighting kind:defer post:dotfiles_deferred_done

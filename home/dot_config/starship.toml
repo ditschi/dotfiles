@@ -1,6 +1,9 @@
+# Shared prompt for zsh and bash. The prompt character comes from the shell module, so its
+# colour shows the shell (zsh green, bash purple); 🐳 marks a container. A failed command
+# shows in the status segment.
 format = """
 $directory$git_branch$git_status$fill$env_var$status$python$cmd_duration$time
-$character
+$container$shell
 """
 
 add_newline = false
@@ -44,7 +47,16 @@ disabled = false
 time_format = "%H:%M:%S"
 format = "[$time]($style) "
 
+[container]
+format = "[$symbol]($style)"
+symbol = "🐳 "
+
+[shell]
+disabled = false
+format = "$indicator "
+zsh_indicator = "[❯](bold green)"
+bash_indicator = "[❯](bold purple)"
+unknown_indicator = "[❯](bold yellow)"
+
 [character]
-success_symbol = "[❯](bold blue) "
-error_symbol = "[❯](bold #FF8700) "
-vimcmd_symbol = "[❮](bold blue) "
+disabled = true

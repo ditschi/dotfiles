@@ -1,0 +1,40 @@
+==> setting up user zsh-bench with ladder-defer-00-none ...
+install_ms=799.54266548156738
+install_rc=1
+warm: prompt_ms=19.951820373535156
+warm: loaded_ms=26.516199111938477 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=16.572475433349609
+warm: loaded_ms=23.506879806518555 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=18.312454223632812
+warm: loaded_ms=24.616003036499023 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=20.185232162475586
+warm: loaded_ms=26.113510131835938 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=20.653009414672852
+warm: loaded_ms=27.040243148803711 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=19.649028778076172
+warm: loaded_ms=25.802135467529297 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=20.893096923828125
+warm: loaded_ms=26.723146438598633 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=19.625186920166016
+warm: loaded_ms=25.920629501342773 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=19.608020782470703
+warm: loaded_ms=25.959491729736328 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=18.601417541503906
+warm: loaded_ms=24.465322494506836 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=18.35179328918457
+warm: loaded_ms=24.539709091186523 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=18.087625503540039
+warm: loaded_ms=24.416446685791016 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+warm: prompt_ms=18.596172332763672
+warm: loaded_ms=24.407625198364258 autosuggest=0 compsys=0 correct=1 fzf_history=0 fzf_tab=0 highlight=0 hss=0 key_accept=0 key_ctrl_r=0 key_execute=0 key_sudo=0 key_tab=0 key_up_hss=0 ls_colors=0 sudo=0 undollar=0 zoxide=0
+==> benchmarking login shell of user zsh-bench ...
+creates_tty=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_compsys=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_syntax_highlighting=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_autosuggestions=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_git_prompt=( 1 1 1 1 1 1 1 1 1 1 1 1 1 )
+first_prompt_lag_ms=( 44.130 37.636 37.459 38.835 41.885 35.255 35.460 42.971 41.464 43.762 42.042 43.594 42.068 )
+first_command_lag_ms=( 44.798 38.260 38.488 39.372 42.463 36.074 35.987 43.922 42.350 44.361 42.933 44.296 42.641 )
+command_lag_ms=( 30.235 29.983 27.221 30.864 28.233 31.677 29.194 31.154 31.997 27.794 28.624 29.299 30.621 )
+input_lag_ms=( 0.144 0.171 0.162 0.144 0.140 0.141 0.148 0.148 0.166 0.145 0.195 0.205 0.143 )
+exit_time_ms=( 9.869 10.781 10.833 9.692 10.628 8.902 9.713 9.496 10.492 9.063 8.432 10.497 10.565 )

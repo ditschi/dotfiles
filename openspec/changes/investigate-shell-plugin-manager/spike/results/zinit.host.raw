@@ -1,0 +1,39 @@
+install_ms=15800.604343414307
+install_rc=1
+warm: prompt_ms=41.407585144042969
+warm: loaded_ms=169.63934898376465 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=37.495136260986328
+warm: loaded_ms=169.63458061218262 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=35.660743713378906
+warm: loaded_ms=164.89338874816895 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=38.233518600463867
+warm: loaded_ms=171.30255699157715 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=33.023357391357422
+warm: loaded_ms=162.28652000427246 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=32.116889953613281
+warm: loaded_ms=156.097412109375 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=36.452054977416992
+warm: loaded_ms=165.6646728515625 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=38.886547088623047
+warm: loaded_ms=172.76525497436523 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=33.756732940673828
+warm: loaded_ms=155.58576583862305 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=36.832332611083984
+warm: loaded_ms=159.61980819702148 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=31.530857086181641
+warm: loaded_ms=154.60300445556641 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=29.846668243408203
+warm: loaded_ms=154.90531921386719 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=33.145666122436523
+warm: loaded_ms=162.28413581848145 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+==> benchmarking login shell of user dci2lr ...
+creates_tty=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_compsys=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_syntax_highlighting=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_autosuggestions=( 0 0 0 0 0 0 0 0 0 0 0 0 0 )
+has_git_prompt=( 1 1 1 1 1 1 1 1 1 1 1 1 1 )
+first_prompt_lag_ms=( 48.962 48.260 53.797 50.063 57.996 55.435 58.533 57.482 50.736 55.198 49.480 44.792 52.357 )
+first_command_lag_ms=( 49.651 48.967 54.475 50.791 58.692 55.863 59.001 58.218 51.433 55.885 50.155 45.514 53.042 )
+command_lag_ms=( 25.628 25.065 27.486 26.487 24.888 25.889 24.565 27.426 24.341 26.985 25.955 27.919 25.700 )
+input_lag_ms=( 4.281 4.854 6.557 6.360 4.815 4.386 4.878 4.224 4.891 6.493 6.894 6.357 4.714 )
+exit_time_ms=( 25.329 26.904 25.549 27.770 27.217 25.787 27.954 21.464 24.974 28.773 26.685 31.195 24.032 )

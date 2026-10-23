@@ -1,0 +1,78 @@
+sample: 17098 lines (git log -p -300 of zsh-autosuggestions)
+diff-so-fancy v1.4.14, delta 0.20.1
+Benchmark 1: diff-so-fancy (15 runs)
+                mean     ±       σ          min     …     max
+  Wall Time    379.1 ms  ±    99.9 ms     273.8 ms  …   612.1 ms
+  Memory         9.4 MiB ±     0.1 MiB      9.1 MiB …     9.6 MiB
+
+Benchmark 2: delta (15 runs)
+                mean     ±       σ          min     …     max
+  Wall Time    468.6 ms  ±    72.1 ms     367.2 ms  …   648.4 ms           +23.6%
+  Memory        14.0 MiB ±     0.1 MiB     13.8 MiB …    14.1 MiB          +48.1%  (1.5x more)
+
+| Command | Mean Wall Time [ms] | Change | Factor |
+|:---|---:|---:|:---|
+| `diff-so-fancy` | 379.1 ± 99.9 |  |  |
+| `delta` | 468.6 ± 72.1 | +23.6% |  |
+== diff-so-fancy (small diff, colours stripped)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+commit 11d17e7fea9fba8067f992b3d95e884c20a4069c
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Author: Joe Schaefer <joseph.schaefer@blackstone.com>
+Date:   Mon Oct 11 14:16:42 2021 -0400 (5 years ago)
+
+    Clear POSTDISPLAY instead of unsetting
+
+    We don't have any particular reason to unset. Clearing should be good
+    enough, and avoid any errors using unset parameters.
+
+    Cherry-picked from PR #634
+
+──────────────────────────┐
+modified: src/widgets.zsh │
+──────────────────────────┘
+@ src/widgets.zsh:33 @ _zsh_autosuggest_toggle() {
+# Clear the suggestion
+_zsh_autosuggest_clear() {
+	# Remove the suggestion
+	unset POSTDISPLAY
+	POSTDISPLAY=
+
+	_zsh_autosuggest_invoke_original_widget $@
+}
+@ src/widgets.zsh:50 @ _zsh_autosuggest_modify() {
+	local orig_postdisplay="$POSTDISPLAY"
+
+	# Clear suggestion while waiting for next one
+	unset POSTDISPLAY
+== delta (small diff, colours stripped)
+commit 11d17e7fea9fba8067f992b3d95e884c20a4069c
+Author: Joe Schaefer <joseph.schaefer@blackstone.com>
+Date:   Mon Oct 11 14:16:42 2021 -0400
+
+    Clear POSTDISPLAY instead of unsetting
+
+    We don't have any particular reason to unset. Clearing should be good
+    enough, and avoid any errors using unset parameters.
+
+    Cherry-picked from PR #634
+
+
+src/widgets.zsh
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────┐
+30: _zsh_autosuggest_toggle() { │
+────────────────────────────────┘
+# Clear the suggestion
+_zsh_autosuggest_clear() {
+        # Remove the suggestion
+        unset POSTDISPLAY[0K
+        POSTDISPLAY=[0K
+
+        _zsh_autosuggest_invoke_original_widget $@
+}
+
+────────────────────────────────┐
+47: _zsh_autosuggest_modify() { │
+────────────────────────────────┘

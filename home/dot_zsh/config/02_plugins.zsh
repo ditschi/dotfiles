@@ -1,94 +1,135 @@
-alias zshplugins="nano $0"
+alias zshplugins="nano ~/.zsh/plugins.txt"
 
-ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#ff00ff,bg=cyan,bold,underline"
+# Plugins are managed by antidote (https://antidote.sh) from ~/.zsh/plugins.txt.
+# Everything up to the first prompt is synchronous; fzf-tab, history-substring-search,
+# autosuggestions and fast-syntax-highlighting load afterwards through zsh-defer.
+# Tools (fzf, zoxide, eza, fd, starship, delta) come from mise and are optional.
+
+ANTIDOTE_HOME=${XDG_DATA_HOME:-$HOME/.local/share}/antidote
+_dotfiles_plugins_src=$ZSH/plugins.txt
+_dotfiles_plugins_zsh=${XDG_CACHE_HOME:-$HOME/.cache}/zsh/plugins.zsh
+
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8,bg=0,bold,underline'
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
 
-# Combined installation of multiple plugins:
-# - hcgraf/zsh-sudo
-# - zpm-zsh/undollar
-# - agkozak/zsh-z
-# - paulirish/git-open
-# - fast-syntax-highlighting
-# - zsh-autosuggestions
-# - zsh-completions
-
-# Extend undollar behaviour: also strip the ❯ prompt indicator (e.g. from
-# Starship / Powerlevel10k) when pasting copied shell commands.
-'❯'() { "$@" }
-
-zinit wait light-mode lucid for \
-  hcgraf/zsh-sudo \
-  zpm-zsh/undollar \
-  agkozak/zsh-z \
-  paulirish/git-open \
-  atinit"zicompinit; zicdreplay; source \$ZSH/config/07_machine.zsh" \
-    @zdharma-continuum/fast-syntax-highlighting \
-  atload"_zsh_autosuggest_start" \
-  atinit"bindkey '^_' autosuggest-execute;bindkey '^ ' autosuggest-accept;" \
-    @zsh-users/zsh-autosuggestions \
-  blockf atpull'zinit creinstall -q .' \
-    @zsh-users/zsh-completions
-
-zinit as"program" for \
-  paulirish/git-recent \
-  eza-community/eza
-
-zinit as"command" pick"git-recall" for Fakerr/git-recall
-
-zinit ice as"command" from"gh-r" mv"fd* -> fd" pick"fd/fd"
-zinit light sharkdp/fd
-
-# https://github.com/zdharma-continuum/zsh-diff-so-fancy
-zplugin ice as"program" pick"bin/git-dsf"
-zplugin light zdharma-continuum/zsh-diff-so-fancy
-
-# Use distro-provided fzf (installed via apt) to avoid zinit-pack build issues.
-# Source completion/key-bindings only when available on the host.
-if command -v fzf >/dev/null 2>&1; then
-  for fzf_keys in \
-    /usr/share/doc/fzf/examples/key-bindings.zsh \
-    /usr/share/fzf/key-bindings.zsh \
-    "${HOME}/.fzf/shell/key-bindings.zsh"; do
-    if [ -f "${fzf_keys}" ]; then
-      source "${fzf_keys}"
-      break
-    fi
-  done
-
-  for fzf_completion in \
-    /usr/share/doc/fzf/examples/completion.zsh \
-    /usr/share/fzf/completion.zsh \
-    "${HOME}/.fzf/shell/completion.zsh"; do
-    if [ -f "${fzf_completion}" ]; then
-      source "${fzf_completion}"
-      break
-    fi
-  done
-fi
-zinit light Aloxaf/fzf-tab
-
-# disable sort when completing `git checkout`
+# Completion (ez-compinit runs compinit from a cached dump; its own styles are off).
+zstyle ':plugin:ez-compinit' 'use-cache' 'yes'
+zstyle ':plugin:ez-compinit' 'compstyle' 'off'
+zstyle ':completion:*' menu no
 zstyle ':completion:*:git-checkout:*' sort false
-# set descriptions format to enable group support
 zstyle ':completion:*:descriptions' format '[%d]'
-# set list-colors to enable filename colorizing
-zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-# Preview directory content when completing cd.
-# Prefer eza, fallback to ls if eza isn't available.
-if command -v eza >/dev/null 2>&1; then
+# fzf-tab: preview directories when completing cd (eza when installed), switch groups with , and .
+if (( $+commands[eza] )); then
   zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
 else
   zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
 fi
-# switch group using `,` and `.`
 zstyle ':fzf-tab:*' switch-group ',' '.'
 zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
 
-zinit ice wait lucid atload'(( $+functions[_history_substring_search_config] )) && _history_substring_search_config'
-zinit light zsh-users/zsh-history-substring-search
+zstyle ':antidote:bundle' use-friendly-names on
+# -dmpr: no precmd hooks and no prompt redraw after every deferred step (+43 ms otherwise).
+zstyle ':antidote:bundle:*' defer-options '-dmpr'
 
-if command -v lua >/dev/null 2>&1 || command -v luajit >/dev/null 2>&1; then
-  zinit ice wait'!0' lucid
-  zinit light skywind3000/z.lua
+# --- Hooks named in plugins.txt ---
+
+# Health check (zsh-handoff-check.sh, DOTFILES_ZSH_CHECK=1): a `zsh -i -c` never reaches the
+# line editor, so queue the deferred steps and run them, in order, at the end of 00_LOADER.zsh.
+dotfiles_check_mode_defer() {
+  [[ -n ${DOTFILES_ZSH_CHECK-} ]] || return 0
+  typeset -ga _dotfiles_deferred=()
+  zsh-defer() {
+    local opt OPTIND=1 cmd=
+    while getopts ':12dmszprat:c:' opt; do
+      [[ $opt == c ]] && cmd=$OPTARG
+    done
+    shift $(( OPTIND - 1 ))
+    [[ -n $cmd ]] || cmd=${(j: :)${(q)@}}
+    _dotfiles_deferred+=( $cmd )
+  }
+  dotfiles_run_deferred() {
+    local cmd
+    for cmd in $_dotfiles_deferred; do eval $cmd; done
+    unset _dotfiles_deferred
+  }
+}
+
+# compinit runs in the deferred init step instead of before the first prompt.
+dotfiles_after_ez_compinit() {
+  autoload -Uz add-zsh-hook
+  add-zsh-hook -d precmd run-compinit
+}
+
+# git-recall is not executable in its repository (zinit used to chmod it). Ignore the mode
+# change in git so `antidote update` keeps pulling.
+dotfiles_after_git_recall() {
+  local f=$ANTIDOTE_HOME/Fakerr/git-recall/git-recall
+  [[ ! -f $f || -x $f ]] && return 0
+  chmod +x $f && git -C ${f:h} config core.fileMode false
+}
+
+# LS_COLORS from the trapd00r/LS_COLORS checkout, converted by dircolors and cached.
+dotfiles_lscolors() {
+  local src=$ANTIDOTE_HOME/trapd00r/LS_COLORS/LS_COLORS
+  local f=${XDG_CACHE_HOME:-$HOME/.cache}/zsh/lscolors.zsh
+  [[ -r $src ]] && (( $+commands[dircolors] )) || return 0
+  if [[ ! -s $f || $src -nt $f ]]; then
+    mkdir -p -- ${f:h}
+    dircolors -b $src >| $f
+  fi
+  source $f
+  zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+}
+
+dotfiles_deferred_init() {
+  dotfiles_lscolors
+  run-compinit
+  dotfiles_cache_eval fzf fzf --zsh
+  dotfiles_cache_eval zoxide zoxide init zsh
+}
+
+# pre: hooks run synchronously; this queues the init step in front of fzf-tab.
+dotfiles_defer_init() {
+  zsh-defer -dmpr dotfiles_deferred_init
+}
+
+dotfiles_after_autosuggest() {
+  _zsh_autosuggest_start
+  bindkey '^ ' autosuggest-accept
+  bindkey '^_' autosuggest-execute
+}
+
+# Fully loaded; checked by the handoff health check.
+dotfiles_deferred_done() {
+  typeset -g DOTFILES_ZSH_DEFERRED_LOADED=1
+}
+
+# --- Load ---
+
+if [[ ! -r $ANTIDOTE_HOME/mattmc3/antidote/antidote.zsh ]] && (( $+commands[git] )); then
+  print -P "%F{33}Installing antidote and the zsh plugins (first start)...%f"
+  git clone -q --depth 1 https://github.com/mattmc3/antidote $ANTIDOTE_HOME/mattmc3/antidote
 fi
+if [[ -r $ANTIDOTE_HOME/mattmc3/antidote/antidote.zsh ]]; then
+  source $ANTIDOTE_HOME/mattmc3/antidote/antidote.zsh
+  # Rebuild the static plugin file only when plugins.txt changed (clone progress goes to
+  # stdout). A failed build (offline) keeps the previous file and is retried next start.
+  if [[ ! -s $_dotfiles_plugins_zsh || $_dotfiles_plugins_src -nt $_dotfiles_plugins_zsh ]]; then
+    mkdir -p -- ${_dotfiles_plugins_zsh:h}
+    if antidote bundle <$_dotfiles_plugins_src 2>&1 >|$_dotfiles_plugins_zsh.new; then
+      mv -f -- $_dotfiles_plugins_zsh.new $_dotfiles_plugins_zsh
+    else
+      rm -f -- $_dotfiles_plugins_zsh.new
+    fi
+  fi
+fi
+if [[ -s $_dotfiles_plugins_zsh ]]; then
+  source $_dotfiles_plugins_zsh
+else
+  # Offline first start: built-in completion and the tool init, no plugins.
+  autoload -Uz compinit && compinit -d ${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump
+  dotfiles_cache_eval fzf fzf --zsh
+  dotfiles_cache_eval zoxide zoxide init zsh
+fi
+unset _dotfiles_plugins_src _dotfiles_plugins_zsh

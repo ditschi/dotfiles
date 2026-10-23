@@ -17,8 +17,8 @@ _zhc_stale() {
     for f in "$zsh_bin" \
         "${BASH_SOURCE[0]}" \
         "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.zshrc-local" \
-        "$HOME/.p10k.zsh" "$HOME/.preferred-shell" \
-        "$HOME/.zsh/machine-profile.sh" "$HOME"/.zsh/config/*.zsh \
+        "$HOME/.preferred-shell" "$HOME/.zsh/plugins.txt" \
+        "$HOME/.zsh/machine-profile.sh" "$HOME"/.zsh/*.sh "$HOME"/.zsh/config/*.zsh \
         "$HOME/.zsh" "$HOME/.zsh/config"; do # directories: a removed or renamed file changes their mtime
         [ "$f" -nt "$state" ] && return 0
     done
@@ -50,7 +50,8 @@ _zhc_run_checks() {
     local stdin_src=/dev/null
     [ -t 0 ] && stdin_src=/dev/tty
     # shellcheck disable=SC2016  # expanded by the inner zsh
-    DOTFILES_ZSH_CHECK=1 $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0}"' >"$out" 2>"$err" <"$stdin_src"
+    # DOTFILES_ZSH_CHECK=1 makes the deferred plugins load during the start (see 02_plugins.zsh).
+    DOTFILES_ZSH_CHECK=1 $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" <"$stdin_src"
     rc=$?
     if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
         reason="zsh startup timed out"
@@ -60,6 +61,8 @@ _zhc_run_checks() {
         reason="zsh printed errors on startup: $(head -n 1 "$err")"
     elif ! grep -q 'DOTFILES_ZSH_LOADED=1' "$out"; then
         reason="zsh config did not load completely"
+    elif ! grep -q 'DOTFILES_ZSH_DEFERRED_LOADED=1' "$out"; then
+        reason="zsh plugins did not load completely"
     fi
     rm -rf "$tmp"
     [ -z "$reason" ] && return 0
@@ -74,9 +77,11 @@ dotfiles_zsh_handoff_ok() {
         _zhc_report "zsh is not installed"
         return 1
     }
-    # First start on a fresh machine: zsh bootstraps zinit and plugins itself, which is
+    # First start on a fresh machine: zsh clones antidote and the plugins itself, which is
     # slow and must not be mistaken for a failure. Hand over and check next time.
-    [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git" ] || return 0
+    # Old zinit data alone does not count: the host is fresh for antidote.
+    [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/antidote/mattmc3/antidote" ] || return 0
+    [ -s "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/plugins.zsh" ] || return 0
     state=$(_zhc_state_file)
     [ -e "$HOME/.dotfiles-update-available" ] && marker=1
 

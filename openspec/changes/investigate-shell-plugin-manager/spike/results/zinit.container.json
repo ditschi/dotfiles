@@ -1,6 +1,6 @@
 {
   "name": "zinit",
-  "install_ms": 16857.7,
+  "install_ms": 20359.6,
   "install_rc": 1,
   "features": {
     "autosuggest": "1",
@@ -26,38 +26,38 @@
   "has_autosuggestions": 0,
   "has_git_prompt": 1,
   "first_prompt_lag_ms": {
-    "median": 77.55,
-    "p90": 86.22,
+    "median": 64.52,
+    "p90": 71.6,
     "n": 10
   },
   "first_command_lag_ms": {
-    "median": 78.64,
-    "p90": 86.94,
+    "median": 66.38,
+    "p90": 72.72,
     "n": 10
   },
   "command_lag_ms": {
-    "median": 39.68,
-    "p90": 47.93,
+    "median": 34.74,
+    "p90": 38.39,
     "n": 10
   },
   "input_lag_ms": {
-    "median": 6.85,
-    "p90": 8.23,
+    "median": 6.54,
+    "p90": 7.52,
     "n": 10
   },
   "exit_time_ms": {
-    "median": 27.46,
-    "p90": 41.49,
+    "median": 27.0,
+    "p90": 34.62,
     "n": 10
   },
   "warm_prompt_ms": {
-    "median": 41.36,
-    "p90": 46.85,
+    "median": 38.31,
+    "p90": 43.63,
     "n": 10
   },
   "warm_loaded_ms": {
-    "median": 211.64,
-    "p90": 238.73,
+    "median": 182.2,
+    "p90": 196.81,
     "n": 10
   }
 }

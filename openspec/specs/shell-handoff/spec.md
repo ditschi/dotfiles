@@ -46,7 +46,7 @@ The handoff SHALL NOT depend on changing the account's login shell. Changing it 
 - **THEN** zsh is reached through the bash handoff
 
 ### Requirement: Handoff health check
-Before handing an interactive bash session over to zsh, the system SHALL verify that zsh is executable, that `~/.zshrc` and the zsh loader are present and readable, and that a login interactive zsh starts without error output.
+Before handing an interactive bash session over to zsh, the system SHALL verify that zsh is executable, that `~/.zshrc` and the zsh loader are present and readable, and that a login interactive zsh starts without error output. The trial start SHALL also run the deferred plugin part, so that an error in a deferred plugin is detected.
 
 #### Scenario: zsh is not installed
 - **WHEN** the handoff is about to run and no zsh executable is found
@@ -62,6 +62,10 @@ Before handing an interactive bash session over to zsh, the system SHALL verify 
 
 #### Scenario: Plain or partially loaded zsh
 - **WHEN** zsh starts but the dotfiles config did not load completely (for example the loader or theme/plugin setup aborted)
+- **THEN** it is treated as a failure, the session stays in bash, and the diagnostic names the incomplete load
+
+#### Scenario: Deferred plugin fails
+- **WHEN** a deferred plugin writes an error or does not finish loading during the trial start
 - **THEN** it is treated as a failure, the session stays in bash, and the diagnostic names the incomplete load
 
 #### Scenario: Everything healthy
@@ -80,10 +84,17 @@ The system SHALL store the check outcome (pass or fail, and the failing check) i
 - **THEN** the session stays in bash and the diagnostic is shown again without re-running the trial start
 
 ### Requirement: Cache invalidation
-The system SHALL discard the cached outcome and re-run the checks when the zsh binary path or version changes, when `~/.zshrc`, `~/.zsh/config/*.zsh`, `~/.zsh/machine-profile.sh` or `~/.preferred-shell` change, or when the dotfiles are updated.
+The system SHALL discard the cached outcome and re-run the checks when any of the following happens:
+- the zsh binary path or version changes;
+- `~/.zshenv`, `~/.zshrc`, `~/.zsh/config/*.zsh`, the zsh plugin list, `~/.zsh/machine-profile.sh` or `~/.preferred-shell` changes;
+- the dotfiles are updated.
 
 #### Scenario: Config edited after failure
 - **WHEN** a zsh config file is modified after a cached failure
+- **THEN** the next interactive bash start re-runs the checks
+
+#### Scenario: Plugin list edited
+- **WHEN** the zsh plugin list is modified after a cached pass
 - **THEN** the next interactive bash start re-runs the checks
 
 #### Scenario: Config file removed or renamed
@@ -106,15 +117,19 @@ The health check SHALL run only for sessions that would hand over to zsh anyway,
 - **THEN** the health check does not run
 
 ### Requirement: Fresh hosts are not judged
-If the zinit installation directory does not exist, the system SHALL skip the trial start, hand over to zsh and cache no outcome, so that the first start can install the plugins.
+If the zsh plugin manager or its generated plugin file does not exist, the system SHALL skip the trial start, hand over to zsh and cache no outcome, so that the first start can install the plugins.
 
 #### Scenario: First start on a fresh host
-- **WHEN** the handoff runs and zinit is not installed yet
+- **WHEN** the handoff runs and antidote or its generated plugin file is not present yet
 - **THEN** the session is handed over to zsh and no outcome is cached
 
 #### Scenario: Check resumes after installation
-- **WHEN** zinit is installed on a later start
+- **WHEN** antidote and its generated plugin file exist on a later start
 - **THEN** the health check runs as usual
+
+#### Scenario: Old zinit data only
+- **WHEN** a host still has `~/.local/share/zinit` but no antidote
+- **THEN** it is treated as a fresh host
 
 ### Requirement: Slow or hanging trial start is inconclusive
 The trial start SHALL be aborted after a generous timeout used only as a hang guard. A timeout SHALL NOT be cached as a failure: the session stays in bash for that start and the check runs again on the next start.

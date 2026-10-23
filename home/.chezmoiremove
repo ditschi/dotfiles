@@ -1,2 +1,4 @@
 {{- /* The CLI package is no longer deployed by chezmoi; it runs from the checkout. */ -}}
 .local/lib/machine_cli
+{{- /* Powerlevel10k was replaced by Starship (adopt-antidote-starship). */}}
+.p10k.zsh

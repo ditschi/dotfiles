@@ -5,3 +5,108 @@ zinit                    zb-prompt   77.5/86.2  prompt   41.4/46.9  loaded 211.6
 ==> antidote (container)
 antidote                 zb-prompt  55.6/145.0  prompt   27.6/37.3  loaded 125.6/178.7  cmd 52.0/137.7  input  8.8/12.7  install    4505  ok
 ==> sheldon (container)
+==> setting up user zsh-bench with sheldon ...
+install_ms=9058.0387115478516
+install_rc=1
+warm: prompt_ms=29.36244010925293
+warm: loaded_ms=149.74021911621094 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=22.724151611328125
+warm: loaded_ms=161.3314151763916 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=25.557518005371094
+warm: loaded_ms=185.0435733795166 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=30.321598052978516
+warm: loaded_ms=198.12393188476562 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=48.679113388061523
+warm: loaded_ms=254.88448143005371 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=54.069995880126953
+warm: loaded_ms=227.44655609130859 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=48.696041107177734
+warm: loaded_ms=229.9354076385498 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=61.34796142578125
+warm: loaded_ms=199.98693466186523 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=35.669565200805664
+warm: loaded_ms=151.56030654907227 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=27.94957160949707
+warm: loaded_ms=146.76189422607422 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=28.258562088012695
+warm: loaded_ms=143.58305931091309 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=28.249979019165039
+warm: loaded_ms=128.11779975891113 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+warm: prompt_ms=30.365705490112305
+warm: loaded_ms=140.94448089599609 autosuggest=1 compsys=1 correct=1 fzf_history=1 fzf_tab=1 highlight=1 hss=1 key_accept=1 key_ctrl_r=1 key_execute=1 key_sudo=1 key_tab=1 key_up_hss=1 ls_colors=1 sudo=1 undollar=1 zoxide=1
+==> benchmarking login shell of user zsh-bench ...
+zsh-bench: SIGTERM: cleaning up...
+FAILED: sheldon
+==> baseline-current (host)
+baseline-current         zb-prompt     8.3/9.2  prompt 507.5/542.4  loaded 947.3/979.4  cmd  19.1/20.9  input   6.5/7.0  install   56252  missing:correct,key_tab,zoxide
+==> base-prompt (host)
+base-prompt              zb-prompt   53.3/56.5  prompt   38.9/41.4  loaded   32.9/35.3  cmd  24.6/25.5  input   0.1/0.2  install     322  missing:autosuggest,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> zinit (host)
+zinit                    zb-prompt   53.8/58.0  prompt   33.5/38.2  loaded 160.9/171.3  cmd  25.9/27.4  input   4.9/6.5  install   15801  ok
+==> antidote (host)
+antidote                 zb-prompt   36.4/40.4  prompt   22.8/24.5  loaded  99.3/102.2  cmd  25.1/26.1  input   4.5/6.2  install    5990  ok
+==> sheldon (host)
+sheldon                  zb-prompt   35.1/40.3  prompt   20.6/21.9  loaded   93.5/95.9  cmd  25.5/26.5  input   4.3/6.3  install    3221  ok
+==> alt-atuin (container)
+alt-atuin                zb-prompt   42.7/45.0  prompt   18.4/19.4  loaded  97.7/107.4  cmd  31.2/33.0  input   4.4/6.6  install    3224  missing:key_ctrl_r
+==> alt-compinit-uncached (container)
+alt-compinit-uncached    zb-prompt   38.3/45.6  prompt   18.9/20.6  loaded  95.5/100.2  cmd  31.8/35.4  input   4.8/6.7  install    5814  ok
+==> alt-mise-activate (container)
+alt-mise-activate        zb-prompt   60.5/63.3  prompt   36.7/38.6  loaded 109.3/115.3  cmd  34.7/35.7  input   4.5/6.6  install    4294  ok
+==> alt-mise-shims (container)
+alt-mise-shims           zb-prompt   41.0/44.8  prompt   18.8/20.2  loaded   93.7/98.0  cmd  31.8/33.7  input   4.3/5.6  install    3789  ok
+==> alt-p10k (container)
+alt-p10k                 zb-prompt     7.4/7.8  prompt   64.6/73.8  loaded 136.1/142.1  cmd   9.1/10.0  input   7.5/8.5  install   19990  ok
+==> alt-z-lua (container)
+alt-z-lua                zb-prompt   43.1/44.5  prompt   18.6/19.7  loaded 102.6/107.7  cmd  31.3/33.5  input   4.6/6.6  install    5422  missing:zoxide
+==> alt-zsh-defer-defaults (container)
+alt-zsh-defer-defaults   zb-prompt   37.2/41.5  prompt   15.8/16.9  loaded 135.1/141.1  cmd  28.7/29.4  input   4.3/6.5  install    4054  ok
+==> alt-zsh-syntax-highlighting (container)
+alt-zsh-syntax-highlighting zb-prompt   40.8/43.4  prompt   19.5/20.5  loaded   76.3/80.7  cmd  30.9/33.4  input 14.7/17.3  install    2514  ok
+==> alt-zsh-z (container)
+alt-zsh-z                zb-prompt   40.7/43.2  prompt   17.4/19.1  loaded   93.0/97.7  cmd  31.6/34.8  input   5.5/6.7  install    3486  missing:zoxide
+==> ladder-defer-00-none (container)
+ladder-defer-00-none     zb-prompt   42.0/43.6  prompt   19.6/20.6  loaded   25.9/26.7  cmd  30.0/31.7  input   0.1/0.2  install     800  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,ls_colors,sudo,undollar,zoxide
+==> ladder-defer-01-completions (container)
+ladder-defer-01-completions zb-prompt   40.5/43.3  prompt   19.3/20.2  loaded   25.4/26.9  cmd  30.6/32.5  input   0.1/0.1  install    2189  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,ls_colors,sudo,undollar,zoxide
+==> ladder-defer-02-ls-colors (container)
+ladder-defer-02-ls-colors zb-prompt   41.1/43.2  prompt   18.9/20.1  loaded   26.0/26.9  cmd  30.0/32.8  input   0.1/0.1  install    5235  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-defer-03-compinit (container)
+ladder-defer-03-compinit zb-prompt   37.0/42.2  prompt   17.6/18.6  loaded   43.3/46.0  cmd  30.4/32.4  input   0.1/0.2  install    3275  missing:autosuggest,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-defer-04-fzf (container)
+ladder-defer-04-fzf      zb-prompt   39.0/42.2  prompt   18.6/20.6  loaded   46.1/52.0  cmd  30.8/31.2  input   0.1/0.2  install    2003  missing:autosuggest,fzf_tab,highlight,hss,key_accept,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-defer-05-zoxide (container)
+ladder-defer-05-zoxide   zb-prompt   38.6/43.3  prompt   18.1/18.9  loaded   45.7/47.8  cmd  30.4/32.0  input   0.1/0.2  install    2326  missing:autosuggest,fzf_tab,highlight,hss,key_accept,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar
+==> ladder-defer-06-fzf-tab (container)
+ladder-defer-06-fzf-tab  zb-prompt   36.9/40.7  prompt   19.5/20.2  loaded   52.5/55.5  cmd  29.6/31.1  input   0.2/0.2  install    2094  missing:autosuggest,highlight,hss,key_accept,key_execute,key_sudo,key_up_hss,sudo,undollar
+==> ladder-defer-07-sudo (container)
+ladder-defer-07-sudo     zb-prompt   41.6/44.4  prompt   18.7/19.6  loaded   51.7/54.5  cmd  28.8/31.3  input   0.1/0.2  install    2157  missing:autosuggest,highlight,hss,key_accept,key_execute,key_up_hss,undollar
+==> ladder-defer-08-undollar (container)
+ladder-defer-08-undollar zb-prompt   40.4/43.7  prompt   18.8/20.2  loaded   52.7/56.8  cmd  30.4/31.5  input   0.1/0.2  install    2227  missing:autosuggest,highlight,hss,key_accept,key_execute,key_up_hss
+==> ladder-defer-09-hss (container)
+ladder-defer-09-hss      zb-prompt   43.0/46.3  prompt   18.2/19.2  loaded   52.4/53.6  cmd  30.7/31.6  input   0.2/0.3  install    8752  missing:autosuggest,key_accept,key_execute
+==> ladder-defer-10-autosuggest (container)
+ladder-defer-10-autosuggest zb-prompt   41.8/44.1  prompt   19.3/21.2  loaded   74.5/79.3  cmd  31.1/31.3  input   1.4/1.4  install    2226  ok
+==> ladder-defer-11-fsh (container)
+ladder-defer-11-fsh      zb-prompt   42.4/44.4  prompt   17.7/19.1  loaded   87.9/91.4  cmd  33.2/36.7  input   5.0/6.7  install   10579  ok
+==> ladder-sync-00-none (container)
+ladder-sync-00-none      zb-prompt   46.3/49.5  prompt   24.5/26.1  loaded   18.1/19.9  cmd  29.8/31.7  input   0.1/0.2  install    1145  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,ls_colors,sudo,undollar,zoxide
+==> ladder-sync-01-completions (container)
+ladder-sync-01-completions zb-prompt   46.3/49.5  prompt   24.2/25.5  loaded   17.9/18.9  cmd  30.4/33.6  input   0.1/0.2  install    4237  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,ls_colors,sudo,undollar,zoxide
+==> ladder-sync-02-ls-colors (container)
+ladder-sync-02-ls-colors zb-prompt   45.7/50.2  prompt   24.6/25.9  loaded   18.4/19.7  cmd  30.5/32.6  input   0.2/0.2  install    3222  missing:autosuggest,compsys,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-sync-03-compinit (container)
+ladder-sync-03-compinit  zb-prompt   63.1/67.6  prompt   42.4/43.8  loaded   35.5/37.4  cmd  31.4/33.7  input   0.2/0.2  install    3153  missing:autosuggest,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-sync-04-fzf (container)
+ladder-sync-04-fzf       zb-prompt   66.0/70.7  prompt   46.7/60.6  loaded   39.3/53.3  cmd  31.4/33.3  input   0.2/0.2  install    1953  missing:autosuggest,fzf_tab,highlight,hss,key_accept,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar,zoxide
+==> ladder-sync-05-zoxide (container)
+ladder-sync-05-zoxide    zb-prompt   67.5/71.4  prompt   45.3/47.0  loaded   38.4/40.2  cmd  33.8/34.5  input   0.2/0.2  install    8913  missing:autosuggest,fzf_tab,highlight,hss,key_accept,key_execute,key_sudo,key_tab,key_up_hss,sudo,undollar
+==> ladder-sync-06-fzf-tab (container)
+ladder-sync-06-fzf-tab   zb-prompt   72.6/76.4  prompt   49.4/51.4  loaded   42.4/44.8  cmd  32.2/34.5  input   0.2/0.2  install    3075  missing:autosuggest,highlight,hss,key_accept,key_execute,key_sudo,key_up_hss,sudo,undollar
+==> ladder-sync-07-sudo (container)
+ladder-sync-07-sudo      zb-prompt   73.5/79.9  prompt   47.2/49.8  loaded   40.7/43.2  cmd  33.5/34.5  input   0.2/0.2  install    2347  missing:autosuggest,highlight,hss,key_accept,key_execute,key_up_hss,undollar
+==> ladder-sync-08-undollar (container)
+ladder-sync-08-undollar  zb-prompt   72.5/78.7  prompt   49.7/52.2  loaded   42.5/45.6  cmd  33.1/39.0  input   0.2/0.2  install    3063  missing:autosuggest,highlight,hss,key_accept,key_execute,key_up_hss
+==> ladder-sync-09-hss (container)
+ladder-sync-09-hss       zb-prompt   72.7/84.9  prompt   49.9/52.0  loaded   43.5/45.3  cmd  32.6/35.8  input   0.3/0.3  install    2708  missing:autosuggest,key_accept,key_execute
+==> ladder-sync-10-autosuggest (container)

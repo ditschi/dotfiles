@@ -9,11 +9,6 @@ __pycache__
 .zsh/config/01_work_ldap_helpers.zsh
 {{- end }}
 
-{{- if or (eq .profile "rpi-zero") (eq .profile "container") }}
-.p10k.zsh
-.config/starship.toml
-{{- end }}
-
 {{- if eq .profile "container" }}
 .config/systemd
 {{- end }}

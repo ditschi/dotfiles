@@ -1,0 +1,6 @@
+==> zinit (container)
+zinit                    zb-prompt   64.5/71.6  prompt   38.3/43.6  loaded 182.2/196.8  cmd  34.7/38.4  input   6.5/7.5  install   20360  ok
+==> antidote (container)
+antidote                 zb-prompt   43.9/47.8  prompt   22.2/24.8  loaded 106.7/109.3  cmd  34.3/35.7  input   5.0/6.8  install    4093  ok
+==> sheldon (container)
+sheldon                  zb-prompt   42.5/47.7  prompt   19.8/22.4  loaded   92.4/99.3  cmd  33.5/37.2  input   4.5/6.5  install    3054  ok

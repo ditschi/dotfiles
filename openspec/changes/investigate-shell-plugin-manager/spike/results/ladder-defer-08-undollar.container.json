@@ -1,0 +1,63 @@
+{
+  "name": "ladder-defer-08-undollar",
+  "install_ms": 2226.6,
+  "install_rc": 1,
+  "features": {
+    "autosuggest": "0",
+    "compsys": "1",
+    "correct": "1",
+    "fzf_history": "1",
+    "fzf_tab": "1",
+    "highlight": "0",
+    "hss": "0",
+    "key_accept": "0",
+    "key_ctrl_r": "1",
+    "key_execute": "0",
+    "key_sudo": "1",
+    "key_tab": "1",
+    "key_up_hss": "0",
+    "ls_colors": "1",
+    "sudo": "1",
+    "undollar": "1",
+    "zoxide": "1"
+  },
+  "has_compsys": 0,
+  "has_syntax_highlighting": 0,
+  "has_autosuggestions": 0,
+  "has_git_prompt": 1,
+  "first_prompt_lag_ms": {
+    "median": 40.36,
+    "p90": 43.72,
+    "n": 10
+  },
+  "first_command_lag_ms": {
+    "median": 41.02,
+    "p90": 44.6,
+    "n": 10
+  },
+  "command_lag_ms": {
+    "median": 30.43,
+    "p90": 31.47,
+    "n": 10
+  },
+  "input_lag_ms": {
+    "median": 0.15,
+    "p90": 0.16,
+    "n": 10
+  },
+  "exit_time_ms": {
+    "median": 10.62,
+    "p90": 11.23,
+    "n": 10
+  },
+  "warm_prompt_ms": {
+    "median": 18.81,
+    "p90": 20.17,
+    "n": 10
+  },
+  "warm_loaded_ms": {
+    "median": 52.69,
+    "p90": 56.81,
+    "n": 10
+  }
+}

@@ -23,9 +23,10 @@ if [ "$1 $2 $3" != "-l -i -c" ]; then
     exit 0
 fi
 case "$(cat "$HOME/mode")" in
-    ok) echo "DOTFILES_ZSH_LOADED=1" ;;
-    plain) echo "DOTFILES_ZSH_LOADED=0" ;;
-    noisy) echo "some error" >&2; echo "DOTFILES_ZSH_LOADED=1" ;;
+    ok) echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=1" ;;
+    plain) echo "DOTFILES_ZSH_LOADED=0 DOTFILES_ZSH_DEFERRED_LOADED=0" ;;
+    nodefer) echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=0" ;;
+    noisy) echo "some error" >&2; echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=1" ;;
     crash) exit 3 ;;
     hang) sleep 30 ;;
 esac
@@ -39,7 +40,10 @@ def env(tmp_path: Path):
     (home / ".zsh/config/00_LOADER.zsh").write_text("")
     (home / ".zshrc").write_text("")
     (home / "mode").write_text("ok")
-    (home / ".local/share/zinit/zinit.git").mkdir(parents=True)
+    (home / ".zsh/plugins.txt").write_text("")
+    (home / ".local/share/antidote/mattmc3/antidote").mkdir(parents=True)
+    (home / ".cache/zsh").mkdir(parents=True)
+    (home / ".cache/zsh/plugins.zsh").write_text("# generated")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for tool in TOOLS:
@@ -50,7 +54,12 @@ def env(tmp_path: Path):
     zsh.write_text(STUB)
     zsh.chmod(0o755)
     old = time.time() - 100
-    for path in (home / ".zshrc", home / ".zsh/config/00_LOADER.zsh", zsh):
+    for path in (
+        home / ".zshrc",
+        home / ".zsh/config/00_LOADER.zsh",
+        home / ".zsh/plugins.txt",
+        zsh,
+    ):
         os.utime(path, (old, old))
     environ = {
         "HOME": str(home),
@@ -92,7 +101,8 @@ def test_healthy_zsh_passes(env):
 @pytest.mark.parametrize(
     ("mode", "expected"),
     [
-        ("plain", "did not load completely"),
+        ("plain", "config did not load completely"),
+        ("nodefer", "plugins did not load completely"),
         ("noisy", "printed errors on startup: some error"),
         ("crash", "failed to start (exit 3)"),
     ],
@@ -124,13 +134,36 @@ def test_hanging_zsh_times_out(env):
     assert "rc=0" in check(environ).stdout
 
 
-def test_fresh_machine_without_zinit_hands_off_unchecked(env):
+@pytest.mark.parametrize("missing", ["antidote", "generated"])
+def test_fresh_machine_without_antidote_hands_off_unchecked(env, missing):
     home, _, environ = env
-    shutil.rmtree(home / ".local/share/zinit")
+    if missing == "antidote":
+        shutil.rmtree(home / ".local/share/antidote")
+    else:
+        (home / ".cache/zsh/plugins.zsh").unlink()
     (home / "mode").write_text("crash")
     result = check(environ)
     assert "rc=0" in result.stdout
     assert trial_calls(home) == 0
+
+
+def test_only_old_zinit_data_counts_as_fresh(env):
+    home, _, environ = env
+    shutil.rmtree(home / ".local/share/antidote")
+    (home / ".local/share/zinit/zinit.git").mkdir(parents=True)
+    (home / "mode").write_text("crash")
+    assert "rc=0" in check(environ).stdout
+    assert trial_calls(home) == 0
+
+
+def test_failed_deferred_plugins_are_cached(env):
+    home, _, environ = env
+    (home / "mode").write_text("nodefer")
+    first = check(environ)
+    assert "rc=1" in first.stdout and "plugins did not load completely" in first.stderr
+    again = check(environ)
+    assert "rc=1" in again.stdout and "plugins did not load completely" in again.stderr
+    assert trial_calls(home) == 1
 
 
 def test_cached_pass_and_failure_skip_trial_start(env):
@@ -150,7 +183,13 @@ def test_cached_pass_and_failure_skip_trial_start(env):
 
 @pytest.mark.parametrize(
     "watched",
-    [".zshrc", ".zsh/config/00_LOADER.zsh", ".preferred-shell", "bin/zsh"],
+    [
+        ".zshrc",
+        ".zsh/config/00_LOADER.zsh",
+        ".zsh/plugins.txt",
+        ".preferred-shell",
+        "bin/zsh",
+    ],
 )
 def test_watched_file_change_triggers_recheck(env, watched):
     home, bin_dir, environ = env

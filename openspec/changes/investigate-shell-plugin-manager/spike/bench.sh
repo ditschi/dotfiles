@@ -16,7 +16,7 @@ mkdir -p "$results"
 run_container() {
     local cfg=$1
     docker run --rm -u root -v "$here/configs:/spike/configs:ro" shell-spike:local \
-        timeout 1200 /opt/zsh-bench/zsh-bench --isolation user --config-dir /spike/configs \
+        timeout 600 /opt/zsh-bench/zsh-bench --isolation user --config-dir /spike/configs \
         --iters "$iters" --raw "$cfg"
 }
 
@@ -41,7 +41,7 @@ run_host() {
         env -u ZDOTDIR -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_CONFIG_HOME HOME="$home" \
             "$here/configs/$cfg/setup"
         env -u ZDOTDIR -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_CONFIG_HOME HOME="$home" \
-            timeout 1200 "$zb/zsh-bench" --iters "$iters" --raw
+            timeout 600 "$zb/zsh-bench" --iters "$iters" --raw
     )
     rm -rf -- "$home"
 }
@@ -63,7 +63,9 @@ stage_baseline() {
 for cfg in "$@"; do
     [[ $cfg == baseline-current ]] && stage_baseline
     echo "==> $cfg ($mode)" >&2
-    out=$("run_$mode" "$cfg" 2>&1) || {
+    # zsh-bench occasionally hangs in one of its own iterations (seen once for sheldon in the
+    # container); the run is then killed by `timeout` and retried once.
+    out=$("run_$mode" "$cfg" 2>&1) || out=$("run_$mode" "$cfg" 2>&1) || {
         echo "$out" >&2
         echo "FAILED: $cfg" >&2
         continue

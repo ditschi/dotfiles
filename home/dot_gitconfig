@@ -134,8 +134,12 @@
 [core]
     preloadindex = true
     autocrlf = input
-    # Conditionally set the pager if diff-so-fancy is available
-    pager = "sh -c 'command -v diff-so-fancy > /dev/null 2>&1 && diff-so-fancy | less -FXRi || command -v less > /dev/null 2>&1 && less -FXRi || cat'"
+    # delta (from mise) when installed, else less, else plain output
+    pager = "sh -c 'if command -v delta >/dev/null 2>&1; then delta; elif command -v less >/dev/null 2>&1; then less -FXRi; else cat; fi'"
+[interactive]
+    diffFilter = "sh -c 'if command -v delta >/dev/null 2>&1; then delta --color-only; else cat; fi'"
+[delta]
+    navigate = true
 
 [gc]
     auto = 256

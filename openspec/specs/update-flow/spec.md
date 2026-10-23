@@ -6,7 +6,7 @@ Defines how a user learns about dotfiles updates and how `machine update` applie
 ## Requirements
 
 ### Requirement: Update hint at shell start
-Interactive zsh and bash SHALL show the update state as a persistent prompt segment: update available, updated and shell reload needed, or needs attention. A shell started after the update was applied SHALL show nothing. At shell start a one-line message SHALL be printed only for needs-attention. The segment SHOULD follow state changes in an open shell, re-evaluated after each command without reloading the shell, as long as this stays lightweight and the prompt stays fast. The shell SHALL NOT run the update check itself, so that startup stays fast.
+Interactive zsh and bash SHALL show the update state as a persistent prompt segment: update available, updated and shell reload needed, or needs attention. The shell SHALL NOT run the update check itself, so that startup stays fast.
 
 #### Scenario: Update available
 - **WHEN** an update is pending and not applied automatically and a zsh starts
@@ -32,8 +32,20 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **WHEN** the update state changes while a shell is open
 - **THEN** the prompt segment shows the new state after the next command
 
+#### Scenario: Fresh shell shows nothing
+- **WHEN** a shell is started after the update was applied
+- **THEN** no segment is shown
+
+#### Scenario: Message only for needs-attention
+- **WHEN** a shell starts
+- **THEN** a one-line message is printed only for needs-attention
+
+#### Scenario: Segment follows state changes
+- **WHEN** the state changes in an open shell
+- **THEN** the segment is re-evaluated after each command without reloading the shell, as long as the prompt stays fast
+
 ### Requirement: Explicit update
-`machine update` SHALL fast-forward the checkout, sync the host profile and apply the setup, applying the dotfile groups and the user-space tools before Ansible. System changes and host-profile changes SHALL stay explicit: they are not applied without the user running the command. The background job MAY fast-forward a clean checkout to the upstream tip and apply the dotfile groups and the user-space tools; it SHALL only report pending system changes, and only when the changed files apply to this host (see "Relevant system changes only").
+`machine update` SHALL fast-forward the checkout, sync the host profile and apply the setup, applying the dotfile groups and the user-space tools before Ansible. System changes and host-profile changes SHALL stay explicit.
 
 #### Scenario: Clean fast-forward
 - **WHEN** a user runs `machine update` on a clean checkout that is behind its upstream
@@ -54,6 +66,14 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 #### Scenario: Blocked automatic update
 - **WHEN** local changes remain that block the fast-forward
 - **THEN** nothing is applied and the state is needs-attention with the reason
+
+#### Scenario: System changes are not applied implicitly
+- **WHEN** system or host-profile changes are pending
+- **THEN** they are not applied without the user running the command
+
+#### Scenario: Background job limits
+- **WHEN** the background job runs on a clean checkout
+- **THEN** it MAY fast-forward to the upstream tip and apply the dotfile groups and user-space tools, and it SHALL only report pending system changes that apply to this host (see "Relevant system changes only")
 
 ### Requirement: Update never discards local work
 `machine update` SHALL first remove text that the local-overrides helper already knows from shared files, then fast-forward without touching local changes. It SHALL stop and report why only when a locally changed file is also changed upstream or the history diverged. Other local changes SHALL be a notice. `--force` overrides a stop.
@@ -101,7 +121,7 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **THEN** the CLI reports an unknown command
 
 ### Requirement: Targeted update
-`machine update` SHALL determine from the files that differ between the current and the target revision which steps are needed and run only those: added, removed or renamed files in a group and changes to the group selection need the dotfile apply; a changed tool fragment or lockfile needs the tool install; changes to the content of existing home files need only a shell refresh; changes to `ansible/**` or packages need the system step; a changed host profile needs the profile apply; changes to `machine_cli/` need nothing extra.
+`machine update` SHALL determine from the files that differ between the current and the target revision which steps are needed and run only those.
 
 #### Scenario: Only a shell file changed
 - **WHEN** the incoming changes touch only the content of existing shell configuration files
@@ -114,6 +134,10 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 #### Scenario: Several commits
 - **WHEN** the target revision is several commits ahead
 - **THEN** the steps are decided from the file difference to the target and not from each commit
+
+#### Scenario: Step per kind of change
+- **WHEN** files differ between the revisions
+- **THEN** added, removed or renamed group files and group selection changes need the dotfile apply; a changed tool fragment or lockfile needs the tool install; changed content of existing home files needs only a shell refresh; `ansible/**` or package changes need the system step; a changed host profile needs the profile apply; `machine_cli/` changes need nothing extra
 
 ### Requirement: Read-only update check
 `machine update --check` SHALL show the changed areas, the steps that would run, the local changes and the blockers without changing anything, and SHALL offer `--json` for the background job. `machine status` SHALL use the same result.

@@ -1,7 +1,7 @@
 # user-tools Specification
 
 ## Purpose
-TBD - created by archiving change adopt-mise. Update Purpose after archive.
+User tools can be installed without root, so that the dotfiles setup has every tool that its plugins and other functionality need. Dotfiles and the needed tools are then updated in one go, without manual user actions and without running Ansible.
 
 ## Requirements
 

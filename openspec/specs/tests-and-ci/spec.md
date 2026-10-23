@@ -6,7 +6,7 @@ Defines the local test commands, the CI jobs and what is deliberately left out o
 ## Requirements
 
 ### Requirement: Local test commands
-The repository SHALL offer `uvx nox` (compile, unit tests, Ansible syntax and lint, Docker smoke), `pytest tests/unit` (CLI logic, git config, host profiles, packages, update and env), Docker integration tests per profile, and APT and Ansible idempotence tests (`-m apt`, `-m apt_gnome`). The Docker tests SHALL support `DOTFILES_TEST_INSECURE_TLS=1`, which skips TLS verification in the test image and containers only, for hosts that intercept TLS. It SHALL be on by default on work machines and off by default elsewhere; an explicit `0` or `1` overrides the default.
+The repository SHALL offer `uvx nox` (compile, unit tests, Ansible syntax and lint, Docker smoke), `pytest tests/unit` (CLI logic, git config, host profiles, packages, update and env), Docker integration tests per profile, and APT and Ansible idempotence tests (`-m apt`, `-m apt_gnome`).
 
 #### Scenario: Running the unit tests
 - **WHEN** a user runs `pytest tests/unit`
@@ -27,6 +27,14 @@ The repository SHALL offer `uvx nox` (compile, unit tests, Ansible syntax and li
 #### Scenario: Default verification
 - **WHEN** the host is not a work machine and the variable is not set
 - **THEN** the test image and containers verify TLS as usual
+
+#### Scenario: Insecure TLS for intercepting hosts
+- **WHEN** `DOTFILES_TEST_INSECURE_TLS=1` is set, or the host is a work machine and the variable is unset
+- **THEN** the Docker tests skip TLS verification in the test image and containers only
+
+#### Scenario: Explicit override
+- **WHEN** `DOTFILES_TEST_INSECURE_TLS` is `0` or `1`
+- **THEN** it overrides the default, which is off outside work machines
 
 ### Requirement: CI jobs
 The CI workflow `verify.yml` SHALL run the unit tests and Ansible syntax on amd64 and arm, a Docker profile matrix, a clean install, APT runs, `pre-commit`, `ansible-lint` and host YAML validation on relevant changes.

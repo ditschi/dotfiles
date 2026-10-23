@@ -58,7 +58,7 @@ A user SHALL be able to override the identity in one repository with `git user-w
 - **THEN** the repository-local include selects the work identity and wins over the owner rules
 
 ### Requirement: Host-only keys stay out of the shared file
-Host-only keys (identity, signing, `safe.*`, `credential.*`, `http(s).*`, `core.sshCommand`) SHALL be kept out of the shared file. `machine update`, `machine commit` and a pre-commit hook SHALL move them to `~/.gitconfig.local` through the local-overrides helper when the value is equal to or absent from the local file. A key with a different value in the local file SHALL be a conflict that the user resolves interactively with the helper; the local value is never overwritten silently. CI SHALL fail when a host-only key is in the shared file.
+Host-only keys (identity, signing, `safe.*`, `credential.*`, `http(s).*`, `core.sshCommand`) SHALL be kept out of the shared file. `machine update`, `machine commit` and a pre-commit hook SHALL move them to `~/.gitconfig.local` through the local-overrides helper.
 
 #### Scenario: Host-only key in the shared file
 - **WHEN** a host-only key appears in the shared file
@@ -71,3 +71,15 @@ Host-only keys (identity, signing, `safe.*`, `credential.*`, `http(s).*`, `core.
 #### Scenario: Key re-added with a different value
 - **WHEN** a host-only key reappears in the shared file with a value that differs from `~/.gitconfig.local`
 - **THEN** the local value is kept, a conflict is recorded and the user chooses which value to keep
+
+#### Scenario: Equal or absent value is moved
+- **WHEN** a host-only key in the shared file has a value equal to or absent from the local file
+- **THEN** the helper moves it to `~/.gitconfig.local`
+
+#### Scenario: Different local value is a conflict
+- **WHEN** a host-only key has a different value in the local file
+- **THEN** the user resolves it interactively with the helper and the local value is never overwritten silently
+
+#### Scenario: CI guards the shared file
+- **WHEN** a host-only key is in the shared file
+- **THEN** CI fails

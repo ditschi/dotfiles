@@ -1,6 +1,4 @@
-# Azure CLI for the work profile (replaces the Ansible role az_cli).
-# A locked pipx install needs a mise-managed interpreter.
+# uv for the work profile. The Azure CLI is installed with `uv tool install azure-cli` by
+# `machine update` (feature azure-cli), so no mise-managed Python is put on PATH.
 [tools]
-python = "3.13"
 uv = "latest"
-"pipx:azure-cli" = "latest"

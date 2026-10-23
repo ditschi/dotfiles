@@ -14,9 +14,9 @@ checksum = "sha256:24eacc8a20fd7c4616566178562bef7f9344eb4a8700cfc3180fa75a6ff9d
 url = "https://conda.anaconda.org/conda-forge/linux-aarch64/c-ares-1.34.9-h29ee22c_0.conda"
 checksum = "sha256:76683c88b796b7d72ef5d675e86d3b9959d2af1c78343e9ba2ff041d5029e06d"
 
-[conda-packages.linux-arm64."ca-certificates-2026.10.19-hbd8a1cb_0"]
-url = "https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.10.19-hbd8a1cb_0.conda"
-checksum = "sha256:9404ee878c6bd5b260655ab651366db43fac6be8d465fcc0acd0f7a50be91acb"
+[conda-packages.linux-arm64."ca-certificates-2026.10.23-hbd8a1cb_0"]
+url = "https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.10.23-hbd8a1cb_0.conda"
+checksum = "sha256:95619b9c1184be7175392eeb0ee7eeb5ccf25d280951f4225f2d62e725790be3"
 
 [conda-packages.linux-arm64."icu-78.3-py311h3512406_2"]
 url = "https://conda.anaconda.org/conda-forge/linux-aarch64/icu-78.3-py311h3512406_2.conda"
@@ -114,9 +114,9 @@ checksum = "sha256:1a0d382c515ebf55f8ee1f38c8b81bc95af5c2acc42ad53b66bc5df932032
 url = "https://conda.anaconda.org/conda-forge/linux-64/c-ares-1.34.9-hebe6cf0_0.conda"
 checksum = "sha256:bd95dd25b80b5c4faf5349542377bf89b2794e23d0f7aa7f1c431e4f3b633f3c"
 
-[conda-packages.linux-x64."ca-certificates-2026.10.19-hbd8a1cb_0"]
-url = "https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.10.19-hbd8a1cb_0.conda"
-checksum = "sha256:9404ee878c6bd5b260655ab651366db43fac6be8d465fcc0acd0f7a50be91acb"
+[conda-packages.linux-x64."ca-certificates-2026.10.23-hbd8a1cb_0"]
+url = "https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.10.23-hbd8a1cb_0.conda"
+checksum = "sha256:95619b9c1184be7175392eeb0ee7eeb5ccf25d280951f4225f2d62e725790be3"
 
 [conda-packages.linux-x64."icu-78.3-py310h44b86e0_2"]
 url = "https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-py310h44b86e0_2.conda"
@@ -246,7 +246,7 @@ conda_deps = [
     "zstd-1.5.7-h9d15635_7",
     "_openmp_mutex-4.5-20_gnu",
     "libgomp-16.2.0-h8acb6b2_7",
-    "ca-certificates-2026.10.19-hbd8a1cb_0",
+    "ca-certificates-2026.10.23-hbd8a1cb_0",
     "bzip2-1.0.8-h4777abc_10",
     "keyutils-1.6.3-h5bc82ec_1",
     "libedit-3.1.20260512-pl5321hc48eb74_0",
@@ -277,7 +277,7 @@ conda_deps = [
     "zstd-1.5.7-hb78ec9c_7",
     "_openmp_mutex-4.5-20_gnu",
     "libgomp-16.2.0-he0feb66_7",
-    "ca-certificates-2026.10.19-hbd8a1cb_0",
+    "ca-certificates-2026.10.23-hbd8a1cb_0",
     "bzip2-1.0.8-hda65f42_10",
     "keyutils-1.6.3-h7cc23a3_1",
     "libedit-3.1.20260512-pl5321h373387f_0",
@@ -365,19 +365,19 @@ url_api = "https://api.github.com/repos/cli/cli/releases/assets/662956379"
 provenance = "github-attestations"
 
 [[tools.git-lfs]]
-version = "3.8.0"
+version = "3.8.1"
 backend = "aqua:git-lfs/git-lfs"
 specifiers = ["latest"]
 
 [tools.git-lfs."platforms.linux-arm64"]
-checksum = "sha256:ac9c8efac980bb0505ead384d087e2acb6486fd8498691a2165fa174ec6118c2"
-url = "https://github.com/git-lfs/git-lfs/releases/download/v3.8.0/git-lfs-linux-arm64-v3.8.0.tar.gz"
-url_api = "https://api.github.com/repos/git-lfs/git-lfs/releases/assets/532993825"
+checksum = "sha256:67895dd77b63329796bc5efdd47b57f218e1f7b98717ebaf936a8238dbcaec0f"
+url = "https://github.com/git-lfs/git-lfs/releases/download/v3.8.1/git-lfs-linux-arm64-v3.8.1.tar.gz"
+url_api = "https://api.github.com/repos/git-lfs/git-lfs/releases/assets/666388648"
 
 [tools.git-lfs."platforms.linux-x64"]
-checksum = "sha256:e455e00f15d9b95661b8d53498ffb0c3367962cf1ec73c31ab7369516cd6ab8d"
-url = "https://github.com/git-lfs/git-lfs/releases/download/v3.8.0/git-lfs-linux-amd64-v3.8.0.tar.gz"
-url_api = "https://api.github.com/repos/git-lfs/git-lfs/releases/assets/532993734"
+checksum = "sha256:e72cf723a4a660438862282e8aecf3885fc8123e88bfcad534cf6b941a354b75"
+url = "https://github.com/git-lfs/git-lfs/releases/download/v3.8.1/git-lfs-linux-amd64-v3.8.1.tar.gz"
+url_api = "https://api.github.com/repos/git-lfs/git-lfs/releases/assets/666388433"
 
 [[tools.jq]]
 version = "1.8.2"
@@ -422,31 +422,10 @@ backend = "npm:@fission-ai/openspec"
 specifiers = ["latest"]
 
 [[tools."npm:@github/copilot"]]
-version = "1.0.102"
-aube = { path = ".mise/locks/npm-github-copilot/1.0.102", digest = "sha256:c5caa7e0812b9a89b1e1480c84d5ee22aea2272784f78e3e2891d49fb22e749b" }
+version = "1.0.103"
+aube = { path = ".mise/locks/npm-github-copilot/1.0.103", digest = "sha256:389f6fbc1f36bfc26492b8aa36c4377fd52ce4c95400b3b8bce064bb8433d1d9" }
 backend = "npm:@github/copilot"
 specifiers = ["latest"]
-
-[[tools."pipx:azure-cli"]]
-version = "2.91.0"
-backend = "pipx:azure-cli"
-specifiers = ["latest"]
-uv = { path = ".mise/locks/pipx-azure-cli/2.91.0", digest = "sha256:827a8dcbd06bc2f2fe9ce5c4ef8a81ec5dd3551c53743d7852652d5870c2378d" }
-
-[[tools.python]]
-version = "3.13.17"
-backend = "core:python"
-specifiers = ["3.13"]
-
-[tools.python."platforms.linux-arm64"]
-checksum = "sha256:c6857c65b996701a5da104cbb49b35249c0c026dc0664239b04f7156aa88326a"
-url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.13.17+20261021-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
-provenance = "github-attestations"
-
-[tools.python."platforms.linux-x64"]
-checksum = "sha256:f829adc9d888e76c8801b4799ed444188d35239fcae3a9808a99ec5cb0d8d92c"
-url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.13.17+20261021-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
-provenance = "github-attestations"
 
 [[tools.starship]]
 version = "1.27.0"

@@ -35,7 +35,7 @@
 - [ ] 3.5 Add `machine attention`, also run by plain `machine` without arguments: list all open items from the state file and the local-overrides helper and guide through each with the toolkit's prompts; background runs only record items. Verify unit tests for each item type and that no prompt happens non-interactively.
 - [ ] 3.6 Verify end to end on a throwaway clone: an upstream commit with a home change, one with a lockfile change and one with an `ansible/**` change produce the specified state, and a dirty checkout produces needs-attention.
 
-- [ ] 3.7 End `machine update` with the converge check: `mise install` for missing tools, the dotfile apply with prune, and a fresh shell when run interactively (a function in the shell config that runs `exec` on the current shell after `machine update` succeeds, since a child process cannot reload its parent). Verify unit tests for "Nothing incoming but a tool is missing", "Link missing" and "Fresh shell after the update" (shell part in `tests/unit/test_zsh_handoff.py`).
+- [ ] 3.7 End `machine update` with the converge check: `mise install` for missing tools, `uv tool install azure-cli --python-preference only-managed` when the `azure-cli` feature is on and `az` is missing (`uv tool upgrade azure-cli` otherwise), the dotfile apply with prune, and a fresh shell when run interactively (a function in the shell config that runs `exec` on the current shell after `machine update` succeeds, since a child process cannot reload its parent). Verify unit tests for "Nothing incoming but a tool is missing", "Link missing" and "Fresh shell after the update" (shell part in `tests/unit/test_zsh_handoff.py`).
 
 ## 4. Documentation and final checks
 

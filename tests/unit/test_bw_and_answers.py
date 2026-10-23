@@ -364,7 +364,7 @@ def test_container_ignores_saved_profile_unless_overridden(tmp_path, monkeypatch
 
 def test_company_user_regex_is_identical_in_cli_and_shell():
     pattern = "[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}"
-    assert pattern in (REPO / "home/dot_zsh/machine-profile.sh").read_text()
+    assert pattern in (REPO / "home/core/.zsh/machine-profile.sh").read_text()
     assert pattern in (REPO / "machine_cli/profile.py").read_text()
 
 
@@ -387,7 +387,7 @@ def test_shell_profile_follows_docker_rule(tmp_path, saved, env, user, expected)
     profile = tmp_path / ".config/machine/profile.yml"
     profile.parent.mkdir(parents=True)
     profile.write_text(f"---\nprofile: {saved}\n")
-    script = REPO / "home/dot_zsh/machine-profile.sh"
+    script = REPO / "home/core/.zsh/machine-profile.sh"
     result = subprocess.run(
         [
             "sh",

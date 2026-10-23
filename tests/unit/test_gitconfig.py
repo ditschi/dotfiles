@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -9,8 +8,8 @@ import pytest
 
 from package_sets import REPO
 
-SHARED = REPO / "home/dot_gitconfig"
-HELPER = REPO / "home/dot_local/bin/executable_git-credential-env"
+SHARED = REPO / "home/core/.gitconfig"
+HELPER = REPO / "home/core/.local/bin/git-credential-env"
 TOKEN_VARS = ("GITHUB_TOKEN", "BDC_GITHUB_TOKEN", "GITHUB_PRIVATE_TOKEN")
 WORK = "christian.ditscher@de.bosch.com"
 PRIVATE = "chris@ditscher.me"
@@ -152,11 +151,12 @@ def test_machine_commands_move_shared_host_settings_before_git(
     cli, machine = isolated_machine(tmp_path, monkeypatch)
     monkeypatch.delenv("CI", raising=False)
     repo = tmp_path / "repo"
-    (repo / "home").mkdir(parents=True)
-    shared = repo / "home/dot_gitconfig"
+    (repo / "home/core").mkdir(parents=True)
+    shared = repo / "home/core/.gitconfig"
     shared.write_text("[user]\n email = work@example.com\n")
     machine.repo = repo
     machine.chezmoi_source = repo / "home"
+    machine.core_source = repo / "home/core"
     real_run = cli.system.run
     calls = []
 
@@ -180,7 +180,7 @@ def test_machine_commands_move_shared_host_settings_before_git(
         assert any("commit" in args for args in calls)
 
 
-@pytest.mark.skipif(shutil.which("chezmoi") is None, reason="chezmoi not installed")
+@pytest.mark.skip(reason="chezmoi template removed; replaced by the task 2.4 tests")
 @pytest.mark.parametrize(
     "profile, email",
     [
@@ -321,7 +321,7 @@ def git_home(tmp_path: Path):
         "[credential]\n    helper = store\n"
     )
     (home / ".config/git").mkdir(parents=True)
-    for snippet in (REPO / "home/dot_config/git").iterdir():
+    for snippet in (REPO / "home/core/.config/git").iterdir():
         (home / ".config/git" / snippet.name).symlink_to(snippet)
     (home / ".local/bin").mkdir(parents=True)
     (home / ".local/bin/git-credential-env").symlink_to(HELPER)
@@ -468,7 +468,7 @@ def test_credential_helper_reads_dotenv_when_env_is_empty(git_home):
     home, repo, env = git_home
     (home / ".zsh/config").mkdir(parents=True)
     (home / ".zsh/config/01_env.zsh").symlink_to(
-        REPO / "home/dot_zsh/config/01_env.zsh"
+        REPO / "home/core/.zsh/config/01_env.zsh"
     )
     dotenv = home / ".env"
     dotenv.write_text(

@@ -369,7 +369,7 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 | `machine` CLI | Orchestration, UX, secrets, git, calling chezmoi |
 | chezmoi | Dotfiles |
 | Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
-| mise | User-space tools without root (`home/dot_config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
+| mise | User-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Inventory | Reachability only — no features |
 
 Work modules (`01_work.zsh`) are only linked for profile `work-machine`.
@@ -390,7 +390,7 @@ manual Compose setup. The work profile does not enable Docker by default.
 
 User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `gh`,
 `yazi`, Node, the LLM CLIs and OpenSpec, Azure CLI) come from mise fragments in
-`home/dot_config/mise/conf.d/`. Versions are pinned in `home/dot_config/mise/mise.lock`
+`home/core/.config/mise/conf.d/`. Versions are pinned in `home/core/.config/mise/mise.lock`
 and `.mise/locks/` next to it; regenerate them with
 `mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
 A tool declared in two fragments, or in a fragment and an Ansible package list,

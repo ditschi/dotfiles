@@ -12,7 +12,7 @@ from machine_cli import mise_check  # noqa: E402
 
 def _repo(tmp_path, fragments, packages):
     for name, body in fragments.items():
-        path = tmp_path / "home" / "dot_config" / "mise" / "conf.d" / name
+        path = tmp_path / "home" / "core" / ".config" / "mise" / "conf.d" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(textwrap.dedent(body))
     group_vars = tmp_path / "ansible" / "group_vars"

@@ -10,8 +10,8 @@ import pytest
 
 from package_sets import REPO
 
-HELPER = REPO / "home/dot_zsh/zsh-handoff-check.sh"
-BASHRC = REPO / "home/dot_bashrc"
+HELPER = REPO / "home/core/.zsh/zsh-handoff-check.sh"
+BASHRC = REPO / "home/core/.bashrc"
 TOOLS = ("mktemp", "head", "rm", "mkdir", "timeout", "ps", "tr", "cat", "sleep", "grep")
 
 STUB = """\
@@ -278,7 +278,7 @@ def test_bash_has_no_generic_update_hint(env):
     assert "Hint: Dotfiles update available" not in run_bashrc(environ).stdout
 
 
-STATE_SH = REPO / "home/dot_zsh/update-state.sh"
+STATE_SH = REPO / "home/core/.zsh/update-state.sh"
 
 
 def write_state(home: Path, state: str, reason: str = "", revision: str = "r1") -> None:

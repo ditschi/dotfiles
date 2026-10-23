@@ -25,20 +25,20 @@ class UpdateMixin:
 
         `pending` is true when text can be taken out without asking (it is known
         in the `.local` file); everything else needs the user's choice."""
-        git_shared = self.chezmoi_source / "dot_gitconfig"
+        git_shared = self.core_source / ".gitconfig"
         git_local = self.home / ".gitconfig.local"
-        bash_shared = self.chezmoi_source / "dot_bashrc"
+        bash_shared = self.core_source / ".bashrc"
         bash_local = self.home / ".bashrc-local"
         return [
             (
                 "host-only Git settings",
-                "home/dot_gitconfig",
+                "home/core/.gitconfig",
                 self.move_git_overrides,
                 lambda: local_overrides.git_pending(git_shared, git_local),
             ),
             (
                 "host-local text in .bashrc",
-                "home/dot_bashrc",
+                "home/core/.bashrc",
                 self.move_bashrc_overrides,
                 lambda: local_overrides.text_pending(bash_shared, bash_local),
             ),
@@ -83,7 +83,7 @@ class UpdateMixin:
             self.event("local-overrides", "conflict", kind)
 
     def move_git_overrides(self, interactive: bool = False) -> None:
-        shared = self.chezmoi_source / "dot_gitconfig"
+        shared = self.core_source / ".gitconfig"
         if not shared.is_file():
             return
         report = local_overrides.relocate_git(
@@ -95,7 +95,7 @@ class UpdateMixin:
         self._report_overrides("gitconfig", "~/.gitconfig.local", report)
 
     def move_bashrc_overrides(self, interactive: bool = False) -> None:
-        shared = self.chezmoi_source / "dot_bashrc"
+        shared = self.core_source / ".bashrc"
         if not shared.is_file():
             return
 

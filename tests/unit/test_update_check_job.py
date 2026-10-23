@@ -10,7 +10,7 @@ import pytest
 
 from package_sets import REPO
 
-JOB = REPO / "home/dot_local/bin/executable_dotfiles-update-check-job"
+JOB = REPO / "home/core/.local/bin/dotfiles-update-check-job"
 
 
 def _git(*args: str, cwd: Path) -> None:

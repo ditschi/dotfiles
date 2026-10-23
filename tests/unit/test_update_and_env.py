@@ -544,7 +544,8 @@ def test_known_text_is_removed_silently_and_conflict_is_kept(overrides):
 
 def test_update_removes_known_bashrc_text_without_asking(update_env):
     machine, repo, other, home, _calls = update_env
-    bashrc = repo / "home/dot_bashrc"
+    (repo / "home/core").mkdir(parents=True, exist_ok=True)
+    bashrc = repo / "home/core/.bashrc"
     bashrc.write_text("echo base\n")
     _git("add", "-A", cwd=repo)
     _git("commit", "-q", "-m", "bashrc", cwd=repo)
@@ -726,7 +727,7 @@ def test_env_pull_preserves_local_session_and_load_order(
             '. "$1" >/dev/null; printf "%s\\n" "$LAYER" "$HOST_ONLY" '
             '"$GITHUB_PRIVATE_TOKEN" "$BW_SESSION" "$NODE_USE_ENV_PROXY"',
             "_",
-            str(REPO / "home/dot_zsh/config/01_env.zsh"),
+            str(REPO / "home/core/.zsh/config/01_env.zsh"),
         ],
         env={"HOME": str(home), "PATH": os.environ["PATH"]},
         check=True,

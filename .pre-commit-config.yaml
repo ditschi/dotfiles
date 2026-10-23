@@ -33,7 +33,7 @@ repos:
       - id: shellcheck
         name: shellcheck (rc files without shebang)
         args: [-e, SC1090, -e, SC1091]
-        files: ^home/dot_(bashrc|profile)$
+        files: ^home/core/\.(bashrc|profile)$
         types: [text]
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.10.0-2
@@ -70,7 +70,7 @@ repos:
         name: move host-only Git settings to ~/.gitconfig.local
         entry: python3 -m machine_cli.local_overrides
         language: system
-        files: ^home/dot_gitconfig$
+        files: ^home/core/\.gitconfig$
         pass_filenames: false
       - id: mise-tools-declared-once
         name: mise tools are declared once (fragments and Ansible packages)

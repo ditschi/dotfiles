@@ -204,7 +204,7 @@ def test_apply_reverts_profile_synced_by_update(tmp_path, monkeypatch, passed_st
 def test_sde_prefers_repository_script_and_uses_shared_fallback(tmp_path, shell):
     if not shutil.which(shell):
         pytest.skip(f"{shell} unavailable")
-    source = (REPO / "home/dot_zsh/config/01_work.zsh").read_text()
+    source = (REPO / "home/work/.zsh/config/01_work.zsh").read_text()
     body = source.split("sde() {", 1)[1].split("\n}\n", 1)[0]
     tools = tmp_path / "bin"
     tools.mkdir()
@@ -270,7 +270,7 @@ def test_shared_sde_one_off_commands_and_extended_mounts(tmp_path, extended, ima
         "#!/bin/bash\nprintf 'PROJECT_VALUE=present\\n' > .env\n"
     )
     log = tmp_path / "docker.jsonl"
-    command = ["bash", str(REPO / "home/dot_local/bin/executable_sde")]
+    command = ["bash", str(REPO / "home/core/.local/bin/sde")]
     if extended:
         command.append("--extended")
     command.extend(["--", "printf", "%s", "argument with spaces", "$(not-executed)"])
@@ -364,7 +364,7 @@ def test_shared_sde_interactive_reuse_and_rebuild(
         "CONTAINER_MODE": label,
         "DOTFILES_REPO": str(REPO),
     }
-    command = ["bash", str(REPO / "home/dot_local/bin/executable_sde")]
+    command = ["bash", str(REPO / "home/core/.local/bin/sde")]
     if extended:
         command.append("--extended")
     master, slave = pty.openpty()

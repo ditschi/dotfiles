@@ -31,6 +31,7 @@ class Machine(
         self.home = Path.home()
         self.repo = system.detect_repo()
         self.chezmoi_source = self.repo / "home"
+        self.core_source = self.repo / "home" / "core"
         self.ansible_dir = self.repo / "ansible"
         self.host_profiles_dir = self.repo / "machine" / "hosts"
         # Path to local cache. Do not use MACHINE_PROFILE — zsh exports that as the

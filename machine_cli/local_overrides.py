@@ -385,7 +385,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description="Keep host-only Git settings out of the shared Git config."
     )
     parser.add_argument("--check", action="store_true")
-    parser.add_argument("--shared", type=Path, default=Path("home/dot_gitconfig"))
+    parser.add_argument("--shared", type=Path, default=Path("home/core/.gitconfig"))
     parser.add_argument("--local", type=Path, default=Path.home() / ".gitconfig.local")
     args = parser.parse_args(argv)
     backup = (

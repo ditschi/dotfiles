@@ -23,6 +23,7 @@ RUN apt-get update \
     && case "$UBUNTU_VERSION" in 24.04) ;; *) apt-get install -y --no-install-recommends sudo-rs ;; esac \
     && rm -rf /var/lib/apt/lists/* \
     && if [ "$INSECURE_TLS" = 1 ]; then echo insecure >/root/.curlrc; fi \
+    && curl -fsSL https://mise.run | MISE_VERSION=v2026.10.17 MISE_INSTALL_PATH=/usr/local/bin/mise sh \
     && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
     && mkdir -p /usr/share/ansible/collections \
     && ansible-galaxy collection install ansible.posix \

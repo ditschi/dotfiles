@@ -46,6 +46,10 @@ Dotfiles SHALL be organised in groups, each a directory of the repository. A hos
 - **WHEN** an update deletes a file from a selected group
 - **THEN** its link is removed from the home directory without a separate remove list
 
+#### Scenario: Existing regular file at a target
+- **WHEN** a target already exists as a regular file, for example a distribution's default `~/.bashrc`
+- **THEN** it is moved aside to `<name>.pre-dotfiles` (never deleted or overwritten) and the link is created; a link pointing elsewhere into the checkout is replaced
+
 ## MODIFIED Requirements
 
 ### Requirement: The machine CLI is not deployed by the dotfile tool

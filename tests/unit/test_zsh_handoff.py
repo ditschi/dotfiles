@@ -211,10 +211,10 @@ def test_removed_config_file_triggers_recheck(env):
     assert trial_calls(home) == 2
 
 
-def test_update_marker_and_reset(env):
+def test_pending_update_flag_and_reset(env):
     home, _, environ = env
     check(environ)
-    (home / ".dotfiles-update-available").touch()
+    (home / ".dotfiles-update-state").write_text("state=available\npending=1\n")
     check(environ)
     assert trial_calls(home) == 2
     result = check(environ, "zsh-recheck")
@@ -274,7 +274,7 @@ def test_bash_has_no_generic_update_hint(env):
     home, _, environ = env
     install_helper(home)
     (home / "mode").write_text("plain")
-    (home / ".dotfiles-update-available").touch()
+    (home / ".dotfiles-update-state").write_text("state=available\npending=1\n")
     assert "Hint: Dotfiles update available" not in run_bashrc(environ).stdout
 
 
@@ -339,3 +339,53 @@ def test_indicator_follows_state_in_open_shell(shell, tmp_path):
     back = write_state_cmd(tmp_path, "none", "r1")
     write_state(tmp_path, "attention", "x")
     assert "SEG=" in indicator(shell, tmp_path, back)
+
+
+def run_machine_function(
+    shell: str, tmp_path: Path, exit_code: int, *args: str, tty: bool
+):
+    """Run the `machine` shell function with a fake CLI; `reload` is replaced by an echo."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "machine"
+    fake.write_text(f"#!/bin/sh\nexit {exit_code}\n")
+    fake.chmod(0o755)
+    script = (
+        f'. "{STATE_SH}"; reload() {{ echo RELOADED; }}; machine {" ".join(args)}; '
+        'echo "RC=$?"'
+    )
+    env = {"HOME": str(tmp_path), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    argv = [shutil.which(shell), "-c", script]
+    if not tty:
+        out = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=30)
+        return out.stdout
+    import pty
+
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(argv, env=env, stdin=slave, stdout=slave, stderr=slave)
+    os.close(slave)
+    proc.wait(timeout=30)
+    data = b""
+    try:
+        while chunk := os.read(master, 4096):
+            data += chunk
+    except OSError:
+        pass
+    os.close(master)
+    return data.decode()
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_machine_update_reloads_the_interactive_shell_only_on_success(shell, tmp_path):
+    assert "RELOADED" in run_machine_function(shell, tmp_path, 0, "update", tty=True)
+    assert "RELOADED" not in run_machine_function(
+        shell, tmp_path, 1, "update", tty=True
+    )
+    assert "RELOADED" not in run_machine_function(
+        shell, tmp_path, 0, "update", "--check", tty=True
+    )
+    assert "RELOADED" not in run_machine_function(
+        shell, tmp_path, 0, "status", tty=True
+    )
+    out = run_machine_function(shell, tmp_path, 0, "update", tty=False)
+    assert "RELOADED" not in out and "RC=0" in out

@@ -51,3 +51,20 @@ reload() {
         exec bash -l
     fi
 }
+
+# A child process cannot reload its parent shell: after a successful `machine update`
+# in an interactive shell, replace the shell so the result is live. Failures leave it alone.
+machine() {
+    command machine "$@"
+    local rc=$?
+    if [ "$rc" -eq 0 ] && [ "${1:-}" = update ] && [ -t 0 ] && [ -t 1 ]; then
+        local arg
+        for arg in "$@"; do
+            case "$arg" in
+                --check | --auto | --json | -h | --help) return 0 ;;
+            esac
+        done
+        reload
+    fi
+    return "$rc"
+}

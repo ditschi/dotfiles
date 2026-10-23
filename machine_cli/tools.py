@@ -265,6 +265,8 @@ class ToolsMixin:
         cmd.extend(extra)
         log(f"ansible-playbook {playbook_name}.yml")
         system.run(cmd, cwd=self.ansible_dir)
+        if force_local or not limit:
+            self.record_ansible_applied()
 
     def sudo_ticket_valid(self) -> bool:
         sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"

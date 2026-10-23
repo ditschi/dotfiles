@@ -19,10 +19,6 @@ class AutoUpdateMixin:
             ["git", "-C", str(self.repo), *args], capture=True, check=False
         )
 
-    @property
-    def auto_update_failed_file(self):
-        return self.state_dir / "auto-update-failed"
-
     def is_system_commit(self, commit: str) -> bool:
         """System commits need Ansible or a profile apply and are never applied unattended."""
         own_profile = self.host_profile_path().relative_to(self.repo).as_posix()
@@ -37,7 +33,11 @@ class AutoUpdateMixin:
             commit,
         )
         paths = [line for line in (result.stdout or "").splitlines() if line]
-        return any(path.startswith("ansible/") or path == own_profile for path in paths)
+        if own_profile in paths:
+            return True
+        return bool(self.read_update_state()["ansible_applied_rev"]) and bool(
+            self.system_paths_relevant(paths)
+        )
 
     def safe_update_target(self, upstream: str) -> Optional[str]:
         """Last incoming commit before the first system commit (None if there is none)."""
@@ -69,12 +69,6 @@ class AutoUpdateMixin:
                 return 0
             return self._update_auto_locked()
 
-    def _set_pending_marker(self, pending: bool) -> None:
-        if pending:
-            self.update_marker.touch()
-        elif self.update_marker.exists():
-            self.update_marker.unlink()
-
     def _update_auto_locked(self) -> int:
         self.run_local_resolvers()
         plan = self.update_plan(fetch=True)
@@ -85,11 +79,12 @@ class AutoUpdateMixin:
             self.event("update-auto", "blocked", "diverged")
             return 0
         if plan["state"] == "up-to-date":
-            self._set_pending_marker(False)
-            self.write_update_state("none")
+            pending_system = "system" in plan["steps"]
+            self.set_pending(pending_system)
+            self.write_update_state("available" if pending_system else "none")
             return 0
 
-        self._set_pending_marker(True)
+        self.set_pending(True)
         if plan["local_changes"]:
             self.write_update_state(
                 "attention",
@@ -103,11 +98,7 @@ class AutoUpdateMixin:
         if target is None:
             self.write_update_state("available")
             return 0
-        failed = (
-            self.auto_update_failed_file.read_text(encoding="utf-8").strip()
-            if self.auto_update_failed_file.is_file()
-            else ""
-        )
+        failed = self.read_update_state()["failed_revision"]
         if failed == target:
             self.write_update_state(
                 "attention",
@@ -133,6 +124,10 @@ class AutoUpdateMixin:
             return self._revert_auto(
                 previous, target, "dotfile apply failed", "apply-failed", timer
             )
+        if "tools" in steps and not self._tools_install_quiet():
+            return self._revert_auto(
+                previous, target, "tool install failed", "tools-failed", timer
+            )
 
         reason = self.zsh_health_failure()
         if reason:
@@ -141,7 +136,7 @@ class AutoUpdateMixin:
         remaining = (
             self.repo_revision() != self._git("rev-parse", upstream).stdout.strip()
         )
-        self._set_pending_marker(remaining)
+        self.set_pending(remaining)
         self.write_update_state("available" if remaining else "updated")
         self.event("update-auto", "applied", duration=timer.seconds())
         log(f"updated automatically to {self.repo_revision()[:8]}")
@@ -189,11 +184,10 @@ class AutoUpdateMixin:
         self._git("reset", "--hard", previous)
         self.event("update-auto", "reverted", code, timer.seconds())
         self._dotfiles_apply_quiet()
-        self.state_dir.mkdir(parents=True, exist_ok=True)
-        self.auto_update_failed_file.write_text(target + "\n", encoding="utf-8")
         self.write_update_state(
             "attention",
             f"the automatic update to {target[:8]} was reverted: {reason}; "
             "check it, then run: machine update",
+            failed_revision=target,
         )
         return 0

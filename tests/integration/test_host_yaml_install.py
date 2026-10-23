@@ -33,7 +33,11 @@ def host_yaml_container(docker_image, request):
         f"hy-{hostname}",
         hostname=hostname,
         user=user,
-        env=("MACHINE_SKIP_BW=1", f"MACHINE_PROFILE_OVERRIDE={profile}"),
+        env=(
+            "MACHINE_SKIP_BW=1",
+            "MACHINE_SKIP_TOOLS=1",
+            f"MACHINE_PROFILE_OVERRIDE={profile}",
+        ),
         exec_env=exec_env,
     ) as (name, exec_cmd):
         run_checked(

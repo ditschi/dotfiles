@@ -85,9 +85,11 @@ def update_env(tmp_path: Path, monkeypatch):
     # never let a broken fixture fall back to the real checkout (it would git pull)
     assert machine.repo == repo
     machine.sync_host_profile_from_repo()  # host already in sync before update
+    machine.record_ansible_applied()  # a host that has run Ansible
 
     calls: list[str] = []
     monkeypatch.setattr(machine, "run_dotfiles_apply", lambda: calls.append("dotfiles"))
+    monkeypatch.setattr(machine, "run_tools_install", lambda: calls.append("tools"))
     original_have = cli.system.have
     monkeypatch.setattr(
         cli.system, "have", lambda name: name == "mise" or original_have(name)
@@ -95,6 +97,12 @@ def update_env(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: calls.append("env") or 0)
     monkeypatch.setattr(machine, "cmd_apply", lambda _args: calls.append("apply") or 0)
     return machine, repo, other, home, calls
+
+
+def machine_system():
+    import machine_cli.system as system_module
+
+    return system_module
 
 
 def _push_change(other: Path, path: str, content: str) -> None:
@@ -113,13 +121,12 @@ def _update(machine, *, force=False, system=False) -> int:
 def test_update_pulls_and_skips_apply_when_profile_unchanged(update_env):
     machine, repo, other, home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")
-    marker = home / ".dotfiles-update-available"
-    marker.write_text("")
+    machine.set_pending(True)
 
     assert _update(machine) == 0
     assert (repo / "home/dot_new").is_file()
     assert "env" in calls and "apply" not in calls
-    assert not marker.exists()
+    assert not machine.read_update_state()["pending"]
 
 
 def test_update_writes_updated_state_with_new_revision(update_env):
@@ -161,16 +168,54 @@ def _auto(machine) -> int:
     return machine.cmd_update(argparse.Namespace(auto=True))
 
 
+def test_attention_says_so_when_nothing_is_open(update_env, capsys):
+    machine, *_ = update_env
+
+    assert machine.cmd_attention() == 0
+    assert "Nothing needs attention" in capsys.readouterr().out
+
+
+def test_attention_lists_items_without_prompting_when_not_interactive(
+    update_env, capsys, monkeypatch
+):
+    machine, repo, other, _home, calls = update_env
+    machine.write_update_state("attention", "the automatic update was reverted")
+    _push_change(other, "ansible/new.yml", "x\n")
+    _git("fetch", "-q", cwd=repo)
+    _git("merge", "-q", "--ff-only", "origin/main", cwd=repo)
+    monkeypatch.setattr(
+        machine_system(), "prompt_yes_no", lambda *a, **k: pytest.fail("prompted")
+    )
+
+    assert machine.cmd_attention() == 0
+    out = capsys.readouterr().out
+    assert "[update] the automatic update was reverted" in out
+    assert "[system] system update pending: ansible/new.yml" in out
+    assert calls == []
+
+
+def test_attention_resolves_items_on_a_terminal(update_env, capsys, monkeypatch):
+    machine, *_ = update_env
+    machine.write_update_state("attention", "needs a look")
+    ran = []
+    monkeypatch.setattr(machine, "cmd_update", lambda args: ran.append("update") or 0)
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    monkeypatch.setattr(machine_system(), "prompt_yes_no", lambda *a, **k: True)
+
+    assert machine.cmd_attention() == 0
+    assert ran == ["update"]
+
+
 def test_auto_update_applies_home_only_changes(update_env):
     machine, repo, other, home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")
-    machine.update_marker.write_text("")
+    machine.set_pending(True)
 
     assert _auto(machine) == 0
     assert (repo / "home/dot_new").is_file()
     assert calls == ["dotfiles"]
     assert machine.read_update_state()["state"] == "updated"
-    assert not machine.update_marker.exists()
+    assert not machine.read_update_state()["pending"]
 
 
 def test_auto_update_leaves_system_change_pending(update_env):
@@ -181,7 +226,7 @@ def test_auto_update_leaves_system_change_pending(update_env):
     assert not (repo / "ansible/new.yml").exists()
     assert calls == []
     assert machine.read_update_state()["state"] == "available"
-    assert machine.update_marker.exists()
+    assert machine.read_update_state()["pending"] == "1"
 
 
 def test_auto_update_stops_before_first_system_commit(update_env):
@@ -266,6 +311,36 @@ def test_auto_update_reverts_when_dotfile_apply_fails(update_env, monkeypatch):
     assert state["state"] == "attention" and "dotfile apply failed" in state["reason"]
 
 
+def test_auto_update_reverts_when_tool_install_fails(update_env, monkeypatch):
+    machine, repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "home/core/.config/mise/mise.lock", "x\n")
+    monkeypatch.setattr(machine, "_tools_install_quiet", lambda: False)
+
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "tool install failed" in state["reason"]
+
+    # not retried; a manual update succeeds and clears the failure
+    monkeypatch.setattr(machine, "_tools_install_quiet", lambda: True)
+    assert _auto(machine) == 0 and machine.repo_revision() == before
+    assert _update(machine) == 0
+    assert (repo / "home/core/.config/mise/mise.lock").is_file()
+    assert not machine.read_update_state()["failed_revision"]
+
+
+def test_auto_update_runs_tool_install_for_a_changed_lockfile(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "home/core/.config/mise/mise.lock", "x\n")
+    monkeypatch.setattr(
+        machine, "_tools_install_quiet", lambda: calls.append("tools") or True
+    )
+
+    assert _auto(machine) == 0
+    assert calls == ["tools"]
+
+
 def test_auto_update_skips_when_another_update_runs(update_env):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")
@@ -283,7 +358,7 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
     assert _update(machine) == 0
     assert "profile: home-server" in machine.profile_path.read_text()
     # new local group config from the synced profile is applied before ansible
-    assert calls == ["dotfiles", "env", "apply"]
+    assert calls == ["dotfiles", "tools", "env", "apply"]
 
 
 def _failing_ansible_env(machine, monkeypatch, calls):
@@ -438,12 +513,40 @@ def test_update_stops_on_diverged_history(update_env, capsys):
     assert calls == []
 
 
-def test_update_content_change_skips_dotfiles_and_apply(update_env):
+def test_update_content_change_runs_only_the_converge_check(update_env):
     machine, _repo, other, _home, calls = update_env
     _push_change(other, "home/dot_placeholder", "changed\n")
 
     assert _update(machine) == 0
-    assert calls == ["env"]
+    assert calls == ["dotfiles", "tools", "env"]
+
+
+def test_update_converges_when_nothing_is_incoming(update_env):
+    machine, *_rest, calls = update_env
+
+    assert _update(machine) == 0
+    assert calls == ["dotfiles", "tools", "env"]
+
+
+def test_update_reports_no_system_change_for_a_host_without_ansible_runs(update_env):
+    machine, _repo, other, _home, calls = update_env
+    machine.write_update_state("none", ansible_applied_rev="")
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert machine.update_plan(fetch=True)["steps"] == []
+    assert _update(machine) == 0
+    assert "apply" not in calls
+
+
+def test_update_ignores_docs_and_dump_files_for_the_system_step(update_env):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "ansible/README.md", "x\n")
+    _push_change(other, "ansible/dump_packages.yml", "x\n")
+    _push_change(other, "ansible/inventory/hosts.yml", "x\n")
+
+    assert machine.update_plan(fetch=True)["steps"] == []
+    assert _update(machine) == 0
+    assert "apply" not in calls
 
 
 def test_update_runs_system_step_when_ansible_changed(update_env):
@@ -451,7 +554,7 @@ def test_update_runs_system_step_when_ansible_changed(update_env):
     _push_change(other, "ansible/roles/x.yml", "x\n")
 
     assert _update(machine) == 0
-    assert calls == ["env", "apply"]
+    assert calls == ["dotfiles", "tools", "env", "apply"]
 
 
 def test_update_check_changes_nothing(update_env, capsys):
@@ -572,6 +675,7 @@ def test_classify_incoming_paths():
 
     assert classify([("M", "home/dot_zshrc")]) == ["shell"]
     assert classify([("A", "home/dot_new")]) == ["dotfiles", "shell"]
+    assert classify([("M", "home/core/.config/mise/mise.lock")]) == ["tools"]
     assert classify([("M", "machine_cli/machine")]) == []
     assert classify([("A", "machine_cli/updates.py")]) == []
     assert classify([("M", "ansible/site.yml"), ("M", "machine/hosts/h.yml")]) == [

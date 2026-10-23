@@ -5,17 +5,24 @@ from __future__ import annotations
 from typing import Iterable
 
 
+# Tool fragments and the lockfile live in the core group's mise configuration.
+TOOL_PREFIX = "home/core/.config/mise/"
+
+
 def classify_paths(changes: Iterable[tuple[str, str]]) -> list[str]:
     """Steps needed for incoming (git status letter, repo-relative path) pairs.
 
     Files in $HOME are symlinks into the checkout, so changed content of an existing
     home file is live after the pull; the dotfile apply must run for added, removed or
-    replaced files and for the group list (the repository `mise.toml`).
+    replaced files and for the group list (the repository `mise.toml`); a changed tool
+    fragment or lockfile needs the tool install.
     """
     steps: set[str] = set()
     for status, path in changes:
         if path == "mise.toml":
             steps.add("dotfiles")
+        elif path.startswith(TOOL_PREFIX):
+            steps.add("tools")
         elif path.startswith("home/"):
             parts = path.removeprefix("home/").split("/", 1)
             name = parts[1] if len(parts) == 2 else parts[0]

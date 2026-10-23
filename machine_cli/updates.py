@@ -8,13 +8,24 @@ import getpass
 import json
 import time
 import types
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from . import events, local_overrides, system
 from .core import die, log, warn
 from .local_changes import classify_paths
+from .system_relevance import relevant_system_paths
 
 Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
+
+
+STATE_KEYS = (
+    "state",
+    "reason",
+    "revision",
+    "pending",
+    "failed_revision",
+    "ansible_applied_rev",
+)
 
 
 class UpdateMixin:
@@ -206,6 +217,41 @@ class UpdateMixin:
         parts = [part for part in (result.stdout or "").split("\0") if part]
         return list(zip(parts[0::2], parts[1::2]))
 
+    def record_ansible_applied(self) -> None:
+        values = self.read_update_state()
+        self.write_update_state(
+            values["state"], values["reason"], ansible_applied_rev=self.repo_revision()
+        )
+
+    def system_paths_relevant(self, paths: Iterable[str]) -> list[str]:
+        profile = self.current_profile() if self.profile_path.is_file() else ""
+        features = self.saved_features() if self.profile_path.is_file() else []
+        return relevant_system_paths(
+            paths,
+            ansible_dir=self.ansible_dir,
+            features=features,
+            profile=profile,
+            own_profile=self.host_profile_path().relative_to(self.repo).as_posix(),
+        )
+
+    def pending_system_paths(self, ref: str) -> list[str]:
+        """Changed files between the last successful Ansible run and `ref` that apply here.
+
+        Empty for a host that never ran Ansible (no root, or a container)."""
+        applied = self.read_update_state()["ansible_applied_rev"]
+        if not applied:
+            return []
+        result = self._git("diff", "--name-only", "--no-renames", applied, ref)
+        if result.returncode != 0:
+            return ["ansible/"]  # unknown revision: cannot evaluate, so it counts
+        return self.system_paths_relevant((result.stdout or "").splitlines())
+
+    def plan_steps(self, incoming: list[tuple[str, str]], ref: str) -> list[str]:
+        steps = {step for step in classify_paths(incoming) if step != "system"}
+        if self.pending_system_paths(ref):
+            steps.add("system")
+        return sorted(steps)
+
     def update_plan(self, *, fetch: bool) -> dict:
         if fetch:
             result = system.run(
@@ -258,7 +304,7 @@ class UpdateMixin:
             "upstream": upstream,
             "state": state,
             "incoming": [{"status": s, "path": p} for s, p in incoming],
-            "steps": classify_paths(incoming),
+            "steps": self.plan_steps(incoming, upstream if incoming else "HEAD"),
             "local_changes": remaining,
             "resolvable": resolvable,
             "overlap": overlap,
@@ -273,23 +319,36 @@ class UpdateMixin:
         )
         return result.stdout.strip() if result.returncode == 0 else ""
 
-    def write_update_state(self, state: str, reason: str = "") -> None:
-        """Same file format as dotfiles-update-check-job; shells read it for the prompt segment."""
+    def write_update_state(self, state: str, reason: str = "", **extra: str) -> None:
+        """Write the one state file (key=value lines); shells read state, reason, revision.
+
+        Other keys survive a write unless passed: pending (1 while upstream is ahead),
+        failed_revision (reverted automatic update) and ansible_applied_rev."""
+        values = self.read_update_state()
+        values.update(extra)
+        values.update(state=state, reason=reason, revision=self.repo_revision())
         tmp = self.update_state.with_name(self.update_state.name + ".tmp")
         tmp.write_text(
-            f"state={state}\nreason={reason}\nrevision={self.repo_revision()}\n",
+            "".join(f"{key}={values.get(key, '')}\n" for key in STATE_KEYS),
             encoding="utf-8",
         )
         tmp.replace(self.update_state)
 
     def read_update_state(self) -> dict[str, str]:
-        values = {"state": "none", "reason": "", "revision": ""}
+        values = {key: "" for key in STATE_KEYS}
+        values["state"] = "none"
         if self.update_state.is_file():
             for line in self.update_state.read_text(encoding="utf-8").splitlines():
                 key, _, value = line.partition("=")
                 if key in values:
                     values[key] = value
         return values
+
+    def set_pending(self, pending: bool) -> None:
+        values = self.read_update_state()
+        self.write_update_state(
+            values["state"], values["reason"], pending="1" if pending else ""
+        )
 
     def print_update_state(self) -> None:
         values = self.read_update_state()
@@ -436,15 +495,12 @@ class UpdateMixin:
         profile_backup = self.backup_local_profile()
         profile_changed = self.sync_host_profile_from_repo()
 
-        if self.mise_local_config.is_file() and (
-            "dotfiles" in steps or profile_changed
-        ):
+        # Converge check: runs also when nothing was incoming; idempotent and cheap.
+        if self.mise_local_config.is_file() and system.have("mise"):
             self.run_dotfiles_apply()
+            self.run_tools_install()
         self.cmd_env_pull()
-        if self.update_marker.exists():
-            self.update_marker.unlink()
-        self.write_update_state("updated")
-        self.auto_update_failed_file.unlink(missing_ok=True)
+        self.write_update_state("updated", pending="", failed_revision="")
 
         if profile_changed or args.system or "system" in steps:
             apply_args = types.SimpleNamespace(

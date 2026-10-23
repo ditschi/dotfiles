@@ -1,4 +1,4 @@
-"""The update-check job without the machine CLI: fetch, marker and state file."""
+"""The update-check job without the machine CLI: fetch and the one state file."""
 
 from __future__ import annotations
 
@@ -42,7 +42,6 @@ def job_env(tmp_path: Path, monkeypatch):
         "PATH": str(tools),
         "HOME": str(home),
         "DOTFILES_REPO": str(repo),
-        "DOTFILES_UPDATE_MARKER": str(tmp_path / "marker"),
         "DOTFILES_UPDATE_STATE": str(tmp_path / "state"),
         "DOTFILES_UPDATE_LAST_CHECK": str(tmp_path / "last"),
         "GIT_TERMINAL_PROMPT": "0",
@@ -58,28 +57,37 @@ def job_env(tmp_path: Path, monkeypatch):
         _git("commit", "-qam", "change", cwd=other)
         _git("push", "-q", "origin", "HEAD:main", cwd=other)
 
-    return run, push, origin, tmp_path / "marker", tmp_path / "state"
+    return run, push, origin, tmp_path / "state"
 
 
 def test_job_marks_pending_update_and_clears_it(job_env):
-    run, push, _origin, marker, state = job_env
+    run, push, _origin, state = job_env
     assert run().returncode == 0
-    assert not marker.exists()
     assert "state=none" in state.read_text()
+    assert "pending=1" not in state.read_text()
 
     push()
     assert run().returncode == 0
-    assert marker.exists()
     assert "state=available" in state.read_text()
+    assert "pending=1" in state.read_text()
 
 
-def test_job_keeps_marker_when_fetch_fails(job_env):
-    run, push, origin, marker, state = job_env
+def test_job_keeps_pending_flag_when_fetch_fails(job_env):
+    run, push, origin, state = job_env
     push()
     assert run().returncode == 0
-    assert marker.exists()
+    assert "pending=1" in state.read_text()
 
     origin.rename(origin.with_name("gone.git"))  # offline: the remote is unreachable
     assert run().returncode == 0
-    assert marker.exists()
+    assert "pending=1" in state.read_text()
     assert "state=available" in state.read_text()
+
+
+def test_job_keeps_failed_revision_and_applied_revision(job_env):
+    run, push, _origin, state = job_env
+    state.write_text("state=none\nfailed_revision=abc\nansible_applied_rev=def\n")
+    push()
+    assert run().returncode == 0
+    text = state.read_text()
+    assert "failed_revision=abc" in text and "ansible_applied_rev=def" in text

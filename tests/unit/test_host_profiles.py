@@ -481,6 +481,7 @@ def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatc
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
     commands: list[list[str]] = []
+    monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
     monkeypatch.setattr(
         cli_mod.system, "run", lambda cmd, **_k: commands.append(list(cmd))
     )
@@ -507,6 +508,7 @@ def test_package_table_only_names_known_features():
 def test_local_run_reuses_sudo_ticket_before_prompting(tmp_path: Path, monkeypatch):
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
+    monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
     monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo")
     ticket = {"ok": True}

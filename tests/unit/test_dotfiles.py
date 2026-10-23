@@ -100,3 +100,26 @@ def test_sweep_removes_only_dangling_links_into_the_checkout(tmp_path):
     assert sorted(p.name for p in removed) == [".zshrc", "gone"]
     assert (home / ".live").is_symlink() and (home / ".foreign").is_symlink()
     assert (home / ".plain").read_text() == "keep"
+
+
+def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
+    from machine_cli.dotfiles import clear_conflicting_targets
+
+    repo = tmp_path / "checkout"
+    (repo / "home/core/.config").mkdir(parents=True)
+    for name in (".bashrc", ".zshrc", ".config/app"):
+        (repo / "home/core" / name).write_text("new")
+    home = tmp_path / "h"
+    (home / ".config").mkdir(parents=True)
+    (home / ".bashrc").write_text("distro default")
+    (home / ".zshrc").symlink_to(repo / "home/dot_zshrc")  # old layout, dangling
+    (home / ".config/app").symlink_to(repo / "home/core/.config/app")  # already right
+    (home / ".bashrc.pre-dotfiles").write_text("older backup")
+
+    changed = clear_conflicting_targets(repo, home, ["core"])
+
+    assert sorted(p.name for p, _ in changed) == [".bashrc", ".zshrc"]
+    assert not (home / ".bashrc").exists() and not (home / ".zshrc").is_symlink()
+    assert (home / ".bashrc.pre-dotfiles.2").read_text() == "distro default"
+    assert (home / ".bashrc.pre-dotfiles").read_text() == "older backup"
+    assert (home / ".config/app").is_symlink()

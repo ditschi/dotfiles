@@ -156,7 +156,9 @@ def profile_env(docker_image, request):
         setup_cmd.extend(["--skip-ansible", "--no-become"])
     # Docker means "container" unless the profile is overridden explicitly.
     with running_container(
-        docker_image, profile, env=(f"MACHINE_PROFILE_OVERRIDE={profile}",)
+        docker_image,
+        profile,
+        env=("MACHINE_SKIP_TOOLS=1", f"MACHINE_PROFILE_OVERRIDE={profile}"),
     ) as (name, exec_cmd):
         run_checked(exec_cmd, setup_cmd, f"bootstrap for {profile}")
         yield testinfra.get_host(f"docker://{name}"), profile

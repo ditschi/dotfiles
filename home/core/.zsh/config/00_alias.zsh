@@ -2,7 +2,7 @@ alias zshalias="nano $0"
 
 export DOTFILES_REPO="${DOTFILES_REPO:-$HOME/dotfiles}"
 export DOTFILES_REPO_URL="${DOTFILES_REPO_URL:-https://github.com/ditschi/dotfiles.git}"
-export DOTFILES_UPDATE_MARKER="${DOTFILES_UPDATE_MARKER:-$HOME/.dotfiles-update-available}"
+export DOTFILES_UPDATE_STATE="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}"
 export DOTFILES_UPDATE_LAST_CHECK="${DOTFILES_UPDATE_LAST_CHECK:-$HOME/.dotfiles-update-last-check}"
 
 dotfiles-setup() {
@@ -26,40 +26,19 @@ dotfiles-setup() {
 }
 
 dotfiles-update-check() {
-    if [ ! -d "$DOTFILES_REPO/.git" ]; then
-        echo "Dotfiles repo not found at: $DOTFILES_REPO"
+    if command -v machine >/dev/null 2>&1; then
+        machine update --check
+    else
+        echo "machine helper not found; run $DOTFILES_REPO/bootstrap"
         return 1
     fi
-
-    if ! git -C "$DOTFILES_REPO" fetch --quiet; then
-        echo "Dotfiles update check failed (git fetch)."
-        return 1
-    fi
-
-    current_branch=$(git -C "$DOTFILES_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
-    upstream_ref="origin/$current_branch"
-    if ! git -C "$DOTFILES_REPO" rev-parse --verify "$upstream_ref" >/dev/null 2>&1; then
-        echo "No upstream branch found for '$current_branch'."
-        return 1
-    fi
-
-    pending_count=$(git -C "$DOTFILES_REPO" rev-list --count "HEAD..$upstream_ref" 2>/dev/null || echo 0)
-    if [ "${pending_count:-0}" -gt 0 ]; then
-        : > "$DOTFILES_UPDATE_MARKER"
-        echo "Dotfiles update available ($pending_count commits)."
-        return 0
-    fi
-
-    rm -f "$DOTFILES_UPDATE_MARKER"
-    echo "Dotfiles are up to date."
-    return 0
 }
 
 dotfiles-update-status() {
-    if [ -f "$DOTFILES_UPDATE_MARKER" ]; then
-        echo "Dotfiles update marker is set."
+    if grep -qs '^pending=1$' "$DOTFILES_UPDATE_STATE"; then
+        echo "Dotfiles update is pending."
     else
-        echo "No dotfiles update marker set."
+        echo "No dotfiles update pending."
     fi
 
     if [ -f "$DOTFILES_UPDATE_LAST_CHECK" ]; then

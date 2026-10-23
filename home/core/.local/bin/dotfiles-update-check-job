@@ -2,7 +2,6 @@
 set -u
 
 repo="${DOTFILES_REPO:-$HOME/dotfiles}"
-marker="${DOTFILES_UPDATE_MARKER:-$HOME/.dotfiles-update-available}"
 state_file="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}"
 last_check_file="${DOTFILES_UPDATE_LAST_CHECK:-$HOME/.dotfiles-update-last-check}"
 
@@ -36,10 +35,20 @@ if ! git -C "$repo" rev-parse --verify "$upstream_ref" >/dev/null 2>&1; then
 fi
 
 write_state() {
-    local state="$1" reason="${2:-}" revision tmp
+    local state="$1" reason="${2:-}" pending="${3:-}" revision tmp key value
+    local failed="" applied=""
+    if [ -r "$state_file" ]; then
+        while IFS='=' read -r key value || [ -n "$key" ]; do
+            case "$key" in
+                failed_revision) failed="$value" ;;
+                ansible_applied_rev) applied="$value" ;;
+            esac
+        done <"$state_file"
+    fi
     revision="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
     tmp="$state_file.$$"
-    printf 'state=%s\nreason=%s\nrevision=%s\n' "$state" "$reason" "$revision" >"$tmp" &&
+    printf 'state=%s\nreason=%s\nrevision=%s\npending=%s\nfailed_revision=%s\nansible_applied_rev=%s\n' \
+        "$state" "$reason" "$revision" "$pending" "$failed" "$applied" >"$tmp" &&
         mv -f "$tmp" "$state_file"
 }
 
@@ -51,9 +60,7 @@ fi
 
 pending_count="$(git -C "$repo" rev-list --count "HEAD..$upstream_ref" 2>/dev/null || echo 0)"
 if [ "${pending_count:-0}" -gt 0 ]; then
-    : >"$marker"
-    write_state available
+    write_state available "" 1
 else
-    rm -f "$marker"
     write_state none
 fi

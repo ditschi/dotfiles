@@ -86,6 +86,8 @@ class CommandsMixin:
 
         if not args.skip_dotfiles:
             self.run_dotfiles_apply()
+            if os.environ.get("MACHINE_SKIP_TOOLS") != "1":
+                self.run_tools_install()
             if profile != "container":
                 self.ensure_update_timer()
             self.cmd_env_pull()
@@ -181,8 +183,8 @@ class CommandsMixin:
             print(f"last check: {stamp}")
         else:
             print("last check: never")
-        marker = "set" if self.update_marker.is_file() else "unset"
-        print(f"update marker: {marker}")
+        pending = "yes" if self.read_update_state()["pending"] else "no"
+        print(f"update pending: {pending}")
         self.print_update_state()
         self.print_update_plan(self.update_plan(fetch=False))
         repo_host = self.host_profile_path()

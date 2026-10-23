@@ -10,24 +10,28 @@ from .core import parse_profile_file
 from .profile import ProfileMixin
 from .tools import ToolsMixin
 from .dotfiles import DotfilesMixin
+from .mise_tools import MiseToolsMixin
 from .bw_client import BwClientMixin
 from .env_pull import EnvPullMixin
 from .ssh_keys import SshKeysMixin
 from .commands import CommandsMixin
 from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
+from .attention import AttentionMixin
 
 
 class Machine(
     ProfileMixin,
     ToolsMixin,
     DotfilesMixin,
+    MiseToolsMixin,
     BwClientMixin,
     EnvPullMixin,
     SshKeysMixin,
     CommandsMixin,
     UpdateMixin,
     AutoUpdateMixin,
+    AttentionMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()
@@ -46,11 +50,6 @@ class Machine(
         self.mise_local_config = Path(
             os.environ.get(
                 "MISE_LOCAL_CONFIG", self.home / ".config/mise/config.local.toml"
-            )
-        )
-        self.update_marker = Path(
-            os.environ.get(
-                "DOTFILES_UPDATE_MARKER", self.home / ".dotfiles-update-available"
             )
         )
         self.update_state = Path(

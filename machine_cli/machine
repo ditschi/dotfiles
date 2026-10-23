@@ -78,7 +78,11 @@ add_completion_class(_offer_options_on_empty_word(BashComplete), BashComplete.na
 add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name)
 
 
-@click.group(name="machine", help="Dotfiles and host setup", no_args_is_help=True)
+@click.group(
+    name="machine",
+    help="Dotfiles and host setup (without a command: machine attention)",
+    invoke_without_command=True,
+)
 @click.option(
     "--debug",
     is_flag=True,
@@ -88,6 +92,8 @@ add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name
 @click.pass_context
 def app(ctx: click.Context, debug: bool) -> None:
     core.set_debug(debug)
+    if ctx.invoked_subcommand is None:
+        _exit(Machine().cmd_attention())
     if ctx.invoked_subcommand not in (None, "update", "completion", "help"):
         Machine().event("usage", "invoked", ctx.invoked_subcommand)
 
@@ -223,6 +229,13 @@ def completion_cmd(shell) -> None:
     complete_var = f"_{MACHINE_PROG_NAME.upper()}_COMPLETE"
     cls = get_completion_class(shell)
     click.echo(cls(app, {}, MACHINE_PROG_NAME, complete_var).source(), nl=False)
+
+
+@app.command(
+    name="attention", help="list and resolve open items (also: machine without arguments)"
+)
+def attention_cmd() -> None:
+    _exit(Machine().cmd_attention())
 
 
 @app.command(name="help", help="show help")

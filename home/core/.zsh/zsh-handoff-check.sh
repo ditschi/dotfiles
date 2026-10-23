@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Health check for the bash -> zsh handoff. Sourced by ~/.bashrc only (bash-specific).
 # The result is cached in a state file and re-used until a watched file, the zsh
-# binary or the update marker changes; `zsh-recheck` clears the cache.
+# binary or the pending-update flag changes; `zsh-recheck` clears the cache.
 
 _zhc_state_file() {
     printf '%s' "${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/zsh-handoff"
@@ -83,7 +83,13 @@ dotfiles_zsh_handoff_ok() {
     [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/antidote/mattmc3/antidote" ] || return 0
     [ -s "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/plugins.zsh" ] || return 0
     state=$(_zhc_state_file)
-    [ -e "$HOME/.dotfiles-update-available" ] && marker=1
+    # A pending update (state file key pending=1) changes the check cache key.
+    local ustate="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}" ukey uvalue
+    if [ -r "$ustate" ]; then
+        while IFS='=' read -r ukey uvalue || [ -n "$ukey" ]; do
+            [ "$ukey" = pending ] && [ "$uvalue" = 1 ] && marker=1
+        done <"$ustate"
+    fi
 
     if [ -f "$state" ]; then
         while IFS='=' read -r key value; do

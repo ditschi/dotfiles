@@ -7,7 +7,7 @@
 #     "pyyaml>=6.0",
 # ]
 # ///
-"""Unified machine CLI: orchestrate chezmoi + ansible; host answers; Bitwarden UX."""
+"""Unified machine CLI: orchestrate mise dotfiles + ansible; host answers; Bitwarden UX."""
 
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ def ssh_cmd(action, private, yes) -> None:
     _exit(code)
 
 
-@app.command(help="git / chezmoi / profile")
+@app.command(help="git / dotfiles / profile")
 def status() -> None:
     _exit(Machine().cmd_status())
 

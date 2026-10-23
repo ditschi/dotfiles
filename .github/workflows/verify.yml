@@ -40,10 +40,6 @@ jobs:
           pip install -r tests/requirements.txt
       - name: Reject committed host-only Git settings
         run: python3 -m machine_cli.local_overrides --check
-      - name: Install chezmoi
-        run: |
-          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and CLI smoke
         run: |
           python3 -m py_compile machine_cli/machine
@@ -172,10 +168,6 @@ jobs:
           python-version: "3.12"
       - name: Install test deps
         run: pip install -r tests/requirements.txt
-      - name: Install chezmoi
-        run: |
-          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests and Ansible syntax on ARM
         run: |
           python3 -m py_compile machine_cli/machine

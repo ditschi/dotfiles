@@ -8,7 +8,7 @@
 
 ## Orientation
 
-Dotfiles + machine setup (chezmoi symlink mode, `machine` CLI, Ansible). Start with [Readme.md](Readme.md), then the specs in [openspec/specs/](openspec/specs) and the investigations in [openspec/investigations/](openspec/investigations).
+Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start with [Readme.md](Readme.md), then the specs in [openspec/specs/](openspec/specs) and the investigations in [openspec/investigations/](openspec/investigations).
 
 - Dotfiles live under `home/<group>/` (`core`, `work`, `prompt`, `systemd`) with their real file names (e.g. `home/core/.zshrc`); files in `$HOME` are symlinks into it.
 - Never commit secrets or host-only Git settings; secrets come from `~/.env*` (Bitwarden) or the keyring (see the specs `env-files`, `secret-tools`, `git-config`).

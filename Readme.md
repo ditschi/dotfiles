@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/ditschi/dotfiles/main/bootstrap | b
 
 Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout. An existing clone is used as it is; update it with `machine update`.
 
-Hosts that still have the CLI deployed by chezmoi: run `~/dotfiles/bootstrap` (or `chezmoi apply`) once after pulling this change; `git pull` alone then no longer breaks `machine`.
+Hosts that still have the CLI deployed by chezmoi: run `~/dotfiles/bootstrap` once after pulling this change; `git pull` alone then no longer breaks `machine`.
 
 Non-interactive:
 
@@ -52,7 +52,7 @@ From the laptop to a reachable device:
 | SSH public key to Bitwarden | `machine ssh publish` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
-`machine update` only runs what changed upstream: `chezmoi apply` for added/removed files under `home/`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs `chezmoi apply` when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
+`machine update` only runs what changed upstream: the dotfile apply (`mise dot apply --prune`) for added/removed files under `home/` or a changed `mise.toml`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs the dotfile apply when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
 The background update check (`dotfiles-update-check-job`) and `machine update` write `~/.dotfiles-update-state` (`state`, `reason`, `revision`). Interactive zsh and bash show it in the prompt (Starship `env_var` module; without Starship, at the right of the zsh prompt or as a `PS1` prefix in bash), re-read before every prompt without forking: `⬆ dotfiles update` (run `machine update`), `↻ reload shell` (an update was applied after this shell started; run `reload`), `⚠ dotfiles: check` (needs attention, e.g. diverged history; a line with the reason is also printed at shell start). A shell started after the update shows nothing. `machine status` prints the state, the reason and the fix.
 
@@ -100,7 +100,7 @@ reports a failure rather than silently substituting an obsolete runtime.
 ### Git config
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.
-- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. chezmoi creates it once from the profile (`work-machine` → work user, otherwise private) and never overwrites it. Signing key, `safe.directory`, credentials and proxy go here.
+- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. `machine setup` creates it once from the profile (`work-machine` → work user, otherwise private) and never overwrites it; on work hosts an existing file only gets a missing `http.sslCAInfo` appended. Signing key, `safe.directory`, credentials and proxy go here.
 - Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
 - `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
 - Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
@@ -132,8 +132,8 @@ be explicit, e.g. `sdx bash -lc 'echo ready && make test'`.
 
 ```
 bootstrap                 # clones if piped, installs uv, links machine, calls machine setup
-machine_cli/              # the machine CLI: `machine` script + package (not chezmoi-managed)
-home/                     # chezmoi source, mode=symlink
+machine_cli/              # the machine CLI: `machine` script + package (not deployed as a dotfile)
+home/                     # dotfile groups: core, prompt, systemd, work (applied by `mise dot`); `mise.toml` declares them
 machine/
   hosts/                  # versioned host answers (<hostname>.yml)
   ssh_keys/               # public host keys for ssh_allow_from
@@ -158,7 +158,7 @@ script (shebang `uv run --script`, Python 3.11–3.13) — its dependencies (cli
 PyYAML) are declared inline and resolved by [uv](https://astral.sh/uv) on first
 run, no manual venv. `./bootstrap` installs `uv` itself if it's missing. `~/.local/bin/machine`
 is a symlink to it, so the checkout is found by resolving the link and can be anywhere; because
-chezmoi does not deploy the CLI, a plain `git pull` cannot leave it half updated. `machine_cli/`
+the dotfile tool does not deploy the CLI, a plain `git pull` cannot leave it half updated. `machine_cli/`
 (code) is not to be confused with `machine/` (host data).
 
 `machine --debug <command>` (or `DEBUG=1`) prints every command the CLI
@@ -172,13 +172,13 @@ The script itself only defines the command line. The implementation is the packa
 | `core` | constants (profiles, features) and pure helpers |
 | `system` | everything touching the outside world (`run`, `have`, tty, hostname); tests replace these here |
 | `profile` | local profile, versioned host files, prompts |
-| `tools` | bootstrap tools, git / ansible / chezmoi runners |
+| `tools` | bootstrap tools, git / ansible runners |
 | `bitwarden` | `~/.env`, per-host SSH keys, authorized_keys |
 | `commands` | setup, apply, update, status, commit, push |
 | `machine` | the `Machine` class combining the modules above |
 
 Profile cache: `~/.config/machine/profile.yml` (not in git).  
-**Source of truth per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — features and `ssh_allow_from`. chezmoi config: `~/.config/chezmoi/chezmoi.yaml`.
+**Source of truth per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — features and `ssh_allow_from`. Dotfile groups of the host: `~/.config/mise/config.local.toml` (written by `machine`).
 
 ### Versioning and pushing host profiles
 
@@ -199,7 +199,7 @@ machine update                # pull → sync profile → apply on drift
 machine apply --limit homeserver
 ```
 
-`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. The health check fails when the zsh startup check fails or when `chezmoi managed` cannot read the config or source (unprivileged checks only; telegraf is a warning). The same restore applies to the apply step of `machine update`. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
+`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. The health check fails when the zsh startup check fails or when the group configuration cannot be read (unprivileged checks only; telegraf is a warning). The same restore applies to the apply step of `machine update`. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
 
 The recovery Ansible run only happens when syncing the host profile changed it;
 an unchanged profile is restored without repeating the same failed command.
@@ -366,10 +366,9 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 | Layer | Responsible for |
 | --- | --- |
 | `machine/hosts/*.yml` | Desired state (profile, features) |
-| `machine` CLI | Orchestration, UX, secrets, git, calling chezmoi |
-| chezmoi | Dotfiles |
+| `machine` CLI | Orchestration, UX, secrets, git, calling mise and Ansible |
+| mise | Dotfile groups and user-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
-| mise | User-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Inventory | Reachability only — no features |
 
 Work modules (`01_work.zsh`) are only linked for profile `work-machine`.

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import system
-from .core import die, parse_profile_file
+from .core import die, log, parse_profile_file
 
 # Groups are directories `home/<group>/` declared in the repository's `mise.toml`.
 GROUP_ALWAYS = ("core", "prompt")
@@ -30,7 +30,97 @@ def render_local_config(groups: Sequence[str]) -> str:
     return f"[bootstrap]\ndotfile_groups = [{names}]\n"
 
 
+GITCONFIG_LOCAL_HEADER = """\
+# Host-local git config, included near the end of ~/.gitconfig; only the owner rules
+# (remote URL -> work/private identity) come after it.
+# Created once by `machine setup` from the machine profile and never overwritten — edit freely.
+# Put host-only settings here: signingkey/gpg, safe.directory, credential helpers, proxy.
+# Per-repo exceptions: `git user-work` / `git user-private`.
+"""
+
+CA_INFO_BLOCK = """\
+# The user-space Git (mise) ignores /etc/gitconfig and the system CA bundle.
+[http]
+    sslCAInfo = /etc/ssl/certs/ca-certificates.crt
+"""
+
+
+def render_gitconfig_local(profile: str) -> str:
+    """Profile defaults for ~/.gitconfig.local (identity, CA bundle, safe.directory)."""
+    if profile == "work-machine":
+        name, email = (
+            "Ditscher Christian (XC-AS/ESE1)",
+            "christian.ditscher@de.bosch.com",
+        )
+    else:
+        name, email = "Christian Ditscher", "chris@ditscher.me"
+    text = f"{GITCONFIG_LOCAL_HEADER}\n[user]\n    name = {name}\n    email = {email}\n"
+    text += "\n[credential]\n    helper = store\n"
+    if profile == "work-machine":
+        text += f"\n{CA_INFO_BLOCK}"
+        text += "\n[safe]\n    directory = /opt/osd/ansible/osd-ansible-custom\n"
+    if profile == "container":
+        text += "\n[safe]\n    directory = /workspace\n"
+    return text
+
+
+SWEEP_SKIP_DIRS = {
+    ".cache",
+    ".git",
+    ".nvm",
+    ".npm",
+    ".docker-cache",
+    "node_modules",
+    "share",
+    ".pyenv",
+    ".rustup",
+    ".cargo",
+}
+SWEEP_MAX_DEPTH = 5
+
+
+def sweep_dangling_links(home: Path, repo: Path) -> list[Path]:
+    """Remove dangling symlinks in `home` whose target lay inside the checkout."""
+    repo = repo.resolve()
+    removed: list[Path] = []
+    base_depth = len(home.parts)
+    for current, dirs, files in os.walk(home):
+        depth = len(Path(current).parts) - base_depth
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in SWEEP_SKIP_DIRS
+            and depth < SWEEP_MAX_DEPTH
+            and not os.path.islink(os.path.join(current, d))
+        ]
+        for name in files:
+            link = Path(current) / name
+            if not link.is_symlink() or link.exists():
+                continue
+            target = Path(os.path.normpath(Path(current) / os.readlink(link)))
+            if target == repo or repo in target.parents:
+                link.unlink()
+                removed.append(link)
+    return removed
+
+
 class DotfilesMixin:
+    def ensure_gitconfig_local(self, profile: str) -> None:
+        """Create ~/.gitconfig.local once; an existing file is only extended on work hosts
+        that lack the CA bundle key (the user-space Git ignores the system store)."""
+        path = self.home / ".gitconfig.local"
+        if not path.exists():
+            path.write_text(render_gitconfig_local(profile), encoding="utf-8")
+            return
+        if profile != "work-machine":
+            return
+        text = path.read_text(encoding="utf-8")
+        if "sslcainfo" not in text.lower():
+            path.write_text(
+                text.rstrip("\n") + f"\n\n{CA_INFO_BLOCK}", encoding="utf-8"
+            )
+            log("added http.sslCAInfo to ~/.gitconfig.local")
+
     def write_dotfile_groups(self, profile: str) -> None:
         """Write the host's group list into the local mise configuration."""
         features = parse_profile_file(self.profile_path)["features"]
@@ -50,10 +140,14 @@ class DotfilesMixin:
             die("mise is not installed (run: ./bootstrap)")
         if not self.mise_local_config.is_file():
             die(f"missing {self.mise_local_config} (run: machine setup)")
+        profile = str(parse_profile_file(self.profile_path)["profile"] or "home-laptop")
+        self.ensure_gitconfig_local(profile)
         env = self.dotfiles_env()
         project = Path(self.repo) / "mise.toml"
         system.run(["mise", "trust", str(project)], env=env, check=False, capture=True)
         system.run(["mise", "dot", "apply", "--prune"], env=env, cwd=self.repo)
+        for link in sweep_dangling_links(self.home, Path(self.repo)):
+            log(f"removed dangling link {link}")
 
     def dotfiles_health_failure(self) -> str:
         """Reason why the group configuration is unusable, or an empty string."""

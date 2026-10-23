@@ -9,6 +9,10 @@
 - **WHEN** `machine setup` or `machine update` runs and `~/.gitconfig.local` exists
 - **THEN** the file is left unchanged
 
+#### Scenario: Existing work host without the CA bundle key
+- **WHEN** the dotfile apply runs on a work host whose `~/.gitconfig.local` has no `http.sslCAInfo`
+- **THEN** only that key is appended (the user-space Git ignores the system CA store) and nothing else in the file changes
+
 #### Scenario: First setup
 - **WHEN** `machine setup` runs on a host without `~/.gitconfig.local`
 - **THEN** the file is created with the identity of the profile

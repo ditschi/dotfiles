@@ -23,7 +23,6 @@ RUN apt-get update \
     && case "$UBUNTU_VERSION" in 24.04) ;; *) apt-get install -y --no-install-recommends sudo-rs ;; esac \
     && rm -rf /var/lib/apt/lists/* \
     && if [ "$INSECURE_TLS" = 1 ]; then echo insecure >/root/.curlrc; fi \
-    && curl -fsSL get.chezmoi.io | sh -s -- -b /usr/local/bin \
     && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
     && mkdir -p /usr/share/ansible/collections \
     && ansible-galaxy collection install ansible.posix \

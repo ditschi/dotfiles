@@ -9,7 +9,7 @@
 #   machine/ssh_keys/ditschi-ThinkPad-T470.pub — pubkey recovered from netmaster
 #
 # CI fixtures (do not rename):
-#   ci-container.yml   — chezmoi only
+#   ci-container.yml   — dotfiles only
 #   ci-rpi-zero.yml    — ansible+apt slim
 #   ci-home-laptop.yml — ansible+apt GNOME (ThinkPad mirror)
 #

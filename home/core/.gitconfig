@@ -1,7 +1,7 @@
 # Shared git config — tracked in dotfiles, identical on every host.
 # `git config --global ...` writes here (symlink into the repo), so new aliases get shared.
 # Host-only settings (user, signing, safe.directory, credentials, proxy) belong in
-# ~/.gitconfig.local (created once by chezmoi, never overwritten). A pre-commit hook
+# ~/.gitconfig.local (created once by machine, never overwritten). A pre-commit hook
 # rejects them in this file.
 
 [color]

@@ -18,7 +18,7 @@ def isolate_machine_environment(monkeypatch):
         "MACHINE_PROFILE_FILE",
         "MACHINE_STATE_DIR",
         "MACHINE_SSH_KEY",
-        "CHEZMOI_CONFIG",
+        "MISE_LOCAL_CONFIG",
         "BW_SESSION",
         "MACHINE_IN_DOCKER",
     ):

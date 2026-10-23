@@ -116,7 +116,7 @@ def test_shells_start_cleanly(profile_env):
 @pytest.mark.parametrize("profile_env", ["container"], indirect=True)
 def test_dev_container_with_work_user_starts_cleanly(profile_env):
     # sdx dev containers run as the Bosch user id: the container profile keeps
-    # WORK_SETUP off, and chezmoi does not link the work modules for it.
+    # WORK_SETUP off, and the work group is not linked for it.
     host, _profile = profile_env
     host.run_test(ANTIDOTE_STUB)
     for shell in (

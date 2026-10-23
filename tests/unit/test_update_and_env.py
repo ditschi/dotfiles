@@ -257,7 +257,7 @@ def test_auto_update_reverts_when_zsh_breaks(update_env, monkeypatch):
 def test_auto_update_reverts_when_dotfile_apply_fails(update_env, monkeypatch):
     machine, _repo, other, _home, _calls = update_env
     before = machine.repo_revision()
-    _push_change(other, "home/dot_added", "x\n")  # a new file needs chezmoi apply
+    _push_change(other, "home/dot_added", "x\n")  # a new file needs a dotfile apply
     monkeypatch.setattr(machine, "_dotfiles_apply_quiet", lambda: False)
 
     assert _auto(machine) == 0
@@ -282,7 +282,7 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
 
     assert _update(machine) == 0
     assert "profile: home-server" in machine.profile_path.read_text()
-    # new chezmoi config from the synced profile is applied before ansible
+    # new local group config from the synced profile is applied before ansible
     assert calls == ["dotfiles", "env", "apply"]
 
 

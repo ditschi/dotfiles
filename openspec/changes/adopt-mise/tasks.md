@@ -39,9 +39,9 @@
 
 ## 4. Documentation and final checks
 
-- [ ] 4.1 Update `Readme.md`, `ansible/README.md` and the comments in `home/` that mention chezmoi, `dot_*` names or the removed roles. Verify `grep -rni chezmoi` finds only the migration code and archived records.
-- [ ] 4.2 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and the Docker tests listed in the Readme "Tests" section. Verify all pass.
-- [ ] 4.3 Run `openspec validate adopt-mise --strict` and verify it passes.
+- [x] 4.1 Update `Readme.md`, `ansible/README.md` and the comments in `home/` that mention chezmoi, `dot_*` names or the removed roles. Verify `grep -rni chezmoi` finds only the migration code and archived records.
+- [x] 4.2 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and the Docker tests listed in the Readme "Tests" section. Verify all pass.
+- [x] 4.3 Run `openspec validate adopt-mise --strict` and verify it passes.
 
 ## Workflow follow-up
 

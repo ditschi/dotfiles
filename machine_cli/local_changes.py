@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
-
-# Tool fragments and the lockfile live in the core group's mise configuration.
-TOOL_PREFIX = "home/core/.config/mise/"
+# Tool fragments live in the mise configuration of a group; the lockfile in the core group.
+TOOL_PATH = re.compile(r"^home/[^/]+/\.config/mise/")
 
 
 def classify_paths(changes: Iterable[tuple[str, str]]) -> list[str]:
@@ -21,7 +21,7 @@ def classify_paths(changes: Iterable[tuple[str, str]]) -> list[str]:
     for status, path in changes:
         if path == "mise.toml":
             steps.add("dotfiles")
-        elif path.startswith(TOOL_PREFIX):
+        elif TOOL_PATH.match(path):
             steps.add("tools")
         elif path.startswith("home/"):
             parts = path.removeprefix("home/").split("/", 1)

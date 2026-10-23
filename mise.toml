@@ -11,3 +11,6 @@ root = "home/systemd"
 
 [dotfile_groups.work]
 root = "home/work"
+
+[dotfile_groups.fonts]
+root = "home/fonts"

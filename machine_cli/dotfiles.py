@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import filecmp
 import os
 from pathlib import Path
 from typing import Sequence
@@ -22,6 +23,8 @@ def dotfile_groups(profile: str, features: Sequence[str] = ()) -> list[str]:
         groups.append("systemd")
     if profile in GROUP_WORK_PROFILES:
         groups.append("work")
+    if "fonts" in features:
+        groups.append("fonts")
     return groups
 
 
@@ -124,7 +127,8 @@ def clear_conflicting_targets(
     """Make room for `mise dot apply`, which refuses to overwrite existing files.
 
     A link pointing elsewhere into the checkout (an old layout) is removed; a regular
-    file is moved aside to `<name>.pre-dotfiles`, never deleted. Anything else that is
+    file is deleted when its content equals the repository file, else moved aside to
+    `<name>.pre-dotfiles`. Anything else that is
     already the right link, or a link outside the checkout, is left for mise to report.
     """
     repo = repo.resolve()
@@ -136,6 +140,10 @@ def clear_conflicting_targets(
                 target.unlink()
                 changed.append((target, "removed stale link"))
         elif target.is_file():
+            if filecmp.cmp(source, target, shallow=False):
+                target.unlink()
+                changed.append((target, "removed identical file"))
+                continue
             backup = target.with_name(target.name + ".pre-dotfiles")
             n = 1
             while backup.exists() or backup.is_symlink():

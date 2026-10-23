@@ -71,3 +71,25 @@ def test_no_azure_cli_without_the_feature(machine):
     host.run_tools_install()
 
     assert not any("azure-cli" in c for c in commands)
+
+
+def test_font_is_linked_for_the_fonts_feature_and_removed_without(
+    machine, tmp_path, monkeypatch
+):
+    host, _ = machine
+    installed = tmp_path / ".local/share/mise/installs/nerd-fonts/3.5.1"
+    installed.mkdir(parents=True)
+    monkeypatch.setattr(
+        mise_tools.system,
+        "run",
+        lambda args, **_kw: subprocess.CompletedProcess(
+            args, 0, stdout=f"{installed}\n", stderr=""
+        ),
+    )
+    link = tmp_path / ".local/share/fonts/FiraCodeNerdFont"
+
+    host.link_fonts({}, True)
+    assert link.resolve() == installed.resolve()
+    host.link_fonts({}, True)  # idempotent
+    host.link_fonts({}, False)
+    assert not link.is_symlink()

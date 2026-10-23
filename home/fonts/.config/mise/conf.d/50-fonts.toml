@@ -1,0 +1,4 @@
+# Fira Code Nerd Font for the prompt and terminals (feature `fonts`). `machine` links the
+# installed files into ~/.local/share/fonts and refreshes the font cache.
+[tools]
+"github:ryanoasis/nerd-fonts" = { version = "latest", asset_pattern = "FiraCode.zip" }

@@ -379,6 +379,24 @@ checksum = "sha256:e72cf723a4a660438862282e8aecf3885fc8123e88bfcad534cf6b941a354
 url = "https://github.com/git-lfs/git-lfs/releases/download/v3.8.1/git-lfs-linux-amd64-v3.8.1.tar.gz"
 url_api = "https://api.github.com/repos/git-lfs/git-lfs/releases/assets/666388433"
 
+[[tools."github:ryanoasis/nerd-fonts"]]
+version = "3.5.1"
+backend = "github:ryanoasis/nerd-fonts"
+specifiers = ["latest"]
+
+[tools."github:ryanoasis/nerd-fonts".options]
+asset_pattern = "FiraCode.zip"
+
+[tools."github:ryanoasis/nerd-fonts"."platforms.linux-arm64"]
+checksum = "sha256:239395baf60c89b2eaf4862b6b09db0ef95605cd3e8eef51c00345822a81a665"
+url = "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/FiraCode.zip"
+url_api = "https://api.github.com/repos/ryanoasis/nerd-fonts/releases/assets/523432569"
+
+[tools."github:ryanoasis/nerd-fonts"."platforms.linux-x64"]
+checksum = "sha256:239395baf60c89b2eaf4862b6b09db0ef95605cd3e8eef51c00345822a81a665"
+url = "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/FiraCode.zip"
+url_api = "https://api.github.com/repos/ryanoasis/nerd-fonts/releases/assets/523432569"
+
 [[tools.jq]]
 version = "1.8.2"
 backend = "aqua:jqlang/jq"

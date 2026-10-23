@@ -115,11 +115,20 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     (home / ".zshrc").symlink_to(repo / "home/dot_zshrc")  # old layout, dangling
     (home / ".config/app").symlink_to(repo / "home/core/.config/app")  # already right
     (home / ".bashrc.pre-dotfiles").write_text("older backup")
+    (home / ".config/app2").write_text("new")  # identical to the repository file
+    (repo / "home/core/.config/app2").write_text("new")
 
     changed = clear_conflicting_targets(repo, home, ["core"])
 
-    assert sorted(p.name for p, _ in changed) == [".bashrc", ".zshrc"]
+    assert sorted(p.name for p, _ in changed) == [".bashrc", ".zshrc", "app2"]
+    assert not (home / ".config/app2").exists()
+    assert not (home / ".config/app2.pre-dotfiles").exists()
     assert not (home / ".bashrc").exists() and not (home / ".zshrc").is_symlink()
     assert (home / ".bashrc.pre-dotfiles.2").read_text() == "distro default"
     assert (home / ".bashrc.pre-dotfiles").read_text() == "older backup"
     assert (home / ".config/app").is_symlink()
+
+
+def test_fonts_group_follows_the_feature():
+    assert "fonts" in dotfile_groups("home-laptop", ["fonts"])
+    assert "fonts" not in dotfile_groups("home-laptop", [])

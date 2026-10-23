@@ -42,7 +42,9 @@ def _base_env(tmp_path: Path, monkeypatch, repo: Path) -> Path:
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     for var in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{var}_NAME", "Test")
@@ -85,10 +87,10 @@ def update_env(tmp_path: Path, monkeypatch):
     machine.sync_host_profile_from_repo()  # host already in sync before update
 
     calls: list[str] = []
-    monkeypatch.setattr(machine, "run_chezmoi_apply", lambda: calls.append("chezmoi"))
+    monkeypatch.setattr(machine, "run_dotfiles_apply", lambda: calls.append("dotfiles"))
     original_have = cli.system.have
     monkeypatch.setattr(
-        cli.system, "have", lambda name: name == "chezmoi" or original_have(name)
+        cli.system, "have", lambda name: name == "mise" or original_have(name)
     )
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: calls.append("env") or 0)
     monkeypatch.setattr(machine, "cmd_apply", lambda _args: calls.append("apply") or 0)
@@ -166,7 +168,7 @@ def test_auto_update_applies_home_only_changes(update_env):
 
     assert _auto(machine) == 0
     assert (repo / "home/dot_new").is_file()
-    assert calls == ["chezmoi"]
+    assert calls == ["dotfiles"]
     assert machine.read_update_state()["state"] == "updated"
     assert not machine.update_marker.exists()
 
@@ -192,7 +194,7 @@ def test_auto_update_stops_before_first_system_commit(update_env):
     assert (repo / "home/dot_first").is_file()
     assert not (repo / "ansible/new.yml").exists()
     assert not (repo / "home/dot_last").exists()
-    assert calls == ["chezmoi"]
+    assert calls == ["dotfiles"]
     assert machine.read_update_state()["state"] == "available"
 
 
@@ -252,16 +254,16 @@ def test_auto_update_reverts_when_zsh_breaks(update_env, monkeypatch):
     assert (repo / "home/dot_new").is_file()
 
 
-def test_auto_update_reverts_when_chezmoi_apply_fails(update_env, monkeypatch):
+def test_auto_update_reverts_when_dotfile_apply_fails(update_env, monkeypatch):
     machine, _repo, other, _home, _calls = update_env
     before = machine.repo_revision()
     _push_change(other, "home/dot_added", "x\n")  # a new file needs chezmoi apply
-    monkeypatch.setattr(machine, "_chezmoi_apply_quiet", lambda: False)
+    monkeypatch.setattr(machine, "_dotfiles_apply_quiet", lambda: False)
 
     assert _auto(machine) == 0
     assert machine.repo_revision() == before
     state = machine.read_update_state()
-    assert state["state"] == "attention" and "chezmoi apply failed" in state["reason"]
+    assert state["state"] == "attention" and "dotfile apply failed" in state["reason"]
 
 
 def test_auto_update_skips_when_another_update_runs(update_env):
@@ -281,7 +283,7 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
     assert _update(machine) == 0
     assert "profile: home-server" in machine.profile_path.read_text()
     # new chezmoi config from the synced profile is applied before ansible
-    assert calls == ["chezmoi", "env", "apply"]
+    assert calls == ["dotfiles", "env", "apply"]
 
 
 def _failing_ansible_env(machine, monkeypatch, calls):
@@ -436,7 +438,7 @@ def test_update_stops_on_diverged_history(update_env, capsys):
     assert calls == []
 
 
-def test_update_content_change_skips_chezmoi_and_apply(update_env):
+def test_update_content_change_skips_dotfiles_and_apply(update_env):
     machine, _repo, other, _home, calls = update_env
     _push_change(other, "home/dot_placeholder", "changed\n")
 
@@ -464,7 +466,7 @@ def test_update_check_changes_nothing(update_env, capsys):
         == 0
     )
     plan = json.loads(capsys.readouterr().out)
-    assert plan["steps"] == ["chezmoi", "shell"] and plan["blockers"] == []
+    assert plan["steps"] == ["dotfiles", "shell"] and plan["blockers"] == []
     assert _git("rev-parse", "HEAD", cwd=repo) == head
     assert calls == []
 
@@ -569,8 +571,7 @@ def test_classify_incoming_paths():
     from machine_cli.local_changes import classify_paths as classify
 
     assert classify([("M", "home/dot_zshrc")]) == ["shell"]
-    assert classify([("A", "home/dot_new")]) == ["chezmoi", "shell"]
-    assert classify([("M", "home/.chezmoiignore")]) == ["chezmoi", "shell"]
+    assert classify([("A", "home/dot_new")]) == ["dotfiles", "shell"]
     assert classify([("M", "machine_cli/machine")]) == []
     assert classify([("A", "machine_cli/updates.py")]) == []
     assert classify([("M", "ansible/site.yml"), ("M", "machine/hosts/h.yml")]) == [

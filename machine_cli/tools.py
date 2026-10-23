@@ -1,4 +1,4 @@
-"""Bootstrap tools and the git / ansible / chezmoi runners."""
+"""Bootstrap tools and the git / ansible runners."""
 
 from __future__ import annotations
 
@@ -25,37 +25,9 @@ from .core import (
 
 
 class ToolsMixin:
-    def chezmoi_health_failure(self) -> str:
-        """Reason why chezmoi cannot read its config or source, or an empty string."""
-        if not (system.have("chezmoi") and self.chezmoi_config.exists()):
-            return ""
-        try:
-            self.chezmoi_config.read_bytes()
-        except OSError as exc:
-            return f"chezmoi config unreadable: {exc}"
-        # `managed` fails on a broken config or source; unlike `verify` it does
-        # not fail on files that merely differ, e.g. before the next chezmoi apply.
-        result = system.run(
-            [
-                "chezmoi",
-                "managed",
-                "--source",
-                str(self.chezmoi_source),
-                "--destination",
-                str(self.home),
-                "--config",
-                str(self.chezmoi_config),
-            ],
-            check=False,
-            capture=True,
-        )
-        if result.returncode != 0:
-            return f"chezmoi managed failed: {(result.stderr or '').strip()}"
-        return ""
-
     def health_check_after_apply(self) -> bool:
         ok = True
-        for reason in (self.zsh_health_failure(), self.chezmoi_health_failure()):
+        for reason in (self.zsh_health_failure(), self.dotfiles_health_failure()):
             if reason:
                 log(f"health check failed: {reason}")
                 ok = False
@@ -174,7 +146,7 @@ class ToolsMixin:
         return system.have("uv")
 
     def ensure_bootstrap_tools(
-        self, need_chezmoi: bool, need_ansible: bool, need_bw: bool
+        self, need_mise: bool, need_ansible: bool, need_bw: bool
     ) -> None:
         if not system.have("git") and not self.install_pkg_if_missing("git"):
             die("git is required")
@@ -187,12 +159,8 @@ class ToolsMixin:
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True, exist_ok=True)
         os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
-        if need_chezmoi and not system.have("chezmoi"):
-            log("installing chezmoi to ~/.local/bin")
-            script = system.run(
-                ["curl", "-fsLS", "get.chezmoi.io"], capture=True
-            ).stdout
-            system.run(["sh", "-s", "--", "-b", str(local_bin)], input_text=script)
+        if need_mise and not system.have("mise"):
+            die("mise is not installed (run: ./bootstrap)")
         if need_ansible and not system.ansible_works():
             if self.ensure_uv():
                 log("installing ansible-core via uv tool install")
@@ -308,22 +276,4 @@ class ToolsMixin:
             return False
         return (
             system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0
-        )
-
-    def run_chezmoi_apply(self) -> None:
-        if not system.have("chezmoi"):
-            die("chezmoi is not installed")
-        if not self.chezmoi_config.is_file():
-            die(f"missing {self.chezmoi_config} (run: machine setup)")
-        system.run(
-            [
-                "chezmoi",
-                "apply",
-                "--source",
-                str(self.chezmoi_source),
-                "--destination",
-                str(self.home),
-                "--config",
-                str(self.chezmoi_config),
-            ]
         )

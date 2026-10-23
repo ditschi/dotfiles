@@ -114,7 +114,6 @@ class ProfileMixin:
 
     def ensure_dirs(self) -> None:
         (self.home / ".config/machine").mkdir(parents=True, exist_ok=True)
-        (self.home / ".config/chezmoi").mkdir(parents=True, exist_ok=True)
         (self.home / ".local/bin").mkdir(parents=True, exist_ok=True)
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -166,7 +165,7 @@ class ProfileMixin:
         if before != after:
             log(f"synced local profile from {path.relative_to(self.repo)}")
             data = parse_profile_file(self.profile_path)
-            self.write_chezmoi_config(str(data.get("profile") or "home-laptop"))
+            self.write_dotfile_groups(str(data.get("profile") or "home-laptop"))
             return True
         return False
 
@@ -185,7 +184,7 @@ class ProfileMixin:
         shutil.copy2(backup, self.profile_path)
         self.profile_path.chmod(0o600)
         data = parse_profile_file(self.profile_path)
-        self.write_chezmoi_config(str(data.get("profile") or "home-laptop"))
+        self.write_dotfile_groups(str(data.get("profile") or "home-laptop"))
         log(f"restored local profile from {backup}")
 
     def maybe_persist_host_profile(
@@ -255,17 +254,6 @@ class ProfileMixin:
                 ],
                 check=False,
             )
-
-    def write_chezmoi_config(self, profile: str) -> None:
-        self.ensure_dirs()
-        text = (
-            f"sourceDir: {self.chezmoi_source}\n"
-            "mode: symlink\n"
-            "data:\n"
-            f"    profile: {profile}\n"
-        )
-        self.chezmoi_config.write_text(text, encoding="utf-8")
-        self.chezmoi_config.chmod(0o600)
 
     def prompt_profile(self, current: str) -> str:
         default = current or "home-laptop"

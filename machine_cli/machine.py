@@ -9,6 +9,7 @@ from . import events, system
 from .core import parse_profile_file
 from .profile import ProfileMixin
 from .tools import ToolsMixin
+from .dotfiles import DotfilesMixin
 from .bw_client import BwClientMixin
 from .env_pull import EnvPullMixin
 from .ssh_keys import SshKeysMixin
@@ -20,6 +21,7 @@ from .auto_update import AutoUpdateMixin
 class Machine(
     ProfileMixin,
     ToolsMixin,
+    DotfilesMixin,
     BwClientMixin,
     EnvPullMixin,
     SshKeysMixin,
@@ -30,7 +32,6 @@ class Machine(
     def __init__(self) -> None:
         self.home = Path.home()
         self.repo = system.detect_repo()
-        self.chezmoi_source = self.repo / "home"
         self.core_source = self.repo / "home" / "core"
         self.ansible_dir = self.repo / "ansible"
         self.host_profiles_dir = self.repo / "machine" / "hosts"
@@ -42,8 +43,10 @@ class Machine(
                 self.home / ".config/machine/profile.yml",
             )
         )
-        self.chezmoi_config = Path(
-            os.environ.get("CHEZMOI_CONFIG", self.home / ".config/chezmoi/chezmoi.yaml")
+        self.mise_local_config = Path(
+            os.environ.get(
+                "MISE_LOCAL_CONFIG", self.home / ".config/mise/config.local.toml"
+            )
         )
         self.update_marker = Path(
             os.environ.get(

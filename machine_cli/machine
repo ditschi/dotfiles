@@ -113,10 +113,10 @@ PLAYBOOK_CHOICE = click.Choice(PLAYBOOKS)
 @click.option("--limit", default="", help="ansible host", shell_complete=_host_names)
 @click.option("--playbook", type=PLAYBOOK_CHOICE, default="workstation")
 @click.option("--skip-ansible", is_flag=True)
-@click.option("--skip-chezmoi", is_flag=True)
+@click.option("--skip-dotfiles", is_flag=True)
 @click.option("--no-become", is_flag=True)
 def setup(
-    profile, features, yes, local, limit, playbook, skip_ansible, skip_chezmoi, no_become
+    profile, features, yes, local, limit, playbook, skip_ansible, skip_dotfiles, no_become
 ) -> None:
     args = types.SimpleNamespace(
         profile=profile,
@@ -126,7 +126,7 @@ def setup(
         limit=limit,
         playbook=playbook,
         skip_ansible=skip_ansible,
-        skip_chezmoi=skip_chezmoi,
+        skip_dotfiles=skip_dotfiles,
         no_become=no_become,
         command="setup",
     )

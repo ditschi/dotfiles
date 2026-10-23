@@ -1,0 +1,13 @@
+# Dotfile groups: each is a directory under home/ that `mise dot apply` links into $HOME.
+# A host selects its groups in ~/.config/mise/config.local.toml (written by `machine`).
+[dotfile_groups.core]
+root = "home/core"
+
+[dotfile_groups.prompt]
+root = "home/prompt"
+
+[dotfile_groups.systemd]
+root = "home/systemd"
+
+[dotfile_groups.work]
+root = "home/work"

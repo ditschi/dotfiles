@@ -43,7 +43,7 @@ class CommandsMixin:
             and not system.in_docker()
             and os.environ.get("MACHINE_SKIP_BW") != "1"
         )
-        self.ensure_bootstrap_tools(not args.skip_chezmoi, not skip_ansible, need_bw)
+        self.ensure_bootstrap_tools(not args.skip_dotfiles, not skip_ansible, need_bw)
 
         features = list(args.features or [])
         if not features:
@@ -63,7 +63,7 @@ class CommandsMixin:
             allow_from = self.prompt_ssh_allow_from(allow_from, profile)
 
         self.write_profile(profile, features, allow_from)
-        self.write_chezmoi_config(profile)
+        self.write_dotfile_groups(profile)
         log(f"wrote {self.profile_path} (profile={profile})")
 
         self.maybe_persist_host_profile(profile, features, allow_from, yes=args.yes)
@@ -84,8 +84,8 @@ class CommandsMixin:
 
         self.maybe_tailscale_login(features)
 
-        if not args.skip_chezmoi:
-            self.run_chezmoi_apply()
+        if not args.skip_dotfiles:
+            self.run_dotfiles_apply()
             if profile != "container":
                 self.ensure_update_timer()
             self.cmd_env_pull()
@@ -198,21 +198,9 @@ class CommandsMixin:
             print(self.profile_path.read_text(encoding="utf-8"), end="")
         else:
             print("profile file: missing")
-        if system.have("chezmoi") and self.chezmoi_config.is_file():
-            print("chezmoi status:")
-            system.run(
-                [
-                    "chezmoi",
-                    "status",
-                    "--source",
-                    str(self.chezmoi_source),
-                    "--destination",
-                    str(self.home),
-                    "--config",
-                    str(self.chezmoi_config),
-                ],
-                check=False,
-            )
+        if system.have("mise") and self.mise_local_config.is_file():
+            print("dotfile groups:")
+            print(self.mise_local_config.read_text(encoding="utf-8"), end="")
         return 0
 
     def cmd_commit(self, args: types.SimpleNamespace) -> int:

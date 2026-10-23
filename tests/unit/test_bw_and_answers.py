@@ -30,7 +30,9 @@ def test_fake_bw_publish_ssh_public_key(tmp_path: Path, fake_bw, monkeypatch):
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
     cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()
@@ -67,7 +69,9 @@ def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatc
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
     monkeypatch.setenv("MACHINE_PROFILE_FILE", str(profile))
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
     cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()

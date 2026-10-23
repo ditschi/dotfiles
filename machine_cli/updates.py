@@ -436,12 +436,10 @@ class UpdateMixin:
         profile_backup = self.backup_local_profile()
         profile_changed = self.sync_host_profile_from_repo()
 
-        if (
-            self.chezmoi_config.is_file()
-            and system.have("chezmoi")
-            and ("chezmoi" in steps or profile_changed)
+        if self.mise_local_config.is_file() and (
+            "dotfiles" in steps or profile_changed
         ):
-            self.run_chezmoi_apply()
+            self.run_dotfiles_apply()
         self.cmd_env_pull()
         if self.update_marker.exists():
             self.update_marker.unlink()

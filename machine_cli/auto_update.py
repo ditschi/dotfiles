@@ -129,9 +129,9 @@ class AutoUpdateMixin:
             )
             self.event("update-auto", "blocked", "fast-forward-failed")
             return 0
-        if "chezmoi" in steps and not self._chezmoi_apply_quiet():
+        if "dotfiles" in steps and not self._dotfiles_apply_quiet():
             return self._revert_auto(
-                previous, target, "chezmoi apply failed", "apply-failed", timer
+                previous, target, "dotfile apply failed", "apply-failed", timer
             )
 
         reason = self.zsh_health_failure()
@@ -147,11 +147,11 @@ class AutoUpdateMixin:
         log(f"updated automatically to {self.repo_revision()[:8]}")
         return 0
 
-    def _chezmoi_apply_quiet(self) -> bool:
-        if not (system.have("chezmoi") and self.chezmoi_config.is_file()):
+    def _dotfiles_apply_quiet(self) -> bool:
+        if not (system.have("mise") and self.mise_local_config.is_file()):
             return True
         try:
-            self.run_chezmoi_apply()
+            self.run_dotfiles_apply()
         except SystemExit:
             return False
         return True
@@ -188,7 +188,7 @@ class AutoUpdateMixin:
         warn(f"automatic update failed ({reason}); reverting to {previous[:8]}")
         self._git("reset", "--hard", previous)
         self.event("update-auto", "reverted", code, timer.seconds())
-        self._chezmoi_apply_quiet()
+        self._dotfiles_apply_quiet()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.auto_update_failed_file.write_text(target + "\n", encoding="utf-8")
         self.write_update_state(

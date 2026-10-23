@@ -62,7 +62,9 @@ def test_sync_host_profile_from_repo(tmp_path: Path, monkeypatch):
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: "testhost")
 
@@ -86,7 +88,9 @@ def test_save_host_profile_to_repo(tmp_path: Path, monkeypatch):
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: "box1")
 
@@ -110,7 +114,9 @@ def test_backup_and_restore_profile(tmp_path: Path, monkeypatch):
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
     machine = cli_mod.Machine()
@@ -152,7 +158,9 @@ def _machine_env(tmp_path: Path, monkeypatch, hostname: str = "testhost"):
     monkeypatch.setenv(
         "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
     )
-    monkeypatch.setenv("CHEZMOI_CONFIG", str(home / ".config/chezmoi/chezmoi.yaml"))
+    monkeypatch.setenv(
+        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
+    )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: hostname)
     return cli_mod, cli_mod.Machine(), repo
@@ -335,21 +343,6 @@ def test_health_check_fails_when_zsh_is_unhealthy(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
     assert machine.health_check_after_apply() is False
     monkeypatch.setattr(machine, "zsh_health_failure", lambda: "")
-    assert machine.health_check_after_apply() is True
-
-
-def test_health_check_fails_when_chezmoi_cannot_read_source(
-    tmp_path: Path, monkeypatch
-):
-    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
-    bin_dir = tmp_path / "bin"
-    _fake_tool(bin_dir, "chezmoi", 1)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
-    machine.chezmoi_config.parent.mkdir(parents=True)
-    machine.chezmoi_config.write_text("{}\n")
-    assert machine.health_check_after_apply() is False
-
-    _fake_tool(bin_dir, "chezmoi", 0)
     assert machine.health_check_after_apply() is True
 
 

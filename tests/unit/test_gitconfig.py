@@ -155,7 +155,6 @@ def test_machine_commands_move_shared_host_settings_before_git(
     shared = repo / "home/core/.gitconfig"
     shared.write_text("[user]\n email = work@example.com\n")
     machine.repo = repo
-    machine.chezmoi_source = repo / "home"
     machine.core_source = repo / "home/core"
     real_run = cli.system.run
     calls = []
@@ -171,7 +170,7 @@ def test_machine_commands_move_shared_host_settings_before_git(
     monkeypatch.setattr(cli.system, "run", fake_git)
     monkeypatch.setattr(machine, "sync_host_profile_from_repo", lambda: False)
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: 0)
-    monkeypatch.setattr(machine, "run_chezmoi_apply", lambda: None)
+    monkeypatch.setattr(machine, "run_dotfiles_apply", lambda: None)
     if operation == "update":
         assert machine.cmd_update(SimpleNamespace(force=False, system=False)) == 0
         assert any("fetch" in args for args in calls)

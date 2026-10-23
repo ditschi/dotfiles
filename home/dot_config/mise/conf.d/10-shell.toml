@@ -1,0 +1,13 @@
+# Tools the shell configuration needs; installed by mise without root.
+# Versions are pinned by mise/mise.lock.
+[tools]
+fzf = "latest"
+zoxide = "latest"
+eza = "latest"
+fd = "latest"
+starship = "latest"
+jq = "latest"
+delta = "latest"
+tealdeer = "latest"
+# Static Linux build published by the tmux project; the registry entry has no checksum step.
+"aqua:tmux/tmux-builds" = "latest"

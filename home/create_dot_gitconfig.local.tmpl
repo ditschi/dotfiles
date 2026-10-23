@@ -17,6 +17,10 @@
     helper = store
 {{- if eq .profile "work-machine" }}
 
+# The user-space Git (mise) ignores /etc/gitconfig and the system CA bundle.
+[http]
+    sslCAInfo = /etc/ssl/certs/ca-certificates.crt
+
 [safe]
     directory = /opt/osd/ansible/osd-ansible-custom
 {{- end }}

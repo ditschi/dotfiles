@@ -54,9 +54,23 @@ From the laptop to a reachable device:
 
 `machine update` only runs what changed upstream: `chezmoi apply` for added/removed files under `home/`, Ansible when `ansible/**` changed, a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs `chezmoi apply` when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
-The background update check (`dotfiles-update-check-job`) and `machine update` write `~/.dotfiles-update-state` (`state`, `reason`, `revision`). Interactive zsh (Powerlevel10k segment `dotfiles_update`) and bash (Starship `env_var` module, or a `PS1` prefix without it) show it in the prompt, re-read before every prompt without forking: `⬆ dotfiles update` (run `machine update`), `↻ reload shell` (an update was applied after this shell started; run `reload`), `⚠ dotfiles: check` (needs attention, e.g. diverged history; a line with the reason is also printed at shell start). A shell started after the update shows nothing. `machine status` prints the state, the reason and the fix.
+The background update check (`dotfiles-update-check-job`) and `machine update` write `~/.dotfiles-update-state` (`state`, `reason`, `revision`). Interactive zsh and bash show it in the prompt (Starship `env_var` module; without Starship, at the right of the zsh prompt or as a `PS1` prefix in bash), re-read before every prompt without forking: `⬆ dotfiles update` (run `machine update`), `↻ reload shell` (an update was applied after this shell started; run `reload`), `⚠ dotfiles: check` (needs attention, e.g. diverged history; a line with the reason is also printed at shell start). A shell started after the update shows nothing. `machine status` prints the state, the reason and the fix.
 
 `~/.zshrc-local` is only for genuine single-host exceptions and is not in git.
+
+### Shell: prompt and plugins
+
+Both shells use [Starship](https://starship.rs) with the shared `~/.config/starship.toml` (all profiles). The prompt character shows the shell: a green `❯` in zsh, a purple `❯` in bash; `🐳` marks a container, and a failed command shows in the status segment. Without Starship both shells fall back to a plain prompt (directory and `❯`).
+
+zsh plugins are managed by [antidote](https://antidote.sh): edit `~/.zsh/plugins.txt` (one plugin per line; order matters) and open a new shell — the generated `~/.cache/zsh/plugins.zsh` is rebuilt and missing plugins are cloned to `~/.local/share/antidote`. `antidote update` updates them. The prompt appears first; completion (`compinit`), fzf-tab, history-substring-search, autosuggestions and fast-syntax-highlighting load right after it via zsh-defer. Tools such as fzf, zoxide, eza, fd, delta and Starship come from mise; their shell init is cached in `~/.cache/zsh` and regenerated when the binary changes.
+
+bash is a fallback with the same tools: Starship, fzf (Ctrl+R), zoxide (`z`), LS_COLORS and the git helpers (`git open`, `git recent`, `git recall`) from the antidote checkouts, Up/Down prefix search, Esc Esc for `sudo`, and pasting commands with a leading `$ ` or `❯ `.
+
+Data of the former zinit/Powerlevel10k setup is not removed automatically. After the switch it can be deleted with:
+
+```bash
+rm -rf ~/.local/share/zinit ~/.cache/p10k-* ~/.cache/gitstatus
+```
 
 Before bash hands over to zsh, a startup health check runs. If zsh fails or loads only partly, the shell stays in bash and prints one line with the reason. The result is cached until the zsh config, the zsh binary or `~/.preferred-shell` changes, or dotfiles are updated. After fixing the cause, run `zsh-recheck` to clear the cache and check again.
 
@@ -124,23 +138,18 @@ machine/
   hosts/                  # versioned host answers (<hostname>.yml)
   ssh_keys/               # public host keys for ssh_allow_from
 ansible/
-  workstation.yml         # packages + user_tools + monitoring + sshd + stylus
+  workstation.yml         # packages + monitoring + sshd + stylus
   homelab.yml             # stub — stacks live in the homelab repo
   requirements.yml        # ansible.posix (+ Galaxy notes)
   inventory/local.yml     # always localhost
   inventory/hosts.example.yml
   profiles/               # feature defaults per profile
   roles/
-    az_cli/               # Azure CLI, work only (official installer)
-    gh_cli/               # GitHub CLI (official apt repo)
     monitoring/           # Telegraf agent configs
-    node_tools/           # NVM, Node LTS/npm, optional LLM CLIs + OpenSpec
     sshd_home/            # port 5115 + authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
     touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
     thinkpad_tuning/      # charge thresholds, power profile, S3, zram, tablet OSK
-    user_tools/           # starship, fonts
-    yazi/                 # yazi terminal file manager (.deb release)
 tests/                    # unit + Docker/CI
 ```
 
@@ -359,7 +368,8 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 | `machine/hosts/*.yml` | Desired state (profile, features) |
 | `machine` CLI | Orchestration, UX, secrets, git, calling chezmoi |
 | chezmoi | Dotfiles |
-| Ansible | apt, `/etc`, Telegraf, user_tools, stylus-touch-guard, sshd-home |
+| Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
+| mise | User-space tools without root (`home/dot_config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Inventory | Reachability only — no features |
 
 Work modules (`01_work.zsh`) are only linked for profile `work-machine`.
@@ -378,11 +388,13 @@ provider instead of replacing it with `docker.io`; only a missing,
 provider-compatible Compose package is added. Unmanaged providers may need
 manual Compose setup. The work profile does not enable Docker by default.
 
-Yazi resolves the latest stable upstream release on system apply, skips equal
-or newer installed versions, and preserves an installed version if release
-lookup fails. Its user configuration is not replaced. Set `yazi_version` to an
-explicit release in Ansible variables to opt out of latest-release tracking;
-this also avoids downgrading an existing installation.
+User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `gh`,
+`yazi`, Node, the LLM CLIs and OpenSpec, Azure CLI) come from mise fragments in
+`home/dot_config/mise/conf.d/`. Versions are pinned in `home/dot_config/mise/mise.lock`
+and `.mise/locks/` next to it; regenerate them with
+`mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
+A tool declared in two fragments, or in a fragment and an Ansible package list,
+fails `python3 -m machine_cli.mise_check` (pre-commit and CI).
 
 ## Tests
 

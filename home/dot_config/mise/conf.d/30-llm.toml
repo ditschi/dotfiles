@@ -1,0 +1,6 @@
+# LLM command line tools and OpenSpec (replace the Ansible role node_tools).
+# The `claude-code` and `copilot-cli` features select this fragment once groups exist.
+[tools]
+"npm:@anthropic-ai/claude-code" = "latest"
+"npm:@github/copilot" = "latest"
+"npm:@fission-ai/openspec" = "latest"

@@ -12,14 +12,17 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
+        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1-1
     hooks:
@@ -52,6 +55,7 @@ repos:
     rev: v0.14.0
     hooks:
       - id: yamlfmt
+        exclude: (^|/)\.mise/locks/
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
     hooks:
@@ -67,6 +71,13 @@ repos:
         entry: python3 -m machine_cli.local_overrides
         language: system
         files: ^home/dot_gitconfig$
+        pass_filenames: false
+      - id: mise-tools-declared-once
+        name: mise tools are declared once (fragments and Ansible packages)
+        entry: python3 -m machine_cli.mise_check
+        language: python
+        additional_dependencies: [pyyaml]
+        files: (^|/)mise/conf\.d/.*\.toml$|^ansible/group_vars/all\.yml$
         pass_filenames: false
       - id: no-co-authored-by
         name: forbid Co-authored-by trailers in commit messages

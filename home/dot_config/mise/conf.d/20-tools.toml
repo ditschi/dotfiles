@@ -1,0 +1,5 @@
+# Other user-space tools (replace the Ansible roles gh_cli, yazi and node_tools).
+[tools]
+gh = "latest"
+yazi = "latest"
+node = "lts"

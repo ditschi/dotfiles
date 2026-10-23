@@ -62,23 +62,6 @@
         cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
       when: ansible_facts.os_family == "Debian" and (install_packages | default([])) | length > 0
 
-- name: Node runtime and optional LLM tools
-  hosts: "{{ target_hosts | default('all') }}"
-  become: false
-  gather_facts: true
-  tags: [node_tools]
-  roles:
-    - role: node_tools
-
-- name: User-level tools
-  hosts: "{{ target_hosts | default('all') }}"
-  become: false
-  gather_facts: true
-  tags: [user_tools]
-  roles:
-    - role: user_tools
-      when: profile | default('') != 'container'
-
 - name: Monitoring (Telegraf)
   hosts: "{{ target_hosts | default('all') }}"
   become: true
@@ -93,41 +76,6 @@
         - "'monitoring' in (features | default([]))"
         - profile | default('') not in ['container', 'work-machine']
         - (monitoring_configs | default([])) | length > 0
-
-- name: Minimum git version
-  hosts: "{{ target_hosts | default('all') }}"
-  become: true
-  gather_facts: true
-  tags: [git, packages]
-  roles:
-    - role: git_min
-
-- name: Yazi (terminal file manager)
-  hosts: "{{ target_hosts | default('all') }}"
-  become: true
-  gather_facts: true
-  tags: [yazi]
-  roles:
-    - role: yazi
-      when: "'yazi' in (features | default([]))"
-
-- name: GitHub CLI
-  hosts: "{{ target_hosts | default('all') }}"
-  become: true
-  gather_facts: true
-  tags: [gh_cli]
-  roles:
-    - role: gh_cli
-      when: "'gh-cli' in (features | default([]))"
-
-- name: Azure CLI (work)
-  hosts: "{{ target_hosts | default('all') }}"
-  become: true
-  gather_facts: true
-  tags: [az_cli]
-  roles:
-    - role: az_cli
-      when: "'azure-cli' in (features | default([]))"
 
 - name: Stylus touch-guard (Yoga / convertible)
   hosts: "{{ target_hosts | default('all') }}"

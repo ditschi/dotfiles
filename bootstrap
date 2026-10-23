@@ -41,4 +41,12 @@ fi
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$MACHINE" "$HOME/.local/bin/machine"
 
+# mise: pinned release, installed for the user (no root) and left alone when present.
+MISE_VERSION="${MISE_VERSION:-2026.10.17}"
+if ! command -v mise >/dev/null 2>&1 && [[ ! -x $HOME/.local/bin/mise ]]; then
+    echo "bootstrap: installing mise $MISE_VERSION"
+    curl -fsSL "${MISE_INSTALL_URL:-https://mise.run}" |
+        env MISE_VERSION="v$MISE_VERSION" MISE_INSTALL_PATH="$HOME/.local/bin/mise" sh
+fi
+
 exec "$MACHINE" setup "$@"

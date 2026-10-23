@@ -22,7 +22,7 @@ PROFILES = [
     "container",
 ]
 FEATURE_HELP = {
-    "zsh-full": "Shell stack (zsh, fzf, tmux, jq)",
+    "zsh-full": "Shell stack (zsh)",
     "fonts": "Meslo / Nerd fonts for prompts",
     "starship": "Starship prompt config",
     "yazi": "yazi terminal file manager",

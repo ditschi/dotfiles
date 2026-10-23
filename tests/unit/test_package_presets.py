@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -80,113 +79,6 @@ def run_task_fixture(tmp_path, tasks, variables, facts=None):
     shutil.which("ansible-playbook") is None, reason="Ansible unavailable"
 )
 @pytest.mark.parametrize(
-    "current,status,target,upgrade",
-    [
-        ("26.9.1", 200, "26.9.1", False),
-        ("26.8.1", 200, "26.9.1", True),
-        ("27.1.1", 200, "26.9.1", False),
-        ("26.8.1", 503, "", False),
-    ],
-)
-def test_yazi_release_policy_with_mocked_mutations(
-    tmp_path, current, status, target, upgrade
-):
-    tasks = yaml.safe_load((ANSIBLE / "roles/yazi/tasks/main.yml").read_text())
-    release = {"status": status}
-    if status == 200:
-        release["json"] = {
-            "tag_name": "v" + target,
-            "assets": [
-                {
-                    "name": "yazi-x86_64-unknown-linux-musl.deb",
-                    "browser_download_url": "https://example.invalid/yazi.deb",
-                    "digest": "sha256:fixture",
-                }
-            ],
-        }
-
-    def mock_actions(items):
-        for task in items:
-            if "block" in task:
-                mock_actions(task["block"])
-            replacements = {
-                "ansible.builtin.uri": {"yazi_release": release},
-                "ansible.builtin.get_url": {"fixture_download": True},
-                "ansible.builtin.apt": {"fixture_installed": True},
-            }
-            if "ansible.builtin.command" in task:
-                name = task.get("register", "yazi_installed")
-                replacements["ansible.builtin.command"] = {
-                    name: {
-                        "rc": 0,
-                        "stdout": "Yazi "
-                        + (target if name == "yazi_effective" else current),
-                    }
-                }
-            for action, facts in replacements.items():
-                if action in task:
-                    del task[action]
-                    for key in (
-                        "register",
-                        "environment",
-                        "become",
-                        "check_mode",
-                        "failed_when",
-                        "changed_when",
-                    ):
-                        task.pop(key, None)
-                    task["ansible.builtin.set_fact"] = facts
-
-    mock_actions(tasks)
-    result = run_task_fixture(
-        tmp_path,
-        tasks,
-        {"yazi_version": "latest"},
-        facts={"architecture": "x86_64"},
-    )
-    assert result["download"] is upgrade
-    assert result["installed"] is upgrade
-
-
-@pytest.mark.skipif(
-    shutil.which("ansible-playbook") is None, reason="Ansible unavailable"
-)
-@pytest.mark.parametrize("role,tool", [("gh_cli", "gh"), ("az_cli", "az")])
-def test_existing_cli_skips_all_package_mutations(tmp_path, role, tool):
-    binary = tmp_path / tool
-    binary.write_text("#!/bin/sh\nprintf 'fixture version\\n'\n")
-    binary.chmod(0o755)
-    tasks = yaml.safe_load((ANSIBLE / f"roles/{role}/tasks/main.yml").read_text())
-
-    def forbid_mutations(items):
-        for task in items:
-            if "block" in task:
-                forbid_mutations(task["block"])
-            for action in list(task):
-                if (
-                    action.startswith("ansible.builtin.")
-                    and action != "ansible.builtin.command"
-                ):
-                    del task[action]
-                    task["ansible.builtin.fail"] = {
-                        "msg": "existing CLI must not change packages or sources"
-                    }
-
-    forbid_mutations(tasks)
-    run_task_fixture(
-        tmp_path,
-        tasks,
-        {
-            "machine_user_path": str(tmp_path) + ":" + os.environ["PATH"],
-        },
-        facts={"env": {"PATH": os.environ["PATH"]}},
-    )
-
-
-@pytest.mark.skipif(
-    shutil.which("ansible-playbook") is None, reason="Ansible unavailable"
-)
-@pytest.mark.parametrize(
     "provider,compose,expected",
     [
         ("docker-ce", True, []),
@@ -247,13 +139,13 @@ def test_cli_defaults_match_ansible_profiles(monkeypatch, tmp_path: Path):
 def test_expected_package_invariants(name: str):
     data = load_profile(name)
     packages = resolve_packages(data["profile"], data["features"])
-    assert "git" in packages or name == "rpi-zero"
+    assert "curl" in packages
     if name == "rpi-zero":
         assert "eza" not in packages
         assert "ldap-utils" not in packages
         assert "guake" not in packages
         assert "zsh" in packages
-        assert "fzf" in packages
+        assert "fzf" not in packages
         assert "unattended-upgrades" in packages
     if name == "work-machine":
         assert "ldap-utils" in packages

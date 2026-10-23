@@ -2,9 +2,7 @@
 # Profile-driven package sets (see tasks/resolve_packages.yml).
 packages_base:
   - curl
-  - git
   - wget
-  - tmux
   - tree
   - htop
   - python3
@@ -14,16 +12,12 @@ packages_base:
 # Slim replacement for packages_base on profile rpi-zero.
 packages_rpi_zero:
   - curl
-  - git
-  - tmux
   - zsh
-  - fzf
 
 # Every profile except rpi-zero and container.
 packages_host:
   - fonts-firacode
   - fonts-powerline
-  - git-lfs
   - gnupg
   - libsecret-tools
   - pipx
@@ -37,11 +31,6 @@ packages_work: &packages_work
 # feature with packages only needs a line here.
 packages_by_feature:
   zsh-full:
-    - autojump
-    - fzf
-    - jq
-    - luajit
-    - tmux
     - zsh
   gnome:
     - flameshot

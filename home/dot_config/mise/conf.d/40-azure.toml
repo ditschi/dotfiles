@@ -1,0 +1,6 @@
+# Azure CLI for the work profile (replaces the Ansible role az_cli).
+# A locked pipx install needs a mise-managed interpreter.
+[tools]
+python = "3.13"
+uv = "latest"
+"pipx:azure-cli" = "latest"

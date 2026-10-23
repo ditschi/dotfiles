@@ -1,0 +1,4 @@
+# Global mise settings. Tool fragments are in conf.d/; versions are pinned in mise.lock,
+# which is a link into the repository so a tool update is a reviewed commit.
+[settings]
+lockfile = true

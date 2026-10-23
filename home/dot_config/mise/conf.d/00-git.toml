@@ -1,0 +1,5 @@
+# Git on every host (replaces the Ansible role git_min). The shared config needs Git 2.36
+# (includeIf hasconfig). The conda build ignores /etc/gitconfig; see ~/.gitconfig.local.
+[tools]
+"conda:git" = "latest"
+git-lfs = "latest"

@@ -78,51 +78,7 @@ if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
     debian_chroot=$(cat /etc/debian_chroot)
 fi
 
-# set a fancy prompt (non-color, unless we know we "want" color)
-case "$TERM" in
-    xterm-color | *-256color) color_prompt=yes ;;
-esac
-
-# uncomment for a colored prompt, if the terminal has the capability; turned
-# off by default to not distract the user: the focus in a terminal window
-# should be on the output of commands, not on the prompt
-#force_color_prompt=yes
-
-if [ -n "$force_color_prompt" ]; then
-    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
-        # We have color support; assume it's compliant with Ecma-48
-        # (ISO/IEC-6429). (Lack of such support is extremely rare, and such
-        # a case would tend to support setf rather than setaf.)
-        color_prompt=yes
-    else
-        color_prompt=
-    fi
-fi
-
-if [ "$color_prompt" = yes ]; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-else
-    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
-fi
-unset color_prompt force_color_prompt
-
-# If this is an xterm set the title to user@host:dir
-case "$TERM" in
-    xterm* | rxvt*)
-        PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
-        ;;
-    *) ;;
-esac
-
-export GIT_PS1_SHOWCONFLICTSTATE=yes
-[ -f /usr/lib/git-core/git-sh-prompt ] && source /usr/lib/git-core/git-sh-prompt
 [ -f /usr/share/bash-completion/completions/git ] && source /usr/share/bash-completion/completions/git
-
-# Add git branch to commandline
-parse_git_branch() {
-    git branch 2>/dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
-}
-export PS1="\u@\h \[\e[32m\]\w \[\e[91m\]\$(parse_git_branch)\[\e[00m\]$ "
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
@@ -143,53 +99,15 @@ if ! shopt -oq posix; then
     fi
 fi
 
-# Optional fzf bindings/completion. Source only if available.
-if command -v fzf >/dev/null 2>&1; then
-    for fzf_keys in \
-        /usr/share/doc/fzf/examples/key-bindings.bash \
-        /usr/share/fzf/key-bindings.bash \
-        "$HOME/.fzf/shell/key-bindings.bash"; do
-        if [ -f "$fzf_keys" ]; then
-            . "$fzf_keys"
-            break
-        fi
-    done
-    for fzf_completion in \
-        /usr/share/doc/fzf/examples/completion.bash \
-        /usr/share/fzf/completion.bash \
-        "$HOME/.fzf/shell/completion.bash"; do
-        if [ -f "$fzf_completion" ]; then
-            . "$fzf_completion"
-            break
-        fi
-    done
+# Tools of the mise fragments (fzf, zoxide, starship, ...); a host without mise skips this.
+if [ -d "$HOME/.local/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) PATH="$HOME/.local/bin:$PATH" ;;
+    esac
 fi
-
-# Optional z.lua init (jump around directories with `z`).
-# Keep this resilient in containers where lua/z.lua may be absent.
-if command -v lua >/dev/null 2>&1 || command -v luajit >/dev/null 2>&1; then
-    if command -v z.lua >/dev/null 2>&1; then
-        eval "$(z.lua --init bash enhanced once 2>/dev/null)"
-    else
-        zlua_runner=""
-        if command -v lua >/dev/null 2>&1; then
-            zlua_runner="$(command -v lua)"
-        else
-            zlua_runner="$(command -v luajit)"
-        fi
-        for zlua_script in \
-            "$HOME/.local/share/zinit/plugins/skywind3000---z.lua/z.lua" \
-            "$HOME/.zinit/plugins/skywind3000---z.lua/z.lua" \
-            /usr/share/z.lua/z.lua \
-            /usr/local/share/z.lua/z.lua; do
-            if [ -f "$zlua_script" ]; then
-                eval "$("$zlua_runner" "$zlua_script" --init bash enhanced once 2>/dev/null)"
-                break
-            fi
-        done
-        unset zlua_runner
-        unset zlua_script
-    fi
+if command -v mise >/dev/null 2>&1; then
+    eval "$(mise activate bash)"
 fi
 
 DOTFILES_DIR="${HOME}/.zsh/config"
@@ -221,28 +139,89 @@ if command -v machine >/dev/null 2>&1; then
     eval "$(machine completion bash 2>/dev/null)"
 fi
 
-# green prompt; \[ \] mark non-printing escapes so line wrapping stays correct
-if [ "$color_prompt" = yes ]; then
-  PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[0;32m\]\w\[\033[00m\]\$ '
+# Shared with zsh: the plugin checkouts of antidote (cloned by the first zsh start) and the
+# cached tool init (dotfiles_cache_eval). bash has no plugin manager of its own.
+_dotfiles_plugins="${XDG_DATA_HOME:-$HOME/.local/share}/antidote"
+for _dotfiles_dir in paulirish/git-open paulirish/git-recent Fakerr/git-recall; do
+    if [ -d "$_dotfiles_plugins/$_dotfiles_dir" ]; then
+        case ":$PATH:" in
+            *":$_dotfiles_plugins/$_dotfiles_dir:"*) ;;
+            *) PATH="$_dotfiles_plugins/$_dotfiles_dir:$PATH" ;;
+        esac
+    fi
+done
+if [ -r "$_dotfiles_plugins/trapd00r/LS_COLORS/LS_COLORS" ] && command -v dircolors >/dev/null 2>&1; then
+    _dotfiles_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/lscolors.bash"
+    if [ ! -s "$_dotfiles_dir" ] || [ "$_dotfiles_plugins/trapd00r/LS_COLORS/LS_COLORS" -nt "$_dotfiles_dir" ]; then
+        mkdir -p "${_dotfiles_dir%/*}" && dircolors -b "$_dotfiles_plugins/trapd00r/LS_COLORS/LS_COLORS" >"$_dotfiles_dir"
+    fi
+    # shellcheck source=/dev/null
+    . "$_dotfiles_dir"
 fi
-LS_COLORS=$LS_COLORS:'di=0;32' ; export LS_COLORS
-export PROMPT_COMMAND='history -a;history -r'
-if declare -F dotfiles_update_prompt >/dev/null; then
-    PROMPT_COMMAND="$PROMPT_COMMAND;dotfiles_update_prompt"
-    PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }'"$PS1"
+unset _dotfiles_plugins _dotfiles_dir
+LS_COLORS=$LS_COLORS:'di=0;32'
+export LS_COLORS
+
+[ -r "$HOME/.zsh/cache-eval.sh" ] && . "$HOME/.zsh/cache-eval.sh"
+if declare -F dotfiles_cache_eval >/dev/null; then
+    dotfiles_cache_eval fzf fzf --bash
+    dotfiles_cache_eval zoxide zoxide init bash
 fi
+
+# Up/Down search the history for the typed prefix; Esc Esc puts sudo in front of the line.
+bind '"\e[A": history-search-backward' '"\e[B": history-search-forward'
+bind '"\eOA": history-search-backward' '"\eOB": history-search-forward'
+_dotfiles_sudo_command_line() {
+    if [ -z "$READLINE_LINE" ]; then
+        READLINE_LINE=$(fc -ln -1 2>/dev/null)
+        READLINE_LINE=${READLINE_LINE#"${READLINE_LINE%%[![:space:]]*}"}
+    fi
+    if [ "${READLINE_LINE#sudo }" != "$READLINE_LINE" ]; then
+        READLINE_LINE=${READLINE_LINE#sudo }
+    else
+        READLINE_LINE="sudo $READLINE_LINE"
+    fi
+    READLINE_POINT=${#READLINE_LINE}
+}
+bind -x '"\e\e": _dotfiles_sudo_command_line'
+
+# Pasted commands: strip a leading `❯ ` or `$ ` prompt indicator. `$` cannot be a bash
+# function or alias, so the not-found handler runs it (in a subshell: `$ cd dir` does not
+# change the directory). Other unknown commands go to the previous handler, if any.
+eval '❯() { "$@"; }'
+if declare -F command_not_found_handle >/dev/null; then
+    eval "_dotfiles_command_not_found_handle()$(declare -f command_not_found_handle | tail -n +2)"
+fi
+command_not_found_handle() {
+    if [ "$1" = '$' ]; then
+        shift
+        "$@"
+        return
+    fi
+    if declare -F _dotfiles_command_not_found_handle >/dev/null; then
+        _dotfiles_command_not_found_handle "$@"
+        return
+    fi
+    printf 'bash: %s: command not found\n' "$1" >&2
+    return 127
+}
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-# Optional prompt: initialize Starship only when installed.
-if command -v starship >/dev/null 2>&1; then
-    eval "$(starship init bash)"
-    # Without starship.toml (rpi-zero, container) there is no env_var module; prefix PS1 instead.
-    if declare -F dotfiles_update_prompt >/dev/null && [ ! -f "${STARSHIP_CONFIG:-$HOME/.config/starship.toml}" ]; then
-        PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }'"$PS1"
-    fi
+# Prompt: Starship (~/.config/starship.toml, shared with zsh) when installed, else a plain PS1.
+# Starship keeps this PROMPT_COMMAND and runs it before it draws the prompt.
+PROMPT_COMMAND='history -a;history -r'
+# keep the hook that `mise activate bash` added above (it updates tools after `mise use`)
+declare -F _mise_hook_prompt_command >/dev/null && PROMPT_COMMAND="_mise_hook_prompt_command;$PROMPT_COMMAND"
+declare -F dotfiles_update_prompt >/dev/null && PROMPT_COMMAND="$PROMPT_COMMAND;dotfiles_update_prompt"
+declare -F dotfiles_cache_eval >/dev/null && dotfiles_cache_eval starship starship init bash --print-full-init
+if ! declare -F starship_precmd >/dev/null; then
+    PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }${debian_chroot:+($debian_chroot)}\[\033[01;34m\]\w\[\033[00m\] \[\033[01;35m\]❯\[\033[00m\] '
+    case "$TERM" in
+        xterm* | rxvt*) PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1" ;;
+    esac
 fi
 
 # Local bashrc extension point (host-only additions, e.g. externally managed blocks)

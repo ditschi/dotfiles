@@ -1,10 +1,3 @@
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 # If you come from bash you might have to change your $PATH.
 export PATH=$HOME/bin:/usr/local/bin:$PATH
 alias zshconfig="nano ~/.zshrc"
@@ -12,21 +5,11 @@ alias zshconfig="nano ~/.zshrc"
 # Use emacs keybindings even if our EDITOR is set to vi
 bindkey -e
 
-ENABLE_CORRECTION="true"
+# Offer a correction for mistyped commands (gti -> git).
+setopt correct
 
-### Added by Zinit's installer
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
-[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME" \
-     && print -P "%F{220}${bold}Please ensure the default packages are installed:%f${normal}" \
-     && print -P "%F{33}  sudo apt install autojump fonts-powerline fonts-firacode fzf%f"
-source "${ZINIT_HOME}/zinit.zsh"
-
-
-autoload -Uz _zinit
-(( ${+_comps} )) && _comps[zinit]=_zinit
-### End of Zinit's installer chunk
-
+# Own completion functions; compinit runs once, deferred (see ~/.zsh/config/02_plugins.zsh).
+fpath+=~/.zfunc
 
 export ZSH=~/.zsh
 source $ZSH/config/00_LOADER.zsh
@@ -35,9 +18,3 @@ dotfiles_update_startup
 
 # Local zshrc extension point
 [[ ! -f ~/.zshrc-local ]] || source ~/.zshrc-local
-
-# Quiet startup: container detection is kept implicit.
-
-fpath+=~/.zfunc; autoload -Uz compinit; compinit
-
-zstyle ':completion:*' menu select

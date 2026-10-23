@@ -96,3 +96,57 @@ def test_piped_run_clones_once_and_does_not_pull(tmp_path):
     assert not (target / "new.txt").exists()
     link = Path(env["HOME"]) / ".local/bin/machine"
     assert link.resolve() == (target / "machine_cli/machine").resolve()
+
+
+def _installer(tmp_path: Path) -> Path:
+    script = tmp_path / "install-mise.sh"
+    script.write_text(
+        'echo "$MISE_VERSION" > "$MISE_INSTALL_PATH.version"\n'
+        'printf "#!/bin/sh\\n" > "$MISE_INSTALL_PATH"\n'
+        'chmod +x "$MISE_INSTALL_PATH"\n'
+    )
+    return script
+
+
+def _mise_env(tmp_path: Path, installer: Path) -> dict[str, str]:
+    env = _env(tmp_path, MISE_INSTALL_URL=installer.as_uri())
+    env["PATH"] = f"{tmp_path / 'fakebin'}:/usr/bin:/bin"
+    return env
+
+
+def test_bootstrap_installs_missing_mise_once(tmp_path):
+    checkout = _stub_checkout(tmp_path / "checkout")
+    (checkout / "bootstrap").write_text(BOOTSTRAP.read_text())
+    (checkout / "bootstrap").chmod(0o755)
+    env = _mise_env(tmp_path, _installer(tmp_path))
+    if subprocess.run(["sh", "-c", "command -v mise"], env=env).returncode == 0:
+        return  # a system mise would be kept, which the next test covers
+    mise = Path(env["HOME"]) / ".local/bin/mise"
+
+    result = subprocess.run(
+        [str(checkout / "bootstrap")], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert "stub machine setup" in result.stdout
+    assert mise.is_file()
+    assert Path(f"{mise}.version").read_text().strip() == "v2026.10.17"
+
+    mise.write_text("#!/bin/sh\n# kept\n")
+    subprocess.run([str(checkout / "bootstrap")], env=env, check=True)
+    assert "# kept" in mise.read_text()
+
+
+def test_bootstrap_keeps_installed_mise(tmp_path):
+    checkout = _stub_checkout(tmp_path / "checkout")
+    (checkout / "bootstrap").write_text(BOOTSTRAP.read_text())
+    (checkout / "bootstrap").chmod(0o755)
+    env = _mise_env(tmp_path, _installer(tmp_path))
+    fake = tmp_path / "fakebin/mise"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    result = subprocess.run(
+        [str(checkout / "bootstrap")], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (Path(env["HOME"]) / ".local/bin/mise").exists()
+    assert "installing mise" not in result.stdout

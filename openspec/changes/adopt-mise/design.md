@@ -23,7 +23,7 @@ See proposal.md for the motivation. This change builds on `simplify-machine-cli`
 - An update flow whose steps come from the file difference and that can always go to the upstream tip.
 
 **Non-Goals:**
-- Replacing zinit as the zsh plugin manager (the binary tools zinit fetched move to `mise`; plugins stay).
+- Replacing zinit as the zsh plugin manager (the binary tools zinit fetched move to `mise`); that is done by `adopt-antidote-starship`.
 - Replacing `bw` or changing Bitwarden handling (`simplify-machine-cli`, `openspec/backlog.md`).
 - Changing the automatic revert after a failed zsh health check; it stays and the requirement keeps its behaviour, only the tool names in it change. Its use is counted by the event log of `simplify-machine-cli`.
 - Moving system roles (`monitoring`, `thinkpad_tuning`, `sshd_home`, `touch_device`, `stylus_touch_guard`, apt packages) out of Ansible.
@@ -48,7 +48,7 @@ See proposal.md for the motivation. This change builds on `simplify-machine-cli`
 - **Git comes from the system for the first clone; `mise` always provides the user-space Git.** `./bootstrap` and `machine` assume a pre-installed `git` for the first clone. The shared `~/.gitconfig` needs Git 2.36 or newer (`includeIf hasconfig:remote.*.url`), so a user-space Git (`conda:git`, 2.56.0 in the spike, about 255 MB, no root) is installed on every host and replaces the `git_min` role. The shared config already carries the `filter "lfs"` section, so `git-lfs` (aqua) needs no system config.
 - **Tools that must work outside interactive shells are on the shims path.** Git is also used by IDEs, hooks, cron and `ssh` commands that never run `mise activate`; `~/.zshenv` and `~/.profile` add the `mise` shims directory so those find the same Git. This is an exception to "no shims" and applies to Git and `git-lfs` only.
 - **Existing hosts migrate by re-applying.** `machine setup` applies the groups with removal of orphans, then a sweep removes dangling symlinks whose old target lay inside the repository (the checkout or its former `dot_*` paths). The old chezmoi configuration and state may stay on the host: nothing runs chezmoi any more, so they have no effect; removing them is optional cleanup. No `migrate` subcommand is added (`update-flow` forbids one).
-- **Shell extras come from `mise` tools or `[bootstrap.repos]`, not Ansible.** `ble.sh` is a pinned `github:` tool, the shell fonts are Nerd Fonts fetched as a `github:` tool and linked into `~/.local/share/fonts`, and any plugin repository is cloned by `machine` or declared in `[bootstrap.repos]`. They are part of the shell and Git configuration, so `machine update` covers them like any other group tool.
+- **Shell extras come from `mise` tools or `[bootstrap.repos]`, not Ansible.** The shell fonts are Nerd Fonts fetched as a `github:` tool and linked into `~/.local/share/fonts`, and any plugin repository is cloned by `machine` or declared in `[bootstrap.repos]`. They are part of the shell and Git configuration, so `machine update` covers them like any other group tool.
 
 ## Alternatives considered
 
@@ -81,14 +81,20 @@ Rollback before step 3 is a revert of the tool commits. After step 3 a host can 
 ## Open Questions
 
 - Which `mise` release do we pin? 2026.10.17 passed the spike (any-path checkout, removal, re-link after a move); task 0.1 repeats it with the real repository.
+- Task 0.1 result (container, user 1000, no root, `mise` 2026.10.17, real files of this repository laid out as groups `core` and `work`, checkout at `/tmp/some/where/else/dotfiles`):
+  - Apply with `MISE_DOTFILES_ROOT` set links every file and symlinks point into the checkout.
+  - Selecting only `core` and applying with `--prune` removed `~/.tmux.conf` (group `work`) and nothing else.
+  - After moving the checkout, a re-apply with the new `MISE_DOTFILES_ROOT` re-linked everything to the new path.
+  - New finding: `mise` refuses a config file in the checkout that is not trusted (`Config files ... are not trusted`); `machine` must run `mise trust` on the checkout's `mise` config before the first apply or tool install, and again after the checkout moves.
+  - Lockfile: with the project config in `<checkout>/mise/` (`config.toml` plus `conf.d/*.toml`) and `lockfile = true`, `mise lock --platform linux-x64,linux-arm64` writes `<checkout>/mise/mise.lock`, so it lives in the repository. The group list stays in `~/.config/mise/config.local.toml`.
 - Tools and their source (spike: installable without root; trust is my assessment, not owner-confirmed):
   - aqua registry (checksums, upstream releases): `fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `gh`, `yazi`, `git-lfs`, `bat`, `ripgrep`; Node is a core tool.
   - `tmux`: `aqua:tmux/tmux-builds`, published from the official `tmux` GitHub organization, static Linux build. Decided: tmux comes from `mise`; the registry entry has no checksum step, so the version is pinned.
   - `az_cli`: decided: `pipx:azure-cli` with `uv` on the profiles that list it (25 s, 371 MB, brings its own Python); the deb was not compared (needs the Microsoft apt repository and root).
   - Stay in apt/Ansible (not in the `mise` registry): `zsh`, `gnupg`. Drop: `autojump` (zoxide replaces it) and `luajit` (not verified whether anything uses it).
 - Git from `conda:git`: it ignores `/etc/gitconfig` (it reads `<prefix>/etc/gitconfig`) and uses its own CA bundle, so work hosts need `http.sslCAInfo` in `~/.gitconfig.local`. Can `machine setup` seed it on work hosts? (Decided: the Git group is always selected, on every host.)
-- Bash on hosts without zsh (proposal, not decided): `starship`, `zoxide` and `fzf --bash` through `mise activate bash`, plus `ble.sh` (`github:akinomyoga/ble.sh@nightly`, last commit 2026-09-08, 48 commits in 2026, but the last tag is `v0.4.0-devel3`, so pin the nightly) for autosuggestions, highlighting and fzf-style menus. `fzf-tab-completion` is a separate project (`lincheney/fzf-tab-completion`, not part of fzf, 3 commits in 2026) and is not proposed. `bash-completion` is not in the `mise` registry; Ubuntu ships it by default.
+- Bash on hosts without zsh: decided in `investigate-shell-plugin-manager` and implemented by `adopt-antidote-starship`: `starship`, `zoxide` and `fzf --bash` (fallback level), no ble.sh (about 300 ms startup, no stable release).
 - Fonts: the owner chose Fira Code Nerd Font and wants the dotfiles to set it in the terminals used: Guake and the VS Code terminal (Windows is out of scope). Guake keeps the font in `gsettings` (`guake.style.font style`, currently `'Monospace 10'`, checked on this host), which a script can set after the font is installed. VS Code needs `terminal.integrated.fontFamily` in its `settings.json`; the file is a whole-file user setting that VS Code also writes, so a merge of that one key (mise dotfile edit modes are documented for parts of a file, not verified for JSON) must be spiked. The font is drawn by the terminal on the machine you sit at: an SSH session uses the local terminal's font, so the remote dotfiles cannot and need not set it. For VS Code Remote-SSH the integrated terminal font is a client-side user setting (not verified).
 - Fresh shell after `machine update` (decided, owner confirmed): a child process cannot reload its parent shell, so a `machine` shell function (zsh and bash) runs `exec` on the current shell after a successful `machine update`. Alternatives: only the prompt segment tells the user to reload (today); `machine update` starts a new shell as a child (nested, rejected).
 - Zinit versus a lighter plugin manager (`antidote`, `sheldon`): decided later; kept for now.
-- `sde` and `sdx`: inside the container `bootstrap --profile container --no-become` runs as today; a persistent `~/.local/share/mise` cache mount next to the zinit cache avoids re-downloading tools (not spiked).
+- `sde` and `sdx`: inside the container `bootstrap --profile container --no-become` runs as today; a persistent `~/.local/share/mise` cache mount next to the antidote cache avoids re-downloading tools (not spiked).

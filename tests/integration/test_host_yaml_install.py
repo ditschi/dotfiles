@@ -73,6 +73,7 @@ def test_clean_install_from_versioned_host_yaml_container(host_yaml_container):
     assert zshrc.exists
     assert zshrc.is_symlink
     assert not host.file("/home/tester/.p10k.zsh").exists
+    assert host.file("/home/tester/.config/starship.toml").is_symlink
 
 
 @pytest.mark.docker
@@ -86,8 +87,8 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert "profile: rpi-zero" in local.content_string
     assert "monitoring" in local.content_string
     assert host.package("zsh").is_installed
-    assert host.package("fzf").is_installed
-    assert host.package("tmux").is_installed
+    assert not host.package("fzf").is_installed
+    assert not host.package("tmux").is_installed
     assert host.package("unattended-upgrades").is_installed
     assert host.package("etckeeper").is_installed
     assert host.file("/etc/.git").is_directory

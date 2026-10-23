@@ -32,10 +32,6 @@ if [ -d "$HOME/.local/share/mise/shims" ]; then
     PATH="$HOME/.local/share/mise/shims:$PATH"
 fi
 
-if [ -f ~/dotfiles/.zsh/config/05_pyenv.zsh ]; then
-    . ~/dotfiles/.zsh/config/05_pyenv.zsh
-fi
-
 # BEGIN ANSIBLE MANAGED BLOCK
 # Handle new user setup and OCS launch
 NTUID=$(whoami | cut -d@ -f1)

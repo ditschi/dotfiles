@@ -38,7 +38,6 @@ from machine_cli.core import (  # noqa: E402,F401
     PLAYBOOKS,
     ENV_GROUPS,
     SSH_CLASS,
-    OLD_ROOT_LINK_NAMES,
     log,
     die,
     _IndentDumper,

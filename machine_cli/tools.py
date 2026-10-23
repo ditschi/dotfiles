@@ -47,14 +47,6 @@ class ToolsMixin:
                 log(f"health check: telegraf status={status or 'unknown'} (warn)")
         return ok
 
-    def git_head(self) -> str:
-        result = system.run(
-            ["git", "-C", str(self.repo), "rev-parse", "HEAD"],
-            capture=True,
-            check=False,
-        )
-        return (result.stdout or "").strip()
-
     def passwordless_sudo(self) -> bool:
         if os.geteuid() == 0:
             return True

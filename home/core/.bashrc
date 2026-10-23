@@ -114,7 +114,6 @@ DOTFILES_DIR="${HOME}/.zsh/config"
 if [ -d "$DOTFILES_DIR" ]; then
     . "$DOTFILES_DIR/00_alias.zsh"
     . "$DOTFILES_DIR/01_env.zsh"
-    . "$DOTFILES_DIR/05_pyenv.zsh"
     . "$DOTFILES_DIR/06_history.zsh"
 
     # MACHINE_PROFILE / WORK_SETUP, shared with zsh
@@ -206,9 +205,6 @@ command_not_found_handle() {
     return 127
 }
 
-export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 # Prompt: Starship (~/.config/starship.toml, shared with zsh) when installed, else a plain PS1.
 # Starship keeps this PROMPT_COMMAND and runs it before it draws the prompt.

@@ -6,11 +6,11 @@ Defines which part of the zsh configuration bash shares, so that bash sessions (
 ## Requirements
 
 ### Requirement: Shared module subset in bash
-An interactive bash session SHALL load the shared modules for aliases, environment, pyenv and history, plus the shared machine profile.
+An interactive bash session SHALL load the shared modules for aliases, environment and history, plus the shared machine profile.
 
 #### Scenario: Interactive bash
 - **WHEN** an interactive bash session stays in bash
-- **THEN** the alias, environment, pyenv and history modules and the machine profile are loaded
+- **THEN** the alias, environment and history modules and the machine profile are loaded
 
 ### Requirement: Work modules only on work hosts
 bash SHALL load the work modules only when `WORK_SETUP` is `true` and the work module file exists on the host.

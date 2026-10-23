@@ -20,8 +20,6 @@ curl -fsSL https://raw.githubusercontent.com/ditschi/dotfiles/main/bootstrap | b
 
 Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout. An existing clone is used as it is; update it with `machine update`.
 
-Hosts that still have the CLI deployed by chezmoi: run `~/dotfiles/bootstrap` once after pulling this change; `git pull` alone then no longer breaks `machine`.
-
 Non-interactive:
 
 ```bash
@@ -76,26 +74,19 @@ Before bash hands over to zsh, a startup health check runs. If zsh fails or load
 
 ### Node and LLM tools
 
-`machine apply` provisions user-local NVM and Node LTS (including npm) on every
-profile, including containers. An existing NVM default with Node 22 or newer is
-kept; older defaults are upgraded to LTS with their global packages migrated.
-No system Node installation is removed. Bash and zsh load NVM on startup.
+Node LTS (with npm) comes from mise (`20-tools.toml`), user-local and without sudo.
+NVM and pyenv are no longer loaded by the shell configuration.
 
 `machine setup` offers `claude-code` and `copilot-cli` in its feature picker.
 New private host profiles default to Claude Code; `work-machine` defaults to both.
 Containers have neither CLI enabled by default.
 Existing saved host features remain authoritative: rerun `machine setup` and
 select the desired CLIs, then save the host profile to roll them out.
-Existing CLI installations are preserved; missing CLIs are installed globally
-in the NVM default runtime without sudo. Authentication remains a manual step.
+The CLIs are installed by mise (`30-llm.toml`) without sudo. Authentication remains a manual step.
 
 OpenSpec is installed automatically when either CLI is selected or an existing
 Claude, Copilot, Codex, Gemini, Aider or Ollama command is found, even when both
 features are disabled.
-
-The runtime requires an architecture supported by upstream Node LTS. Original
-ARMv6 Pi Zero hosts cannot run current official Node binaries; provisioning
-reports a failure rather than silently substituting an obsolete runtime.
 
 ### Git config
 
@@ -173,8 +164,11 @@ The script itself only defines the command line. The implementation is the packa
 | `system` | everything touching the outside world (`run`, `have`, tty, hostname); tests replace these here |
 | `profile` | local profile, versioned host files, prompts |
 | `tools` | bootstrap tools, git / ansible runners |
-| `bitwarden` | `~/.env`, per-host SSH keys, authorized_keys |
+| `dotfiles`, `mise_tools`, `mise_check`, `terminal_fonts` | dotfile groups (`mise dot`), tool install, fragment checks, terminal fonts |
+| `bw_client`, `env_pull`, `ssh_keys` | Bitwarden client, `~/.env`, per-host SSH keys, authorized_keys |
 | `commands` | setup, apply, update, status, commit, push |
+| `updates`, `auto_update`, `local_changes`, `local_overrides`, `system_relevance` | update plan and resolvers, background update, relevance filter |
+| `attention`, `events` | `machine attention`, local event log |
 | `machine` | the `Machine` class combining the modules above |
 
 Profile cache: `~/.config/machine/profile.yml` (not in git).  
@@ -341,7 +335,7 @@ machine ssh restore           # restore private key
 
 `work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `desktop`, `gnome`, `cosmic`, `docker`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
+Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 

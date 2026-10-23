@@ -55,8 +55,8 @@ def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatc
     from importlib.machinery import SourceFileLoader
 
     repo = tmp_path / "dotfiles"
-    (repo / "home").mkdir(parents=True)
-    (repo / "home" / "dot_zshrc").write_text("#z\n", encoding="utf-8")
+    (repo / "home" / "core").mkdir(parents=True)
+    (repo / "home" / "core" / ".zshrc").write_text("#z\n", encoding="utf-8")
     (repo / ".git").mkdir()
     home = tmp_path / "home"
     home.mkdir()

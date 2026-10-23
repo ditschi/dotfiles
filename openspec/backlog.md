@@ -8,7 +8,7 @@ Improvement entries already have an investigation report in `openspec/investigat
 
 ### Restructure `~/.zsh` by use
 
-Split the flat `home/dot_zsh/config/` into zsh-only modules, modules shared with bash (must stay bash-compatible) and a work folder, so that loading and the work-profile exclusion become simpler. Also check whether `07_machine.zsh` is sourced twice.
+Split the flat `home/core/.zsh/config/` into zsh-only modules, modules shared with bash (must stay bash-compatible) and a work folder, so that loading and the work-profile exclusion become simpler. Also check whether `07_machine.zsh` is sourced twice.
 
 Investigation: shell-and-prompt A3, A4. Draft change: `openspec/changes/investigate-shell-layout` (classification of the modules).
 

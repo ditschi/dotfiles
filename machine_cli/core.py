@@ -65,15 +65,6 @@ SSH_CLASS = {
     "rpi-zero": "home",
     "container": "",
 }
-OLD_ROOT_LINK_NAMES = [
-    ".zshrc",
-    ".bashrc",
-    ".gitconfig",
-    ".p10k.zsh",
-    ".tmux.conf",
-    ".zprofile",
-    ".profile",
-]
 
 
 # Colours only on a terminal (rich also honours NO_COLOR); soft_wrap keeps one

@@ -673,8 +673,8 @@ def test_classify_incoming_paths():
     _cli()  # puts machine_cli on sys.path
     from machine_cli.local_changes import classify_paths as classify
 
-    assert classify([("M", "home/dot_zshrc")]) == ["shell"]
-    assert classify([("A", "home/dot_new")]) == ["dotfiles", "shell"]
+    assert classify([("M", "home/core/.zshrc")]) == ["shell"]
+    assert classify([("A", "home/core/.new")]) == ["dotfiles", "shell"]
     assert classify([("M", "home/core/.config/mise/mise.lock")]) == ["tools"]
     assert classify([("M", "machine_cli/machine")]) == []
     assert classify([("A", "machine_cli/updates.py")]) == []

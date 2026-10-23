@@ -56,11 +56,19 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **THEN** nothing is applied and the state is needs-attention with the reason
 
 ### Requirement: Update never discards local work
-`machine update` SHALL first run the known local-change resolvers (host-only Git settings into local config, externally managed `~/.bashrc` blocks into `~/.bashrc-local`), then fast-forward without touching local changes. It SHALL stop and report why only when a locally changed file is also changed upstream or the history diverged. Other local changes SHALL be a notice. `--force` overrides a stop.
+`machine update` SHALL first remove text that the local-overrides helper already knows from shared files, then fast-forward without touching local changes. It SHALL stop and report why only when a locally changed file is also changed upstream or the history diverged. Other local changes SHALL be a notice. `--force` overrides a stop.
 
 #### Scenario: Only expected local changes
-- **WHEN** the only local changes are ones a resolver moves into local config
-- **THEN** the resolver runs and the update continues
+- **WHEN** the only local changes are blocks that are already stored in a `.local` file
+- **THEN** they are removed from the shared file and the update continues
+
+#### Scenario: New local text
+- **WHEN** a shared file contains local text that the helper does not know yet and the update does not change that file
+- **THEN** the text is left in place and not reported; a manual update may offer the helper
+
+#### Scenario: New local text in a file the update changes
+- **WHEN** a shared file with unknown local text is also changed by the incoming commits
+- **THEN** the update records a conflict and does not overwrite the text
 
 #### Scenario: Dirty checkout
 - **WHEN** a locally changed file is also changed by the incoming commits

@@ -1,0 +1,49 @@
+# sheldon: same order as zinit. apply = ["defer"] = loaded via zsh-defer after the first prompt.
+shell = "zsh"
+
+[templates]
+defer = "{% for file in files %}zsh-defer -dmpr source \"{{ file }}\"\n{% endfor %}"
+lscolors = "zsh-defer -dmpr spike_lscolors \"{{ dir }}/LS_COLORS\""
+
+[plugins.zsh-defer]
+github = "romkatv/zsh-defer"
+
+[plugins.zsh-completions]
+github = "zsh-users/zsh-completions"
+dir = "src"
+apply = ["fpath"]
+
+[plugins.ls-colors]
+github = "trapd00r/LS_COLORS"
+use = ["LS_COLORS"]
+apply = ["lscolors"]
+
+[plugins.init]
+inline = "zsh-defer -dmpr -c 'spike_compinit; spike_tools'"
+
+[plugins.fzf-tab]
+github = "Aloxaf/fzf-tab"
+apply = ["defer"]
+
+[plugins.zsh-sudo]
+github = "hcgraf/zsh-sudo"
+apply = ["defer"]
+
+[plugins.undollar]
+github = "zpm-zsh/undollar"
+apply = ["defer"]
+
+[plugins.zsh-history-substring-search]
+github = "zsh-users/zsh-history-substring-search"
+apply = ["defer"]
+
+[plugins.zsh-autosuggestions]
+github = "zsh-users/zsh-autosuggestions"
+apply = ["defer"]
+
+[plugins.fast-syntax-highlighting]
+github = "zdharma-continuum/fast-syntax-highlighting"
+apply = ["defer"]
+
+[plugins.loaded]
+inline = "zsh-defer -dmpr -c 'spike_after_hss; _zsh_autosuggest_start; spike_after_autosuggest; spike_loaded'"

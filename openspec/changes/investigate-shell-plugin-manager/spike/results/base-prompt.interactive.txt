@@ -1,0 +1,46 @@
+FAIL ls_colors (LS_COLORS has 1 chars)
+    ~
+    🐳 ❯ echo $LS_COLORS | wc -c
+    1
+    ~
+    🐳 ❯
+FAIL paste "$ cmd"
+    ~
+    🐳 ❯ $ echo undollar-ok
+    zsh: command not found: $
+    ~                                                                                                                                                    🔍NOTFOUND
+    🐳 ❯
+PASS paste "❯ cmd"
+FAIL Esc Esc prepends sudo
+    ~
+    🐳 ❯ ls -d /tmp
+FAIL autosuggestion + Ctrl+Space accept
+    ~
+    🐳 ❯ echo autosug
+    autosug
+    ~
+    🐳 ❯
+FAIL Up = history substring search
+    ~
+    🐳 ❯ hss-t
+FAIL z jumps to a visited dir
+    ~
+    🐳 ❯ z doc && echo "Z=$PWD"
+    zsh: command not found: z
+    ~                                                                                                                                                    🔍NOTFOUND
+    🐳 ❯
+FAIL Tab opens fzf-tab list (cd /usr/)
+    ~
+    🐳 ❯ cd /usr/
+    [directory]
+    bin/      games/    include/  lib/      lib64/    libexec/  local/    sbin/     share/    src/
+FAIL fzf-tab preview pane (eza)
+    ~
+    🐳 ❯ cd /usr/
+    [directory]
+    bin/      games/    include/  lib/      lib64/    libexec/  local/    sbin/     share/    src/
+FAIL Ctrl+R opens fzf/atuin history
+    ~
+    🐳 ❯
+    bck-i-search: _
+PASS correction prompt for typo (sl)

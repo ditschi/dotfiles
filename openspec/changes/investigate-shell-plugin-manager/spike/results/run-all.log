@@ -1,0 +1,7 @@
+==> base-prompt (container)
+base-prompt              zb-prompt   62.8/74.5  prompt   34.3/37.1  loaded   28.7/31.1  cmd  36.3/50.2  input   0.2/0.3  install     534  missing:autosuggest,fzf_history,fzf_tab,highlight,hss,key_accept,key_ctrl_r,key_execute,key_sudo,key_tab,key_up_hss,ls_colors,sudo,undollar,zoxide
+==> zinit (container)
+zinit                    zb-prompt   77.5/86.2  prompt   41.4/46.9  loaded 211.6/238.7  cmd  39.7/47.9  input   6.8/8.2  install   16858  ok
+==> antidote (container)
+antidote                 zb-prompt  55.6/145.0  prompt   27.6/37.3  loaded 125.6/178.7  cmd 52.0/137.7  input  8.8/12.7  install    4505  ok
+==> sheldon (container)

@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+# Baseline: the current real setup (home/dot_zshrc + home/dot_zsh + home/dot_p10k.zsh),
+# staged into skel/ by bench.sh. Only the measurement marker is added (~/.zshrc-local).
+SPIKE_COMMON_FILES=(.zsh/spike-marker.zsh)
+source ${ZSH_SCRIPT:h}/../_common/setup.zsh ${ZSH_SCRIPT:h}

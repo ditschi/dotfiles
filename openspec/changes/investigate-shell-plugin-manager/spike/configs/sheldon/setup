@@ -1,0 +1,2 @@
+#!/usr/bin/env zsh
+source ${ZSH_SCRIPT:h}/../_common/setup.zsh ${ZSH_SCRIPT:h}

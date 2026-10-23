@@ -1,0 +1,3 @@
+# Measurement marker: queued after the last turbo plugin of the current setup.
+source ~/.zsh/spike-marker.zsh
+zinit wait lucid light-mode atload'spike_loaded' for zdharma-continuum/null

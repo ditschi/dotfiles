@@ -1,0 +1,10 @@
+# antidote bundle: same order as zinit. kind:defer = loaded via zsh-defer after the first prompt.
+romkatv/zsh-defer
+zsh-users/zsh-completions kind:fpath path:src
+trapd00r/LS_COLORS kind:clone
+Aloxaf/fzf-tab kind:defer pre:spike_defer_init
+hcgraf/zsh-sudo kind:defer
+zpm-zsh/undollar kind:defer
+zsh-users/zsh-history-substring-search kind:defer post:spike_after_hss
+zsh-users/zsh-autosuggestions kind:defer post:spike_post_autosuggest
+zdharma-continuum/fast-syntax-highlighting kind:defer post:spike_loaded

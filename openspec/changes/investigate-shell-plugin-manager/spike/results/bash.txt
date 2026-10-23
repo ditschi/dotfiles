@@ -1,0 +1,5 @@
+bash-none            cold    11.6  prompt    8.8/   8.8  n=1  -
+bash-fallback        cold    91.4  prompt   53.4/  53.4  n=1  blesh=0 ls_colors=1 fzf_history=1 zoxide=1 atuin=0 starship=1
+bash-fallback+atuin  cold   102.4  prompt   71.4/  71.4  n=1  blesh=0 ls_colors=1 fzf_history=1 zoxide=1 atuin=1 starship=1
+bash-full            cold  1095.6  prompt  441.7/ 441.7  n=1  blesh=1 ls_colors=1 fzf_history=1 zoxide=1 atuin=0 starship=1
+bash-full+atuin      cold  1573.7  prompt  738.4/ 738.4  n=1  blesh=1 ls_colors=1 fzf_history=1 zoxide=1 atuin=1 starship=1

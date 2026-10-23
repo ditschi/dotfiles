@@ -1,0 +1,11 @@
+PASS ls_colors (LS_COLORS has 10589 chars)
+PASS paste "$ cmd"
+PASS paste "❯ cmd"
+PASS Esc Esc prepends sudo
+PASS autosuggestion + Ctrl+Space accept
+PASS Up = history substring search
+PASS z jumps to a visited dir
+PASS Tab opens fzf-tab list (cd /usr/)
+PASS fzf-tab shows entries / eza preview
+PASS Ctrl+R opens fzf/atuin history
+PASS correction prompt for typo (sl)

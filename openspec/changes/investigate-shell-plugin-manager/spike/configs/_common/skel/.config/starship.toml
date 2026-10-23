@@ -1,0 +1,45 @@
+# Shared prompt for zsh and bash (spike). The only difference per shell is the colour of the
+# prompt character: the shell module draws it (indicators are format strings, so they carry a
+# style); the character module is disabled and a failed command shows in the status segment.
+format = """
+$directory$git_branch$git_status$fill$env_var$status$python$cmd_duration
+$container$shell
+"""
+add_newline = false
+
+[directory]
+format = "[$path]($style) "
+truncation_length = 3
+truncate_to_repo = false
+
+[git_branch]
+format = "[$branch]($style) "
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+
+[env_var.DOTFILES_UPDATE_SEGMENT]
+format = "[$env_value]($style) "
+style = "yellow"
+
+[fill]
+symbol = " "
+
+[status]
+disabled = false
+format = "[$symbol$common_meaning$signal_name]($style) "
+map_symbol = true
+
+[container]
+format = "[$symbol]($style)"
+symbol = "🐳 "
+
+[shell]
+disabled = false
+format = "$indicator "
+zsh_indicator = "[❯](bold green)"
+bash_indicator = "[❯](bold purple)"
+unknown_indicator = "[❯](bold yellow)"
+
+[character]
+disabled = true

@@ -7,6 +7,7 @@ dotfiles_cache_eval() {
     shift
     if [ -n "${ZSH_VERSION:-}" ]; then
         shell_ext=zsh
+        # shellcheck disable=SC2154 # $commands is zsh's command hash table
         bin=${commands[$1]}
     else
         bin=$(type -P "$1")

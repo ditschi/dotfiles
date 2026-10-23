@@ -21,10 +21,10 @@ The shell SHALL set `WORK_SETUP=true` when the profile is `work-machine`, or whe
 - **THEN** `WORK_SETUP` is not set
 
 ### Requirement: Work modules only for work
-The work modules (`01_work*.zsh`) SHALL be linked by chezmoi only for profile `work-machine`, and they SHALL return early unless `WORK_SETUP=true`.
+The work modules (`01_work*.zsh`) SHALL belong to a group that only the profile `work-machine` selects, and they SHALL return early unless `WORK_SETUP=true`.
 
 #### Scenario: Private profile
-- **WHEN** chezmoi applies the profile `home-laptop`
+- **WHEN** the dotfile groups are applied for the profile `home-laptop`
 - **THEN** no work module is linked
 
 #### Scenario: Work module without work setup

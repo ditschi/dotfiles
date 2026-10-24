@@ -134,3 +134,39 @@ def test_fonts_group_follows_the_feature():
     assert "fonts" not in dotfile_groups("home-laptop", [])
     assert "thunderbird" in dotfile_groups("home-laptop", ["thunderbird"])
     assert "thunderbird" not in dotfile_groups("home-laptop", [])
+
+
+def _checkout_with_cli(tmp_path):
+    repo = tmp_path / "repo"
+    cli = repo / "machine_cli" / "machine"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/bin/sh\n")
+    return repo, cli
+
+
+def test_machine_link_replaces_the_copied_entry_point(tmp_path):
+    repo, cli = _checkout_with_cli(tmp_path)
+    old = tmp_path / ".local/bin/machine"
+    old.parent.mkdir(parents=True)
+    old.write_text("old copied script\n")
+    host = _Host(tmp_path)
+    host.repo = repo
+
+    host.ensure_machine_link()
+
+    assert old.is_symlink() and old.resolve() == cli.resolve()
+    host.ensure_machine_link()  # idempotent
+    assert old.resolve() == cli.resolve()
+
+
+def test_machine_link_follows_the_running_checkout(tmp_path):
+    repo, cli = _checkout_with_cli(tmp_path)
+    link = tmp_path / ".local/bin/machine"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(tmp_path / "elsewhere/machine_cli/machine")
+    host = _Host(tmp_path)
+    host.repo = repo
+
+    host.ensure_machine_link()
+
+    assert link.resolve() == cli.resolve()

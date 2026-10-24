@@ -205,6 +205,24 @@ class DotfilesMixin:
         system.run(["mise", "dot", "apply", "--prune"], env=env, cwd=self.repo)
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")
+        self.ensure_machine_link()
+
+    def ensure_machine_link(self) -> None:
+        """~/.local/bin/machine -> the CLI of this checkout (like bootstrap).
+
+        Replaces the copied entry point of the earlier layout, which breaks as
+        soon as the checkout no longer has the modules it imports."""
+        link = self.home / ".local" / "bin" / "machine"
+        target = Path(self.repo) / "machine_cli" / "machine"
+        if link.is_symlink() and link.resolve() == target.resolve():
+            return
+        link.parent.mkdir(parents=True, exist_ok=True)
+        tmp = link.with_name(".machine.tmp")
+        if tmp.is_symlink() or tmp.exists():
+            tmp.unlink()
+        tmp.symlink_to(target)
+        os.replace(tmp, link)
+        log(f"linked {link} to {target}")
 
     def dotfiles_health_failure(self) -> str:
         """Reason why the group configuration is unusable, or an empty string."""

@@ -5,7 +5,6 @@ import pwd
 import socket
 import sys
 
-import pytest
 
 from package_sets import REPO
 
@@ -27,14 +26,8 @@ def _entry_args(args: list[str]) -> list[str]:
 
 
 def test_parse_args_strips_separator_and_keeps_command_options():
-    args = testenv.parse_args(["--diff", "--", "machine", "update", "--check"])
-    assert args.diff
+    args = testenv.parse_args(["--", "machine", "update", "--check"])
     assert args.command == ["machine", "update", "--check"]
-
-
-def test_parse_args_reset_needs_keep():
-    with pytest.raises(SystemExit):
-        testenv.parse_args(["--reset"])
 
 
 def test_shell_command_default_is_login_shell(monkeypatch):
@@ -67,13 +60,6 @@ def test_home_is_mounted_read_only_and_writes_go_to_a_volume():
     assert _opt(args, "--hostname") == [socket.gethostname()]
 
 
-def test_keep_uses_a_named_volume():
-    args = testenv.build_run_args("img", ["true"], rootless=True, keep="mise")
-    assert _opt(args, "--mount") == [
-        f"type=volume,dst={testenv.RW},src={testenv.VOLUME_PREFIX}mise"
-    ]
-
-
 def test_rootless_runs_as_container_root_rootful_as_host_user():
     rootless = _entry_args(testenv.build_run_args("img", [], rootless=True))
     rootful = _entry_args(testenv.build_run_args("img", [], rootless=False))
@@ -81,13 +67,9 @@ def test_rootless_runs_as_container_root_rootful_as_host_user():
     assert rootful[:3] == [ME.pw_dir, str(ME.pw_uid), str(ME.pw_gid)]
 
 
-def test_diff_and_command_reach_the_entry_script():
-    args = testenv.build_run_args(
-        "img", ["bash", "-lc", "machine"], rootless=True, diff=True
-    )
-    entry = _entry_args(args)
-    assert entry[3] == "1"
-    assert entry[-3:] == ["bash", "-lc", "machine"]
+def test_command_reaches_the_entry_script():
+    args = testenv.build_run_args("img", ["bash", "-lc", "machine"], rootless=True)
+    assert _entry_args(args) == [ME.pw_dir, "0", "0", "bash", "-lc", "machine"]
 
 
 def test_profile_override_is_passed():

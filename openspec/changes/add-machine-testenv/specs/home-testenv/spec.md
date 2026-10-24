@@ -40,13 +40,9 @@ The container SHALL use the host's distribution and version as base image, and t
 - **WHEN** the Docker daemon runs rootless or rootful
 - **THEN** files in the home are owned by the user inside and `sudo` works without a password in both cases
 
-### Requirement: Inspecting changes
-`--diff` SHALL list the files the command added, changed or deleted in home after it finished, with high-volume tool and cache directories summarised as counts. `--keep NAME` SHALL keep the change layer in a named volume, so a later `machine testenv --keep NAME` continues from it; `--reset` SHALL discard it first, and `--list` SHALL show the kept environments. Without `--keep` the layer SHALL be removed when the container exits.
+### Requirement: Throwaway layer
+All changes made inside SHALL be discarded when the container exits; every run SHALL start from the current state of the host home. The testenv SHALL offer no options to keep, list or compare runs.
 
-#### Scenario: Listing changes
-- **WHEN** a user runs `machine testenv --diff -- machine setup --yes`
-- **THEN** the changed files in home are printed after the command, with caches and tool installs as counts
-
-#### Scenario: Re-entering a kept environment
-- **WHEN** a user ran `machine testenv --keep mise -- machine setup --yes` and later runs `machine testenv --keep mise`
-- **THEN** the shell sees the home as the first run left it
+#### Scenario: Second run
+- **WHEN** a user runs `machine testenv -- machine update` and then `machine testenv`
+- **THEN** the second run sees the home as it is on the host, without the changes of the first run

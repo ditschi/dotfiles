@@ -429,13 +429,11 @@ machine update                             # only bring up to date
 
 ### Against this home (`machine testenv`)
 
-Runs a command against the real home of this host, as it is right now (including `~/dotfiles` with its branch and local changes), in a container; the home is a read-only lower layer of an overlay, so nothing on the host changes. Needs Docker (rootless or rootful) and `/dev/fuse`. The image is built from the host's distribution on first use.
+Runs a command against the real home of this host, as it is right now (including `~/dotfiles` with its branch and local changes), in a container; the home is a read-only lower layer of an overlay, so nothing on the host changes, and all changes inside are discarded on exit. Needs Docker (rootless or rootful) and `/dev/fuse`. The image is built from the host's distribution on first use.
 
 ```bash
 machine testenv                                        # login shell inside
 machine testenv -- 'machine update && machine'         # quote shell syntax, or the host shell runs it
-machine testenv --keep mise --diff -- machine setup --yes     # list changed files, keep the layer
-machine testenv --keep mise                            # re-enter it; --reset starts over, --list shows kept ones
 python3 machine_cli/testenv.py -- machine              # same, from a checkout when the installed machine is broken
 ```
 

@@ -3,12 +3,12 @@
 The host home is bind-mounted read-only as the lower layer of an overlay; every
 write inside the container goes to an upper layer on a Docker volume, so
 `machine update` and friends can run against the real dotfiles state without
-changing it. The volume is removed on exit unless --keep NAME is given.
+changing it. The volume is removed when the container exits.
 
 Standard library only: it also runs straight from a checkout, before the
 `machine` CLI on the host is fixed or updated:
 
-    python3 machine_cli/testenv.py [--diff] [--keep NAME] [-- COMMAND...]
+    python3 machine_cli/testenv.py [-- COMMAND...]
 """
 
 from __future__ import annotations
@@ -25,19 +25,8 @@ import sys
 from pathlib import Path
 
 IMAGE_PREFIX = "machine-testenv"
-VOLUME_PREFIX = "machine-testenv-"
 LOWER = "/testenv/lower"
 RW = "/testenv/rw"
-# Paths --diff summarises as a count instead of listing every file.
-DIFF_NOISE = (
-    ".cache",
-    ".local/share/antidote",
-    ".local/share/docker",
-    ".local/share/mise",
-    ".local/state",
-    ".npm",
-    "dotfiles/.git",
-)
 
 PACKAGES = (
     "bash ca-certificates curl file fuse-overlayfs git less locales openssh-client "
@@ -69,17 +58,14 @@ RUN set -e; \\
     mkdir -p {home}
 """
 
-# Runs as container root: mount the overlay,
-# run the command as the user, optionally list what changed.
+# Runs as container root: mount the overlay, run the command as the user.
 ENTRY = r"""
 set -eu
-home=$1 uid=$2 gid=$3 diff=$4 noise=$5; shift 5
-if [ ! -d "$RW/upper" ]; then
-  # The overlay root takes owner and mode from the upper dir: match the home.
-  mkdir -p "$RW/upper" "$RW/work"
-  chown "$(stat -c %u:%g "$LOWER")" "$RW/upper"
-  chmod "$(stat -c %a "$LOWER")" "$RW/upper"
-fi
+home=$1 uid=$2 gid=$3; shift 3
+# The overlay root takes owner and mode from the upper dir: match the home.
+mkdir -p "$RW/upper" "$RW/work"
+chown "$(stat -c %u:%g "$LOWER")" "$RW/upper"
+chmod "$(stat -c %a "$LOWER")" "$RW/upper"
 opts="lowerdir=$LOWER,upperdir=$RW/upper,workdir=$RW/work"
 # Rootless: host ids other than the user's own are unmapped here; squash them
 # so copy-up never has to chown to an id the container cannot represent.
@@ -99,22 +85,7 @@ as_user() {
   fi
 }
 cd "$home"
-set +e
 as_user "$@"
-rc=$?
-set -e
-if [ "$diff" = 1 ]; then
-  echo "testenv: changes in $home (D = deleted):" >&2
-  (cd "$RW/upper" && find . -mindepth 1 \( -name '.wh..wh..opq' -o -name '.wh..opq' \) -prune -o \
-      \( -type c -o -name '.wh.*' \) -printf 'D %P\n' -o ! -type d ! -type s -printf 'M %P\n') \
-    | sed 's|\.wh\.||' | sort -k2 >/tmp/changes
-  grep -v -E " ($noise)/" /tmp/changes >&2 || true
-  for dir in $(echo "$noise" | tr '|' ' '); do
-    n=$(grep -c " $dir/" /tmp/changes || true)
-    [ "$n" = 0 ] || echo "… $n under $(echo "$dir" | tr -d '\\')/" >&2
-  done
-fi
-exit $rc
 """
 
 
@@ -176,24 +147,17 @@ def ensure_image(rootless: bool, rebuild: bool) -> str:
     return tag
 
 
-def volume_name(name: str) -> str:
-    return VOLUME_PREFIX + name
-
-
 def build_run_args(
     image: str,
     command: list[str],
     *,
     rootless: bool,
-    keep: str = "",
-    diff: bool = False,
     tty: bool = False,
     profile: str = "",
 ) -> list[str]:
     entry = pwd.getpwuid(os.getuid())
     home = entry.pw_dir
     uid, gid = (0, 0) if rootless else (entry.pw_uid, entry.pw_gid)
-    rw = f"type=volume,dst={RW}" + (f",src={volume_name(keep)}" if keep else "")
     env = {
         "HOME": home,
         "USER": entry.pw_name,
@@ -225,16 +189,16 @@ def build_run_args(
         "apparmor=unconfined",
         "-v",
         f"{home}:{LOWER}:ro",
+        # Anonymous volume (disk, not RAM): removed with the container (--rm).
         "--mount",
-        rw,
+        f"type=volume,dst={RW}",
         "--label",
         "machine-testenv=1",
     ]
     for key, value in env.items():
         args += ["-e", f"{key}={value}"]
-    noise = "|".join(DIFF_NOISE).replace(".", "\\.")
     args += [image, "/bin/sh", "-c", ENTRY, "testenv"]
-    args += [home, str(uid), str(gid), str(int(diff)), noise]
+    args += [home, str(uid), str(gid)]
     return args + command
 
 
@@ -274,32 +238,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "machine testenv -- 'machine update && machine'",
     )
     add = parser.add_argument
-    add("--keep", metavar="NAME", default="", help="keep the changes in a named volume")
-    add(
-        "--reset",
-        action="store_true",
-        help="with --keep: start from the real home again",
-    )
     add(
         "--profile",
         default=None,
         help="machine profile inside (default: this host's saved one; '' for container)",
     )
     add(
-        "--diff", action="store_true", help="list the files the command changed in home"
-    )
-    add(
         "--rebuild",
         action="store_true",
         help="rebuild the image (pulls the base image)",
     )
-    add("--list", action="store_true", help="list kept environments and exit")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="command after --")
     args = parser.parse_args(argv)
     if args.command[:1] == ["--"]:
         args.command = args.command[1:]
-    if args.reset and not args.keep:
-        parser.error("--reset needs --keep NAME")
     return args
 
 
@@ -307,27 +259,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if not shutil.which("docker"):
         die("docker is required")
-    if args.list:
-        docker(
-            "volume",
-            "ls",
-            "--filter",
-            f"name=^{VOLUME_PREFIX}",
-            "--format",
-            "{{.Name}}",
-        )
-        return 0
     rootless = docker_rootless()
     image = ensure_image(rootless, args.rebuild)
-    if args.reset:
-        docker("volume", "rm", "--force", volume_name(args.keep), capture=True)
     command = shell_command(args.command)
     run = build_run_args(
         image,
         command,
         rootless=rootless,
-        keep=args.keep,
-        diff=args.diff,
         tty=sys.stdin.isatty() and sys.stdout.isatty(),
         profile=host_profile(Path.home()) if args.profile is None else args.profile,
     )

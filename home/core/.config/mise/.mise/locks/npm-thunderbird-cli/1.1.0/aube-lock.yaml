@@ -1,0 +1,32 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      thunderbird-cli:
+        specifier: 1.1.0
+        version: 1.1.0
+
+packages:
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
+
+  thunderbird-cli@1.1.0:
+    resolution: {integrity: sha512-xf1Cv3v80ta7UgZAwCNrgjanhVwzfWMhQ+nC1XmNggs0SJ91cxI32Oaxxu/mYbsS2uE99U3wEFuU+n3Quv8uHA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+snapshots:
+
+  commander@12.1.0: {}
+
+  thunderbird-cli@1.1.0:
+    dependencies:
+      commander: 12.1.0

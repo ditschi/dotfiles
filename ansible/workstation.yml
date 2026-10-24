@@ -95,6 +95,15 @@
     - role: thinkpad_tuning
       when: "'thinkpad-tuning' in (features | default([]))"
 
+- name: Thunderbird bridge extension (policy)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [thunderbird]
+  roles:
+    - role: thunderbird
+      when: "'thunderbird' in (features | default([]))"
+
 - name: Touch device (GNOME extensions for the login user)
   hosts: "{{ target_hosts | default('all') }}"
   become: false

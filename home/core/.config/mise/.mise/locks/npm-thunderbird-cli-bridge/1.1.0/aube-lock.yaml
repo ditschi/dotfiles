@@ -1,0 +1,43 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      thunderbird-cli-bridge:
+        specifier: 1.1.0
+        version: 1.1.0
+
+packages:
+
+  thunderbird-cli-bridge@1.1.0:
+    resolution: {integrity: sha512-6qeU35z7nPuZ837Ey/2DbKrcLLM8IZ/4sDSyyB8lt2qaHf48MMFWrIXt44v4NC5edmj6AOITKGKmC0lWmYa0+w==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  ws@8.22.0:
+    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
+snapshots:
+
+  thunderbird-cli-bridge@1.1.0:
+    dependencies:
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  ws@8.22.0: {}

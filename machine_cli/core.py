@@ -39,6 +39,7 @@ FEATURE_HELP = {
     "unattended-upgrades": "Automatic security upgrades",
     "etckeeper": "Keep /etc in a local git repository (history of system config)",
     "syncthing": "Syncthing package",
+    "thunderbird": "Thunderbird + tb CLI, its bridge and the bridge extension",
     "tailscale": "Tailscale package (+ optional login)",
     "ssh-host-key": "Per-host ed25519 key + Bitwarden pub",
     "stylus-touch-guard": "Disable touch while stylus near (Yoga / Xournal++)",

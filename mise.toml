@@ -14,3 +14,6 @@ root = "home/work"
 
 [dotfile_groups.fonts]
 root = "home/fonts"
+
+[dotfile_groups.thunderbird]
+root = "home/thunderbird"

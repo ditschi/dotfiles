@@ -1,0 +1,27 @@
+---
+# Thunderbird (deb or snap) reads system policies from /etc/thunderbird/policies;
+# the snap through its system-files plug. Other policies in the file are kept.
+- name: Ensure Thunderbird policy directory
+  ansible.builtin.file:
+    path: "{{ thunderbird_policies_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Read existing Thunderbird policies
+  ansible.builtin.slurp:
+    src: "{{ thunderbird_policies_dir }}/policies.json"
+  register: thunderbird_policies_file
+  failed_when: false
+
+- name: Add the bridge extension to the Thunderbird policies
+  ansible.builtin.copy:
+    dest: "{{ thunderbird_policies_dir }}/policies.json"
+    mode: "0644"
+    content: "{{ thunderbird_existing | combine(thunderbird_bridge, recursive=True) | to_nice_json(indent=2) }}\n"
+  vars:
+    thunderbird_existing: >-
+      {{ (thunderbird_policies_file.content | b64decode | from_json)
+         if thunderbird_policies_file.content is defined else {} }}
+    thunderbird_bridge:
+      policies:
+        ExtensionSettings: "{{ {thunderbird_bridge_extension_id: {'installation_mode': 'normal_installed', 'install_url': thunderbird_bridge_extension_url}} }}"

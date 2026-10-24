@@ -139,6 +139,7 @@ ansible/
     monitoring/           # Telegraf agent configs
     sshd_home/            # port 5115 + authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
+    thunderbird/          # bridge extension policy for thunderbird-cli
     touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
     thinkpad_tuning/      # charge thresholds, power profile, S3, zram, tablet OSK
 tests/                    # unit + Docker/CI
@@ -335,12 +336,13 @@ machine ssh restore           # restore private key
 
 `work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
+Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `thunderbird`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 
 Yoga/convertible (L13): feature `stylus-touch-guard` → role `stylus_touch_guard`. Previously: [helpers-and-automation](https://github.com/ditschi/helpers-and-automation) (**archived / deprecated**).
 ThinkPad laptops: features `thinkpad-tuning` → role `thinkpad_tuning` and `touch-device` → role `touch_device`, see [docs/thinkpad-l13-yoga-gen2.md](docs/thinkpad-l13-yoga-gen2.md).
+Mail: feature `thunderbird` (default on `home-laptop`) installs Thunderbird, adds the signed bridge extension of [thunderbird-cli](https://github.com/vitalio-sh/thunderbird-cli) through `/etc/thunderbird/policies/policies.json` (role `thunderbird`) and the mise group `home/thunderbird` with `tb` and `tb-bridge`. Start the bridge with `tb-bridge &`, then `tb health`.
 
 SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `authorized_keys` from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
 

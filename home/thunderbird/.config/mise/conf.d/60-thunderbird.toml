@@ -1,0 +1,6 @@
+# Thunderbird CLI (`tb`) and its bridge daemon (`tb-bridge`), feature `thunderbird`.
+# The bridge extension comes from the Ansible role `thunderbird`; the two are only
+# installed together.
+[tools]
+"npm:thunderbird-cli" = "latest"
+"npm:thunderbird-cli-bridge" = "latest"

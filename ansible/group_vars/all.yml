@@ -45,6 +45,9 @@ packages_by_feature:
     - unattended-upgrades
   syncthing:
     - syncthing
+  # Mail client; on Ubuntu the deb installs the snap. Extension policy: role thunderbird
+  thunderbird:
+    - thunderbird
   # /etc as a local git repository; commits around every apt run and daily
   etckeeper:
     - etckeeper

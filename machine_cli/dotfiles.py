@@ -25,6 +25,8 @@ def dotfile_groups(profile: str, features: Sequence[str] = ()) -> list[str]:
         groups.append("work")
     if "fonts" in features:
         groups.append("fonts")
+    if "thunderbird" in features:
+        groups.append("thunderbird")
     return groups
 
 

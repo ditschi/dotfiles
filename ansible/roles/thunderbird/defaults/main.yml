@@ -1,0 +1,6 @@
+---
+# Signed "Thunderbird AI Bridge" extension for thunderbird-cli (feature thunderbird).
+# Pinned release; bump together with the npm tools in home/thunderbird.
+thunderbird_policies_dir: /etc/thunderbird/policies
+thunderbird_bridge_extension_id: thunderbird-ai@extension
+thunderbird_bridge_extension_url: https://github.com/vitalio-sh/thunderbird-cli/releases/download/v1.1.0/thunderbird_ai_bridge-2.1.0-tb.xpi

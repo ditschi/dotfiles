@@ -132,3 +132,5 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
 def test_fonts_group_follows_the_feature():
     assert "fonts" in dotfile_groups("home-laptop", ["fonts"])
     assert "fonts" not in dotfile_groups("home-laptop", [])
+    assert "thunderbird" in dotfile_groups("home-laptop", ["thunderbird"])
+    assert "thunderbird" not in dotfile_groups("home-laptop", [])

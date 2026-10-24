@@ -14,6 +14,7 @@ Standard library only: it also runs straight from a checkout, before the
 from __future__ import annotations
 
 import argparse
+import grp
 import hashlib
 import os
 import pwd
@@ -36,7 +37,8 @@ PACKAGES = (
 # Rootless Docker maps container uid 0 to the host user, so the bind-mounted
 # home is owned by uid 0 inside. The user then *is* uid 0: a passwd entry with
 # the user's name and home placed before `root` makes whoami, ~ and getpwuid
-# report the user. Rootful Docker gets a normal user with the host uid/gid.
+# report the user; the same for the group name. Rootful Docker gets a normal
+# user with the host uid/gid.
 DOCKERFILE = """\
 FROM {base}
 ENV DEBIAN_FRONTEND=noninteractive
@@ -49,9 +51,11 @@ RUN set -e; \\
         sed -i '/^{user}:/d' /etc/passwd /etc/shadow; \\
         sed -i '1i {user}:x:0:0:{user}:{home}:{shell}' /etc/passwd; \\
         sed -i '1i {user}:!:20000:0:99999:7:::' /etc/shadow; \\
+        sed -i '/^{group}:/d' /etc/group; \\
+        sed -i '1i {group}:x:0:' /etc/group; \\
     else \\
         for u in $(getent passwd {uid} | cut -d: -f1); do userdel "$u"; done; \\
-        getent group {gid} >/dev/null || groupadd -g {gid} {user}; \\
+        getent group {gid} >/dev/null || groupadd -g {gid} {group}; \\
         useradd -M -d {home} -s {shell} -u {uid} -g {gid} -G sudo {user}; \\
     fi; \\
     echo '{user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testenv; \\
@@ -128,6 +132,7 @@ def image_spec(rootless: bool) -> tuple[str, str]:
         locale=locale,
         rootless=int(rootless),
         user=entry.pw_name,
+        group=grp.getgrgid(entry.pw_gid).gr_name,
         uid=entry.pw_uid,
         gid=entry.pw_gid,
         home=entry.pw_dir,

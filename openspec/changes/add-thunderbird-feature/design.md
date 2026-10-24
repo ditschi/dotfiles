@@ -11,12 +11,12 @@
 - **Bridge only with the extension (owner request).** The CLI and the bridge come from a dotfile group that only the feature selects. The same feature installs the extension, so the bridge never exists without it.
 - **`normal_installed`, not `force_installed` (owner decision).** The extension is installed automatically, and the user can still disable it in Thunderbird. `force_installed` would prevent disabling.
 - **CLI as mise `npm:` tools (owner decision).** Same as the LLM CLIs: pinned in `mise.lock`, no root, no `npm install -g`.
+- **Pinned release URL (owner decision).** The policy points to the release asset of a fixed version (`v1.1.0`, extension 2.1.0). Thunderbird updates the add-on as usual. A new version is a reviewed commit, like the mise lockfile.
+- **Policy merge (owner decision).** The role reads an existing policy file and merges the entry into `ExtensionSettings`, so other policies stay.
 
 ## Assumptions (to be confirmed by the owner)
 
 - **Extension through a system policy, not the profile directory.** `ExtensionSettings` in `/etc/thunderbird/policies/policies.json` works for the snap and for a deb, does not depend on a Thunderbird profile existing yet, and survives profile changes. Copying the XPI into `<profile>/extensions/` was rejected because the profile path differs between snap and deb, and a profile may not exist before the first start.
-- **Pinned release URL.** The policy points to the release asset of a fixed version (`v1.1.0`, extension 2.1.0). Thunderbird updates the add-on as usual. A new version is a reviewed commit, like the mise lockfile.
-- **Policy merge.** The role reads an existing policy file and merges the entry into `ExtensionSettings`, so other policies stay.
 
 ## Risks / Trade-offs
 

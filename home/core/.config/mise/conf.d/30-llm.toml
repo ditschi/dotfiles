@@ -3,4 +3,5 @@
 [tools]
 "npm:@anthropic-ai/claude-code" = "latest"
 "npm:@github/copilot" = "latest"
+opencode = "latest"
 "npm:@fission-ai/openspec" = "latest"

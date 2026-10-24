@@ -30,7 +30,7 @@ RW = "/testenv/rw"
 
 PACKAGES = (
     "bash ca-certificates curl file fuse-overlayfs git less locales openssh-client "
-    "procps python3 sudo tzdata unzip util-linux xz-utils zsh"
+    "procps python3 python3-apt sudo tzdata unzip util-linux xz-utils zsh"
 )
 
 # Rootless Docker maps container uid 0 to the host user, so the bind-mounted

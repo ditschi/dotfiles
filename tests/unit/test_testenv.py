@@ -81,12 +81,12 @@ def test_rootless_runs_as_container_root_rootful_as_host_user():
     assert rootful[:3] == [ME.pw_dir, str(ME.pw_uid), str(ME.pw_gid)]
 
 
-def test_ref_diff_and_command_reach_the_entry_script():
+def test_diff_and_command_reach_the_entry_script():
     args = testenv.build_run_args(
-        "img", ["bash", "-lc", "machine"], rootless=True, ref="origin/main", diff=True
+        "img", ["bash", "-lc", "machine"], rootless=True, diff=True
     )
     entry = _entry_args(args)
-    assert entry[3:5] == ["origin/main", "1"]
+    assert entry[3] == "1"
     assert entry[-3:] == ["bash", "-lc", "machine"]
 
 

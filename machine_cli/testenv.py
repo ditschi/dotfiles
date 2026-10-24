@@ -8,7 +8,7 @@ changing it. The volume is removed on exit unless --keep NAME is given.
 Standard library only: it also runs straight from a checkout, before the
 `machine` CLI on the host is fixed or updated:
 
-    python3 machine_cli/testenv.py [--ref REF] [--diff] [-- COMMAND...]
+    python3 machine_cli/testenv.py [--diff] [--keep NAME] [-- COMMAND...]
 """
 
 from __future__ import annotations
@@ -69,11 +69,11 @@ RUN set -e; \\
     mkdir -p {home}
 """
 
-# Runs as container root: mount the overlay, optionally check out a ref,
+# Runs as container root: mount the overlay,
 # run the command as the user, optionally list what changed.
 ENTRY = r"""
 set -eu
-home=$1 uid=$2 gid=$3 ref=$4 diff=$5 noise=$6; shift 6
+home=$1 uid=$2 gid=$3 diff=$4 noise=$5; shift 5
 if [ ! -d "$RW/upper" ]; then
   # The overlay root takes owner and mode from the upper dir: match the home.
   mkdir -p "$RW/upper" "$RW/work"
@@ -99,13 +99,6 @@ as_user() {
   fi
 }
 cd "$home"
-if [ -n "$ref" ]; then
-  if ! as_user git -C "$home/dotfiles" checkout --quiet --detach "$ref"; then
-    echo "testenv: cannot check out $ref; to test with local changes, stash or commit them in COMMAND" >&2
-    exit 125
-  fi
-  echo "testenv: ~/dotfiles at $(as_user git -C "$home/dotfiles" log -1 --format='%h %s')" >&2
-fi
 set +e
 as_user "$@"
 rc=$?
@@ -192,7 +185,6 @@ def build_run_args(
     command: list[str],
     *,
     rootless: bool,
-    ref: str = "",
     keep: str = "",
     diff: bool = False,
     tty: bool = False,
@@ -242,7 +234,7 @@ def build_run_args(
         args += ["-e", f"{key}={value}"]
     noise = "|".join(DIFF_NOISE).replace(".", "\\.")
     args += [image, "/bin/sh", "-c", ENTRY, "testenv"]
-    args += [home, str(uid), str(gid), ref, str(int(diff)), noise]
+    args += [home, str(uid), str(gid), str(int(diff)), noise]
     return args + command
 
 
@@ -282,7 +274,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "machine testenv -- 'machine update && machine'",
     )
     add = parser.add_argument
-    add("--ref", default="", help="check out this commit-ish in ~/dotfiles first")
     add("--keep", metavar="NAME", default="", help="keep the changes in a named volume")
     add(
         "--reset",
@@ -335,7 +326,6 @@ def main(argv: list[str] | None = None) -> int:
         image,
         command,
         rootless=rootless,
-        ref=args.ref,
         keep=args.keep,
         diff=args.diff,
         tty=sys.stdin.isatty() and sys.stdout.isatty(),

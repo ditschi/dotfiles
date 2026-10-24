@@ -429,15 +429,14 @@ machine update                             # only bring up to date
 
 ### Against this home (`machine testenv`)
 
-Runs a command against the real home of this host in a container; the home is a read-only lower layer of an overlay, so nothing on the host changes. Needs Docker (rootless or rootful) and `/dev/fuse`. The image is built from the host's distribution on first use.
+Runs a command against the real home of this host, as it is right now (including `~/dotfiles` with its branch and local changes), in a container; the home is a read-only lower layer of an overlay, so nothing on the host changes. Needs Docker (rootless or rootful) and `/dev/fuse`. The image is built from the host's distribution on first use.
 
 ```bash
 machine testenv                                        # login shell inside
 machine testenv -- 'machine update && machine'         # quote shell syntax, or the host shell runs it
-machine testenv --ref origin/main -- machine update --check   # ~/dotfiles at another revision inside
 machine testenv --keep mise --diff -- machine setup --yes     # list changed files, keep the layer
 machine testenv --keep mise                            # re-enter it; --reset starts over, --list shows kept ones
 python3 machine_cli/testenv.py -- machine              # same, from a checkout when the installed machine is broken
 ```
 
-Inside, `machine` uses the host's saved profile (`--profile` to change it) and the host name. The container has no systemd user bus and no `bw`, so the timer, linger and `~/.env` steps are skipped there, and Ansible system steps only change the container. With `--ref`, local changes in the checkout that conflict with the ref stop the run; stash them in the command instead.
+Inside, `machine` uses the host's saved profile (`--profile` to change it) and the host name. The container has no systemd user bus and no `bw`, so the timer, linger and `~/.env` steps are skipped there, and Ansible system steps only change the container.

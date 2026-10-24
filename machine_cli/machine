@@ -242,6 +242,22 @@ def attention_cmd() -> None:
     _exit(Machine().cmd_attention())
 
 
+@app.command(
+    name="testenv",
+    help="run COMMAND (default: a shell) against this home in a throwaway container",
+    context_settings={
+        "ignore_unknown_options": True,
+        "allow_interspersed_args": False,
+        "help_option_names": [],
+    },
+)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def testenv_cmd(args) -> None:
+    from machine_cli import testenv
+
+    _exit(testenv.main(list(args)))
+
+
 @app.command(name="help", help="show help")
 @click.pass_context
 def help_cmd(ctx) -> None:

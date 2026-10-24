@@ -390,8 +390,6 @@ and `.mise/locks/` next to it; regenerate them with
 `mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
 A tool declared in two fragments, or in a fragment and an Ansible package list,
 fails `python3 -m machine_cli.mise_check` (pre-commit and CI).
-For tools installed by hand with `npm install -g` and the prefix `~/.npm-global` in `~/.npmrc`,
-`~/.npm-global/bin` is on `PATH` in zsh and bash (`~/.zsh/config/01_env.zsh`).
 
 ## Tests
 

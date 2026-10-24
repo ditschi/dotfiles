@@ -1,9 +1,6 @@
 alias zshenv="nano $0"
 
 export PATH="$PATH:$HOME/.local/bin"
-# Manual `npm install -g` with prefix ~/.npm-global (set by the user in ~/.npmrc).
-# Unconditional on purpose: a missing directory on PATH costs nothing.
-export PATH="$HOME/.npm-global/bin:$PATH"
 
 # Tools of the mise fragments (fzf, zoxide, starship, ...); a host without mise skips this.
 # ~/.bashrc sources this file too and activates mise for bash itself.

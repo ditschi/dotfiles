@@ -7,7 +7,9 @@
 ## What Changes
 
 - **BREAKING (CLI):** `machine ssh publish` always uploads the whole key as a Bitwarden item of type SSH key; the `--private` flag is removed.
-- With the feature `ssh-host-key`, `machine setup` makes sure every host has a key: it restores the host's key from Bitwarden when an item exists, otherwise uploads an existing local key, otherwise generates an ed25519 key on the host (no passphrase) and uploads it.
+- With the feature `ssh-host-key`, `machine setup` (and therefore bootstrap) makes sure every host has a key: it restores the host's key from Bitwarden when an item exists, otherwise uploads an existing local key, otherwise generates an ed25519 key on the host (no passphrase) and uploads it.
+- When the local key differs from the Bitwarden item, setup and publish show both fingerprints and ask whether to update the item (default no); without a terminal nothing is changed.
+- `machine update` checks the key silently when a Bitwarden session is available without a prompt, and reports a missing or different item as an attention item; without a session it does nothing.
 - For the `home` class, the public key is written to `machine/ssh_keys/<hostname>.pub` in the repository, with the same commit offer as the host profile. `authorized_keys` is filled only by Ansible from the repository; `machine` no longer reads public keys from Bitwarden after Ansible.
 - `machine setup` offers the hosts with a key in `machine/ssh_keys/` for `ssh_allow_from`, instead of the hosts published in Bitwarden.
 - Existing secure-note items (`public_key`/`private_key` fields) are read for restore and migrated to an SSH key item; the old note is left for the user to delete.

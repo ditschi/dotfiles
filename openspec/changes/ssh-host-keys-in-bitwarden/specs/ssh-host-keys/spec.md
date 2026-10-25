@@ -10,8 +10,12 @@
 - **THEN** the item `ssh/home/hosts/<hostname>` of type SSH key holds the private key, the public key and the fingerprint
 
 #### Scenario: Item exists with another key
-- **WHEN** the item exists with a different key
-- **THEN** publish stops and names both fingerprints; nothing is overwritten
+- **WHEN** the item exists with a different key and the command runs on a terminal
+- **THEN** both fingerprints are shown and the user is asked whether to update the item (default no)
+
+#### Scenario: Other key without a terminal
+- **WHEN** the item exists with a different key and no terminal is available
+- **THEN** the item is left unchanged and the difference is reported
 
 ### Requirement: Every host gets a key
 With the feature `ssh-host-key`, `machine setup` SHALL, in this order: restore the key from the host's Bitwarden item when one exists and no local key is selected; otherwise upload the selected existing local key; otherwise generate an ed25519 key without passphrase on the host and upload it.
@@ -27,6 +31,17 @@ With the feature `ssh-host-key`, `machine setup` SHALL, in this order: restore t
 #### Scenario: Bitwarden not unlocked
 - **WHEN** setup runs unattended or Bitwarden cannot be unlocked
 - **THEN** no key is generated or uploaded and setup says how to finish (`machine ssh publish`)
+
+### Requirement: Key check during update
+`machine update` SHALL compare the host's key with its Bitwarden item only when a valid Bitwarden session is available without a prompt (environment or `~/.env.local`). A missing item or a different key SHALL become an attention item that `machine` offers to resolve (upload or update the item). Without such a session the check SHALL be skipped silently: no prompt and no message. The update SHALL never generate, restore or upload a key by itself.
+
+#### Scenario: Key not backed up
+- **WHEN** `machine update` runs with a saved valid session and the host's key has no item
+- **THEN** an attention item says the key is not in Bitwarden, and `machine` offers to upload it
+
+#### Scenario: No session
+- **WHEN** `machine update` runs and no valid session is available without a prompt
+- **THEN** no key check runs and nothing is printed about it
 
 ### Requirement: Existing keys are kept
 Existing local keys SHALL keep their path, permissions and passphrase, and SHALL be selected in the current order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, a hostname key, a sole other candidate. Restore SHALL never overwrite an existing private key.

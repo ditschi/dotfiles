@@ -12,8 +12,14 @@ Bitwarden CLI 2026.8 creates SSH key items (`type: 5`, `sshKey: {privateKey, pub
 - **Generate on the host, then upload (owner decision).** `ssh-keygen -t ed25519` works on every host, including headless ones and without a Bitwarden GUI; the CLI cannot generate SSH keys. Restore comes first, so a reinstalled host keeps its identity.
 - **No passphrase on generated keys (owner decision, option 1).** The background update and other unattended Git/SSH use must work without a prompt; at-rest protection comes from disk encryption. Rejected: a passphrase stored as a hidden field with automatic `ssh-add` into a persistent agent (needs a session-wide agent and an unlocked Bitwarden after every reboot; with the Bitwarden session saved in `~/.env.local` it adds little protection), and the Bitwarden desktop SSH agent (keys never on disk, but a locked app breaks the background `git fetch`, and it does not exist on headless hosts).
 - **Public keys of home hosts in the repository, not in Bitwarden.** The repository is the only source of host profiles, and `ssh_allow_from` lives there; Ansible fills `authorized_keys` from `machine/ssh_keys/` without Bitwarden, also headless and for `--limit` runs. Bitwarden keeps the full key as backup only. Public keys are not secret; host names are already in `machine/hosts/`.
+- **Setup (and bootstrap) provisions the key (owner decision).** A new host gets its key restored from Bitwarden or generated during setup, so bootstrap leaves every host with the feature `ssh-host-key` with a key that is backed up; existing keys that are not in Bitwarden yet are uploaded.
+- **Ask before replacing a different key in Bitwarden (owner decision).** When the local key and the item differ, setup and publish show both fingerprints and ask, default no; unattended runs change nothing.
 - **Work keys stay out of the repository.** The repository is public and work hosts do not use `sshd-home`; the `work` class stays in Bitwarden only (`work-private-separation`).
 - **No deletion in the vault.** Migration creates the new item and leaves the old secure note; the user deletes it.
+
+## Assumptions (to be confirmed by the owner)
+
+- **Update checks silently, reports through attention.** The owner was unsure whether update should check at all. Proposed: only with a session that needs no prompt; a missing or different item becomes an attention item, resolved interactively via `machine`; the update itself never asks, generates, restores or uploads. Without a session nothing happens and nothing is printed.
 
 ## Risks / Trade-offs
 

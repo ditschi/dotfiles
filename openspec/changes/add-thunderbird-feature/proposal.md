@@ -22,5 +22,5 @@ Affected profiles: `home-laptop` by default. Other profiles can select the featu
 
 ## Impact
 
-- `machine_cli/core.py` (feature), `machine_cli/dotfiles.py` (group), `mise.toml` (group), `home/thunderbird/.config/mise/conf.d/60-thunderbird.toml`, `home/core/.config/mise/mise.lock` and `.mise/locks/`, `ansible/group_vars/all.yml` (package), new role `ansible/roles/thunderbird`, `ansible/workstation.yml`, `ansible/profiles/home-laptop.yml`, tests, Readme.
+- `machine_cli/core.py` (feature), `machine_cli/dotfiles.py` (group), `mise.toml` (group), `home/thunderbird/.config/mise/conf.d/60-thunderbird.toml`, `home/core/.config/mise/mise.lock` and `locks/`, `ansible/group_vars/all.yml` (package), new role `ansible/roles/thunderbird`, `ansible/workstation.yml`, `ansible/profiles/home-laptop.yml`, tests, Readme.
 - The bridge daemon is started by hand (`tb-bridge &`); no service is installed.

@@ -21,5 +21,5 @@ Affected profiles: the same hosts that get the LLM fragment today (all groups th
 
 ## Impact
 
-- `home/core/.config/mise/conf.d/30-llm.toml`, `home/core/.config/mise/mise.lock` and `.mise/locks/`, Readme.
+- `home/core/.config/mise/conf.d/30-llm.toml`, `home/core/.config/mise/mise.lock` and `locks/`, Readme.
 - Hosts with a manual opencode install (`~/.opencode`) or manual `npm install -g` tools (`~/.npm-global`) can remove them after the update; mise's binaries take over through `PATH`.

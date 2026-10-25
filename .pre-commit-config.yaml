@@ -12,17 +12,17 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
+        exclude: (^|/)(mise\.lock|\.config/mise/locks/.*)$
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
-        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
+        exclude: (^|/)(mise\.lock|\.config/mise/locks/.*)$
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        exclude: (^|/)(mise\.lock|\.mise/locks/.*)$
+        exclude: (^|/)(mise\.lock|\.config/mise/locks/.*)$
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1-1
     hooks:
@@ -55,7 +55,7 @@ repos:
     rev: v0.14.0
     hooks:
       - id: yamlfmt
-        exclude: (^|/)\.mise/locks/
+        exclude: (^|/)\.config/mise/locks/
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
     hooks:

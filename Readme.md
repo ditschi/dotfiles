@@ -386,7 +386,7 @@ manual Compose setup. The work profile does not enable Docker by default.
 User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `gh`,
 `yazi`, Node, the LLM CLIs (Claude Code, Copilot, opencode) and OpenSpec, Azure CLI) come from mise fragments in
 `home/core/.config/mise/conf.d/`. Versions are pinned in `home/core/.config/mise/mise.lock`
-and `.mise/locks/` next to it; regenerate them with
+and `locks/` next to it; regenerate them with
 `mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
 A tool declared in two fragments, or in a fragment and an Ansible package list,
 fails `python3 -m machine_cli.mise_check` (pre-commit and CI).

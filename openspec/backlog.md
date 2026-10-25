@@ -85,3 +85,40 @@ Open questions (to ask when this is picked up):
 - Which VPN client and how it is started without root, since work machines may not allow Ansible to become root.
 - What triggers the check (network change event, shell start, timer) and how to avoid flapping between networks.
 - Whether the user can pause or override the automatic start.
+
+### zellij: theme and options
+
+Idea from the owner: adapt zellij's look with built-in settings. Only `copy_command` is set today. A theme and plain options do not touch the default-key-bindings requirement of the `terminal-multiplexer` spec.
+
+Links:
+- https://rodbv.github.io/zellij-theme-gallery/themes/gruber-darker.html
+- https://rodbv.github.io/zellij-theme-gallery/themes/ao.html
+- https://rodbv.github.io/zellij-theme-gallery/themes/solarized-light.html
+
+Notes from a first look (2026-10-25, zellij 0.45.1):
+- The three themes are built into zellij; no theme files or `theme_dir` are needed.
+- `theme_dark` and `theme_light` switch automatically when the terminal reports its colour palette (for example `gruber-darker` or `ao` dark, `solarized-light` light). Without a report zellij stays on the dark theme. The desktop is set to `prefer-dark`.
+- `zellij setup --check` does not validate theme names; a typo only shows at start.
+- Built-in options worth a look: `default_layout "compact"`, `show_release_notes false`, `show_startup_tips false`, `mouse_hover_tips false`, `pane_frames false`, `scroll_buffer_size`.
+
+Open questions (to ask when this is picked up):
+- Which dark theme: `gruber-darker` or `ao`?
+- Do Ptyxis and GNOME Terminal report their colour palette, so that automatic dark/light switching works?
+- Which of the built-in options the owner wants.
+
+### zellij: plugins (source, pinning, autolock vs. spec)
+
+Idea from the owner: add a few zellij plugins.
+
+Link: https://github.com/zellij-org/awesome-zellij
+
+Candidates from the list (first look, 2026-10-25):
+- `zellij-autolock`: locks zellij automatically for programs such as fzf, nano or Claude Code, which would remove the Ctrl+G detour.
+- `zjstatus`: configurable status bar.
+- `zellij-forgot`: overview of the key bindings.
+- `zellaude` or `zellij-attention`: Claude Code activity on tabs.
+
+Open questions (to ask when this is picked up):
+- Source and pinning: plugins are WASM files from GitHub releases that mise does not manage. Keep them in the repository, or download them with a pinned version and checksum? How are updates picked up?
+- `zellij-autolock` changes when keys reach zellij; is that acceptable under the default-key-bindings requirement of the `terminal-multiplexer` spec, or does it need a spec change?
+- Which plugins add or change key bindings, and whether that is wanted at all.

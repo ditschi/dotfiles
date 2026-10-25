@@ -72,6 +72,10 @@ rm -rf ~/.local/share/zinit ~/.cache/p10k-* ~/.cache/gitstatus
 
 Before bash hands over to zsh, a startup health check runs. If zsh fails or loads only partly, the shell stays in bash and prints one line with the reason. The result is cached until the zsh config, the zsh binary or `~/.preferred-shell` changes, or dotfiles are updated. After fixing the cause, run `zsh-recheck` to clear the cache and check again.
 
+### Terminal multiplexer
+
+[zellij](https://zellij.dev) is installed on every host (mise, `10-shell.toml`) and runs with its default key bindings; the bar at the bottom shows the available keys. Start it by hand with `zellij`; shells never start it automatically. Ctrl+G locks zellij so that every key goes to the program in the pane (for example Ctrl+T for the fzf file search, or Ctrl+O in nano), and Ctrl+G unlocks it again. Text selected with the mouse inside zellij (no Shift needed) goes to the primary selection, so a middle click pastes it; `~/.config/zellij/config.kdl` sets `zellij-copy` (`wl-copy --primary` on Wayland, `xclip`/`xsel` on X11) because GNOME Terminal and Ptyxis ignore zellij's default OSC 52 copy. Without a graphical session (SSH) the selection is not copied; Shift + mouse selects with the terminal as before. tmux stays available with `~/.tmux.conf`.
+
 ### Node and LLM tools
 
 Node LTS (with npm) comes from mise (`20-tools.toml`), user-local and without sudo.
@@ -382,7 +386,7 @@ provider instead of replacing it with `docker.io`; only a missing,
 provider-compatible Compose package is added. Unmanaged providers may need
 manual Compose setup. The work profile does not enable Docker by default.
 
-User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `gh`,
+User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `zellij`, `gh`,
 `yazi`, Node, the LLM CLIs (Claude Code, Copilot, opencode) and OpenSpec, Azure CLI) come from mise fragments in
 `home/core/.config/mise/conf.d/`. Versions are pinned in `home/core/.config/mise/mise.lock`
 and `locks/` next to it; regenerate them with

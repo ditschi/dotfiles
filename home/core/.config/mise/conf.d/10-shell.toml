@@ -11,3 +11,5 @@ delta = "latest"
 tealdeer = "latest"
 # Static Linux build published by the tmux project; the registry entry has no checksum step.
 "aqua:tmux/tmux-builds" = "latest"
+# Terminal multiplexer with simple key bindings (Ctrl+G locks); started by hand.
+zellij = "latest"

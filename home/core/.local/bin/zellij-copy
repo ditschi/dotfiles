@@ -1,0 +1,16 @@
+#!/bin/sh
+# Copy command for zellij (copy_command in ~/.config/zellij/config.kdl): text selected
+# with the mouse goes to the primary selection, so a middle click pastes it.
+# Reads the selection on stdin. Without a graphical session (e.g. over SSH) the text
+# is dropped; Shift + mouse still selects with the terminal there.
+
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null 2>&1; then
+    exec wl-copy --primary
+fi
+if [ -n "${DISPLAY:-}" ] && command -v xclip >/dev/null 2>&1; then
+    exec xclip -selection primary -in
+fi
+if [ -n "${DISPLAY:-}" ] && command -v xsel >/dev/null 2>&1; then
+    exec xsel --primary --input
+fi
+cat >/dev/null

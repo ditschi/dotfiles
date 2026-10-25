@@ -1,0 +1,5 @@
+// zellij settings; everything not set here (key bindings included) uses zellij's defaults.
+
+// Mouse selection (without Shift) goes to the primary selection for middle-click paste.
+// GNOME Terminal and Ptyxis ignore zellij's default OSC 52 copy.
+copy_command "zellij-copy"

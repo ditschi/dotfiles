@@ -390,3 +390,25 @@ def test_shared_sde_interactive_reuse_and_rebuild(
     assert any(call[:3] == ["compose", "build", "--pull"] for call in calls) == (
         selection == "2\n"
     )
+
+
+@pytest.mark.parametrize("items", [["update: needs attention"], []])
+def test_plain_machine_lists_items_or_reports_clean(monkeypatch, items):
+    from click.testing import CliRunner
+
+    cli = _cli()
+
+    class FakeMachine:
+        def attention_items(self):
+            return items
+
+        def cmd_attention(self):
+            print("1 item(s) need attention")
+            return 0
+
+    monkeypatch.setattr(cli, "Machine", FakeMachine)
+    result = CliRunner().invoke(cli.app, [])
+
+    assert result.exit_code == 0
+    assert ("All clean" in result.output) == (not items)
+    assert ("need attention" in result.output) == bool(items)

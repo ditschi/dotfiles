@@ -94,7 +94,7 @@ def app(ctx: click.Context, debug: bool) -> None:
     if ctx.invoked_subcommand is None:
         machine = Machine()
         if machine.attention_items():
-            _exit(machine.cmd_attention())
+            ctx.exit(machine.cmd_attention())
         click.echo("All clean, nothing needs attention.\n")
         click.echo(ctx.get_help())
         ctx.exit(0)

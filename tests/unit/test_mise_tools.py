@@ -93,3 +93,19 @@ def test_font_is_linked_for_the_fonts_feature_and_removed_without(
     host.link_fonts({}, True)  # idempotent
     host.link_fonts({}, False)
     assert not link.is_symlink()
+
+
+def test_dotfile_apply_never_prompts(machine, monkeypatch):
+    host, commands = machine
+    _profile(host, [])
+    host.mise_local_config.parent.mkdir(parents=True, exist_ok=True)
+    host.mise_local_config.write_text('[bootstrap]\ndotfile_groups = ["core"]\n')
+    from machine_cli import dotfiles
+
+    monkeypatch.setattr(dotfiles.system, "run", mise_tools.system.run)
+    monkeypatch.setattr(dotfiles.system, "have", mise_tools.system.have)
+    monkeypatch.setattr(host, "ensure_machine_link", lambda: None)
+
+    host.run_dotfiles_apply()
+
+    assert ["mise", "dot", "apply", "--prune", "--yes"] in commands

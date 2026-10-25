@@ -202,7 +202,9 @@ class DotfilesMixin:
         env = self.dotfiles_env()
         project = Path(self.repo) / "mise.toml"
         system.run(["mise", "trust", str(project)], env=env, check=False, capture=True)
-        system.run(["mise", "dot", "apply", "--prune"], env=env, cwd=self.repo)
+        # --yes: on a terminal mise asks before replacing live targets, even under
+        # `machine setup --yes`; conflicting files were already moved aside above.
+        system.run(["mise", "dot", "apply", "--prune", "--yes"], env=env, cwd=self.repo)
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")
         self.ensure_machine_link()

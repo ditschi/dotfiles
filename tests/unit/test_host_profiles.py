@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import subprocess
 import os
 import textwrap
@@ -509,27 +510,70 @@ def test_package_table_only_names_known_features():
     assert not unknown, f"packages_by_feature has unknown features: {unknown}"
 
 
-def test_local_run_reuses_sudo_ticket_before_prompting(tmp_path: Path, monkeypatch):
+def _sudo_env(tmp_path, monkeypatch, *, passwordless=False, good="secret"):
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
     monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
     monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo")
-    ticket = {"ok": True}
+    seen = {"ansible": [], "files": [], "checks": 0}
 
-    def fake_run(cmd, **_k):
-        if cmd[0] == "sudo":
-            code = 0 if ticket["ok"] else 1
-            return subprocess.CompletedProcess(cmd, code)
-        commands.append(list(cmd))
+    def fake_run(cmd, **kw):
+        if cmd[:3] == ["sudo", "-n", "true"]:
+            return subprocess.CompletedProcess(cmd, 0 if passwordless else 1)
+        if cmd[:2] == ["sudo", "-S"]:
+            seen["checks"] += 1
+            ok = kw.get("input_text") == good + "\n"
+            return subprocess.CompletedProcess(cmd, 0 if ok else 1)
+        seen["ansible"].append(list(cmd))
+        if "--become-password-file" in cmd:
+            path = Path(cmd[cmd.index("--become-password-file") + 1])
+            seen["files"].append(
+                (path, path.read_text(), oct(path.stat().st_mode & 0o777))
+            )
+        return subprocess.CompletedProcess(cmd, 0)
 
-    commands: list[list[str]] = []
     monkeypatch.setattr(cli_mod.system, "run", fake_run)
+    return cli_mod, machine, seen
+
+
+def test_local_run_without_password_when_sudo_is_passwordless(tmp_path, monkeypatch):
+    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, passwordless=True)
+    monkeypatch.setattr(getpass, "getpass", lambda _p: pytest.fail("asked"))
     machine.run_ansible("workstation")
-    assert "--ask-become-pass" not in commands[-1]
-    ticket["ok"] = False
+    assert "--become-password-file" not in seen["ansible"][-1]
+    assert "--ask-become-pass" not in seen["ansible"][-1]
+
+
+def test_local_run_checks_the_password_and_hands_it_over_once(tmp_path, monkeypatch):
+    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    answers = iter(["wrong", "secret"])
+    monkeypatch.setattr(getpass, "getpass", lambda _p: next(answers))
+
     machine.run_ansible("workstation")
-    assert "--ask-become-pass" in commands[-1]
+    machine.run_ansible("workstation")  # e.g. the revert run: no second prompt
+
+    assert seen["checks"] == 2
+    assert [(text, mode) for _p, text, mode in seen["files"]] == [
+        ("secret", "0o600"),
+        ("secret", "0o600"),
+    ]
+    assert all(not path.exists() for path, _t, _m in seen["files"])
+
+
+def test_local_run_stops_after_three_wrong_passwords(tmp_path, monkeypatch):
+    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(getpass, "getpass", lambda _p: "wrong")
+    with pytest.raises(SystemExit):
+        machine.run_ansible("workstation")
+    assert seen["checks"] == 3
+    assert seen["ansible"] == []
+
+
+def test_remote_run_lets_ansible_ask_for_the_password(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    machine.run_ansible("workstation", limit="homeserver")
+    assert "--ask-become-pass" in seen["ansible"][-1]
 
 
 def test_require_bitwarden_offers_install_then_login(tmp_path: Path, monkeypatch):

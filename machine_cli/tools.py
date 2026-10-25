@@ -246,28 +246,63 @@ class ToolsMixin:
                 extra.extend(["-e", "ansible_become_exe=sudo.ws"])
         else:
             cmd.extend(["--limit", limit])
+        password_file: Optional[Path] = None
         if ask_become and playbook_name != "homelab" and system.is_tty():
             local = force_local or not limit
-            # Local runs reuse sudo's cached ticket (like plain sudo); a password
-            # is only requested when it has expired. Ansible then runs `sudo -n`.
-            if not (local and self.sudo_ticket_valid()):
+            if not local:
                 cmd.append("--ask-become-pass")
+            else:
+                password = self.local_become_password()
+                if password is not None:
+                    password_file = _private_file(password)
+                    cmd.extend(["--become-password-file", str(password_file)])
         if debug_enabled():
             cmd.append("-v")
         cmd.extend(extra)
         log(f"ansible-playbook {playbook_name}.yml")
-        system.run(cmd, cwd=self.ansible_dir)
+        try:
+            system.run(cmd, cwd=self.ansible_dir)
+        finally:
+            if password_file is not None:
+                password_file.unlink(missing_ok=True)
         if force_local or not limit:
             self.record_ansible_applied()
 
-    def sudo_ticket_valid(self) -> bool:
+    def local_become_password(self) -> Optional[str]:
+        """sudo password for local Ansible runs, checked first; None if none is needed.
+
+        A cached sudo ticket does not help: it belongs to this terminal, and Ansible
+        runs `sudo -n` without one. So the password is asked here (three tries, like
+        sudo), verified with `sudo -S -k -v`, kept for the rest of this command (a
+        revert runs Ansible again) and handed to Ansible in a private file."""
+        cached = getattr(self, "_become_password", None)
+        if cached is not None:
+            return cached
         sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"
         if not system.have(sudo):
-            return False
-        # `sudo -v` prompts on the terminal only if the ticket expired and
-        # refreshes the timeout otherwise.
-        if system.run([sudo, "-v"], check=False).returncode != 0:
-            return False
-        return (
-            system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0
-        )
+            return None
+        if system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0:
+            return None  # passwordless sudo
+        for _ in range(3):
+            password = getpass.getpass("sudo password for Ansible: ")
+            check = system.run(
+                [sudo, "-S", "-k", "-p", "", "-v"],
+                check=False,
+                capture=True,
+                input_text=password + "\n",
+            )
+            if check.returncode == 0:
+                self._become_password = password
+                return password
+            print("Sorry, try again.")
+        die("3 incorrect sudo password attempts")
+        return None
+
+
+def _private_file(content: str) -> Path:
+    """Write `content` to a new file only the user can read; the caller deletes it."""
+    directory = os.environ.get("XDG_RUNTIME_DIR") or None
+    fd, name = tempfile.mkstemp(prefix="machine-become-", dir=directory)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(content)
+    return Path(name)

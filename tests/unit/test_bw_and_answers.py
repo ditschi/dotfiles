@@ -484,3 +484,37 @@ def test_unlock_reuses_a_saved_session_unless_expired(tmp_path, monkeypatch, val
     assert machine.unlock_bitwarden()
     assert (["bw", "unlock", "--raw"] in commands) == (not valid)
     assert os.environ["BW_SESSION"] == ("saved" if valid else "fresh")
+
+
+@pytest.mark.parametrize("answer", [True, False])
+def test_fresh_unlock_offers_to_save_the_session_once(tmp_path, monkeypatch, answer):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    questions = []
+    monkeypatch.setattr(
+        cli.system, "prompt_yes_no", lambda q, d: questions.append(d) or answer
+    )
+
+    def run(args, **kwargs):
+        output = "fresh" if args == ["bw", "unlock", "--raw"] else '{"status":"locked"}'
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert machine.unlock_bitwarden()
+    machine.offer_saving_bitwarden_session()
+    machine.offer_saving_bitwarden_session()  # asked once per run
+
+    assert questions == [False]  # default: no
+    saved = (tmp_path / ".env.local").read_text() if answer else ""
+    assert ("BW_SESSION=fresh" in saved) == answer
+
+
+def test_no_save_offer_without_a_fresh_unlock(tmp_path, monkeypatch):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(
+        cli.system, "prompt_yes_no", lambda *_a: pytest.fail("must not ask")
+    )
+    machine.offer_saving_bitwarden_session()

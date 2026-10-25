@@ -67,6 +67,7 @@ class EnvPullMixin:
         if not self.unlock_bitwarden():
             log("Bitwarden not unlocked; skip ~/.env sync (run machine env pull)")
             return 1 if interactive else 0
+        self.offer_saving_bitwarden_session()
         system.run(["bw", "sync"], capture=True)
         names = self.env_item_names()
         assignment = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=")

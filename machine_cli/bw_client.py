@@ -69,6 +69,7 @@ class BwClientMixin:
                 log("WARNING: Bitwarden unlock failed; environment sync skipped")
                 return False
             os.environ["BW_SESSION"] = session
+            self._bw_new_session = True
         result = system.run(["bw", "sync"], check=False, capture=True)
         if result.returncode:
             log(
@@ -177,6 +178,7 @@ class BwClientMixin:
         if not self.unlock_bitwarden(allow_login=True):
             log("WARNING: Bitwarden setup incomplete; local settings not saved")
             return False
+        self._bw_new_session = False  # asked here; env pull must not ask again
         if system.prompt_yes_no(
             "Save the unlock token and CA/proxy settings in ~/.env.local "
             "(mode 600)? The token grants vault access until invalidated.",
@@ -248,6 +250,21 @@ class BwClientMixin:
             }:
                 die("invalid Bitwarden status; local settings were not changed")
             return status
+
+    def offer_saving_bitwarden_session(self) -> None:
+        """After a fresh interactive unlock: offer (default no) to keep the token in
+        ~/.env.local, so later setup/update runs need no master password."""
+        if not getattr(self, "_bw_new_session", False):
+            return
+        self._bw_new_session = False
+        if getattr(self, "unattended", False) or not system.is_tty():
+            return
+        if system.prompt_yes_no(
+            "Save the Bitwarden unlock token in ~/.env.local (mode 600) so the next "
+            "setup/update does not ask again? It grants vault access until locked.",
+            False,
+        ):
+            self.save_bitwarden_local_settings()
 
     def save_bitwarden_local_settings(self) -> None:
         settings = {

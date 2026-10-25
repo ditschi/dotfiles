@@ -256,13 +256,11 @@ class ProfileMixin:
         return answer.split() if answer else list(defaults)
 
     def known_ssh_hosts(self, profile: str) -> Dict[str, str]:
-        """Hosts whose public key we can install: {hostname: where the key is}."""
+        """Hosts whose public key Ansible can install: {hostname: where the key is}."""
         hosts: Dict[str, str] = {}
         if self.ssh_class(profile) == "home":  # the repo only holds home fleet keys
             for path in sorted((self.repo / "machine" / "ssh_keys").glob("*.pub")):
                 hosts[path.stem] = "machine/ssh_keys"
-        for host in self.bw_ssh_hosts(profile):
-            hosts[host] = f"{hosts[host]} + Bitwarden" if host in hosts else "Bitwarden"
         hosts.pop(system.hostname_short(), None)
         return hosts
 

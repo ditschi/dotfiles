@@ -13,44 +13,6 @@ from package_sets import REPO
 MACHINE = REPO / "machine_cli/machine"
 
 
-def test_fake_bw_publish_ssh_public_key(tmp_path: Path, fake_bw, monkeypatch):
-    from importlib.machinery import SourceFileLoader
-
-    bw, store = fake_bw
-    repo = tmp_path / "dotfiles"
-    (repo / "home").mkdir(parents=True)
-    (repo / ".git").mkdir()
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".ssh").mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("PATH", f"{bw.parent}:{os.environ.get('PATH', '')}")
-    monkeypatch.setenv("BW_SESSION", "fake-session")
-    monkeypatch.setenv(
-        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
-    )
-    monkeypatch.setenv(
-        "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
-    )
-    monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-
-    cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()
-    machine = cli.Machine()
-    machine.write_profile("home-laptop", ["zsh-full", "ssh-host-key"], [])
-    # Pretend unlock already done
-    assert machine.publish_ssh_key(store_private=False) == 0
-    data = json.loads(store.read_text())
-    items = data.get("items", {})
-    # hostname from socket may vary; find ssh/home item
-    matching = [k for k in items if k.startswith("ssh/home/hosts/")]
-    assert matching
-    fields = {f["name"]: f["value"] for f in items[matching[0]]["fields"]}
-    assert "public_key" in fields
-    assert "private_key" not in fields
-    assert fields["public_key"].startswith("ssh-ed25519")
-
-
 def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatch):
     from importlib.machinery import SourceFileLoader
 
@@ -426,7 +388,8 @@ def test_existing_ssh_key_is_reused_without_generation(tmp_path, monkeypatch):
     monkeypatch.setattr(
         cli.system, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
     )
-    assert machine.ensure_host_ssh_key() == public
+    assert machine.select_host_ssh_key() == (key, True)
+    assert machine.ensure_public_key(key) == public
     assert key.read_bytes() == original
     assert not machine.host_key_paths()[0].exists()
 
@@ -439,7 +402,7 @@ def test_ambiguous_existing_ssh_keys_skip_generation(tmp_path, monkeypatch):
     monkeypatch.setattr(
         cli.system, "run", lambda *_args, **_kwargs: pytest.fail("must not run keygen")
     )
-    assert machine.ensure_host_ssh_key() is None
+    assert machine.select_host_ssh_key() == (None, False)
 
 
 def test_encrypted_key_without_public_file_is_kept(tmp_path, monkeypatch):
@@ -456,7 +419,8 @@ def test_encrypted_key_without_public_file_is_kept(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(args, 1, "", "locked")
 
     monkeypatch.setattr(cli.system, "run", locked_key)
-    assert machine.ensure_host_ssh_key() is None
+    assert machine.select_host_ssh_key() == (key, True)
+    assert machine.ensure_public_key(key) is None
     assert len(calls) == 1 and "-y" in calls[0] and "-P" in calls[0]
     assert key.read_bytes() == original
 

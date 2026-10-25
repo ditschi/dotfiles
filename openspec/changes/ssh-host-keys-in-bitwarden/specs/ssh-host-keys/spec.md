@@ -3,59 +3,89 @@
 ## ADDED Requirements
 
 ### Requirement: Whole key backed up as a Bitwarden SSH key item
-`machine ssh publish` SHALL store the host's key as a Bitwarden item of type SSH key named `ssh/<class>/hosts/<hostname>`, with private key, public key and fingerprint. It SHALL have no option to publish only the public key. The class SHALL be `home` or `work` from the profile.
+The host's key SHALL be stored as a Bitwarden item of type SSH key named `ssh/<class>/hosts/<hostname>`, with private key, public key and fingerprint. There SHALL be no option to store only the public key. The class SHALL be `home` or `work` from the profile. Only items of type SSH key SHALL be read; secure notes with the same name SHALL be ignored.
 
-#### Scenario: Publish
-- **WHEN** a user runs `machine ssh publish` on a home host
+#### Scenario: Key uploaded
+- **WHEN** setup uploads the key of a home host
 - **THEN** the item `ssh/home/hosts/<hostname>` of type SSH key holds the private key, the public key and the fingerprint
 
-#### Scenario: Item exists with another key
-- **WHEN** the item exists with a different key and the command runs on a terminal
-- **THEN** both fingerprints are shown and the user is asked whether to update the item (default no)
-
-#### Scenario: Other key without a terminal
-- **WHEN** the item exists with a different key and no terminal is available
-- **THEN** the item is left unchanged and the difference is reported
+#### Scenario: Old secure note present
+- **WHEN** a secure note with the item's name exists and no SSH key item
+- **THEN** the note is neither read nor changed, and the key is stored in a new SSH key item
 
 ### Requirement: Every host gets a key
-With the feature `ssh-host-key`, `machine setup` SHALL, in this order: restore the key from the host's Bitwarden item when one exists and no local key is selected; otherwise upload the selected existing local key; otherwise generate an ed25519 key without passphrase on the host and upload it.
+With the feature `ssh-host-key`, `machine setup` SHALL, without asking and in this order: restore the key from the host's Bitwarden item when one exists and no local key is selected; otherwise upload the selected existing local key; otherwise generate an ed25519 key without passphrase on the host and upload it. Setup SHALL use the Bitwarden session it already has and SHALL NOT prompt for an extra unlock.
 
 #### Scenario: Reinstalled host
 - **WHEN** setup runs on a fresh install of a host that has an item in Bitwarden
-- **THEN** its key is restored and the host keeps its identity
+- **THEN** its key is restored without a question and the host keeps its identity
 
 #### Scenario: New host without a key
 - **WHEN** setup runs on a host without a local key and without an item
-- **THEN** an ed25519 key is generated on the host and uploaded
+- **THEN** an ed25519 key is generated on the host and uploaded, and the public key is printed with a hint to register it where needed
 
-#### Scenario: Bitwarden not unlocked
-- **WHEN** setup runs unattended or Bitwarden cannot be unlocked
-- **THEN** no key is generated or uploaded and setup says how to finish (`machine ssh publish`)
+#### Scenario: Bitwarden not available
+- **WHEN** setup runs without an unlocked Bitwarden session
+- **THEN** no key is generated, restored or uploaded, and setup says that the next `machine update` or `machine setup` with Bitwarden finishes it
 
 ### Requirement: Key check during update
-`machine update` SHALL compare the host's key with its Bitwarden item only when a valid Bitwarden session is available without a prompt (environment or `~/.env.local`). A missing item or a different key SHALL become an attention item that `machine` offers to resolve (upload or update the item). Without such a session the check SHALL be skipped silently: no prompt and no message. The update SHALL never generate, restore or upload a key by itself.
+The manual `machine update` SHALL compare the host's key with its Bitwarden item only when a valid Bitwarden session is available without a prompt (environment or `~/.env.local`). A missing item SHALL be created with the local key without asking; a different key SHALL become an attention item. Without such a session it SHALL log a warning that says how to log in. It SHALL never generate or restore a key.
 
 #### Scenario: Key not backed up
 - **WHEN** `machine update` runs with a saved valid session and the host's key has no item
-- **THEN** an attention item says the key is not in Bitwarden, and `machine` offers to upload it
+- **THEN** the item is created with the local key without a question
+
+#### Scenario: Different key
+- **WHEN** `machine update` runs with a saved valid session and the item holds another key
+- **THEN** both keys stay unchanged and an attention item names both fingerprints
 
 #### Scenario: No session
 - **WHEN** `machine update` runs and no valid session is available without a prompt
-- **THEN** no key check runs and nothing is printed about it
+- **THEN** no key check runs, nothing prompts, and a warning says that the SSH key was not checked and to log in with `machine env pull` in a terminal
+
+
+### Requirement: Background update without Bitwarden
+The background update SHALL NOT use Bitwarden; only the manual `machine update` checks the SSH key.
+
+#### Scenario: Background update
+- **WHEN** the background update runs
+- **THEN** it does not call `bw`
+
+### Requirement: Resolving a different key
+When the local key and the item differ, `machine attention` and `machine ssh sync` SHALL show both fingerprints and ask which side wins: local (the item is overwritten with the local key), Bitwarden (the local key is renamed to `<key>.old-<YYYYMMDD>` and the item's key is written in its place) or later (nothing changes). Without a terminal nothing SHALL change.
+
+#### Scenario: Local wins
+- **WHEN** the user chooses the local key
+- **THEN** the item holds the local key afterwards
+
+#### Scenario: Bitwarden wins
+- **WHEN** the user chooses the Bitwarden key
+- **THEN** the old local private and public key are kept as `<key>.old-<YYYYMMDD>` and the item's key is in their place
+
+#### Scenario: No terminal
+- **WHEN** `machine ssh sync` runs without a terminal
+- **THEN** both keys stay unchanged and the difference is reported
+
+### Requirement: Rotating the key
+`machine ssh rotate` SHALL generate a new ed25519 key without passphrase at `~/.ssh/id_ed25519_<hostname>`, keep a key already at that path as `<key>.old-<YYYYMMDD>`, select the new key, overwrite the Bitwarden item with it and, for the `home` class, update `machine/ssh_keys/<hostname>.pub`.
+
+#### Scenario: Rotate
+- **WHEN** a user runs `machine ssh rotate` with Bitwarden unlocked
+- **THEN** the new key is selected and in the item, the old key file is kept as `.old-<YYYYMMDD>`, and the public key is printed with a hint to register it where needed
 
 ### Requirement: Existing keys are kept
-Existing local keys SHALL keep their path, permissions and passphrase, and SHALL be selected in the current order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, a hostname key, a sole other candidate. Restore SHALL never overwrite an existing private key.
+Existing local keys SHALL keep their path, permissions and passphrase, and SHALL be selected in the current order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, a hostname key, a sole other candidate. Restoring in setup SHALL never overwrite an existing private key; only the explicit choice "Bitwarden wins" or `rotate` replaces a local key, keeping the old one as `<key>.old-<YYYYMMDD>`.
 
 #### Scenario: Host with an existing key
 - **WHEN** the host has a key and no item exists
 - **THEN** that key is uploaded unchanged
 
 #### Scenario: Restore with a local key present
-- **WHEN** restore would write a private key where one already exists
-- **THEN** restore stops and leaves the existing key unchanged
+- **WHEN** setup would restore a private key where one already exists
+- **THEN** the existing key stays unchanged
 
 ### Requirement: Public keys of home hosts in the repository
-For the `home` class, setup and publish SHALL write the public key to `machine/ssh_keys/<hostname>.pub` and offer to commit it. Keys of the `work` class SHALL NOT be written to the repository. `authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`; `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
+For the `home` class, setup, `sync` and `rotate` SHALL write the public key to `machine/ssh_keys/<hostname>.pub` without a question and log a hint to commit it. Keys of the `work` class SHALL NOT be written to the repository. `authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`; `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
 
 #### Scenario: Apply with ssh_allow_from
 - **WHEN** `machine apply` runs on a host with `ssh_allow_from: [homeserver]` and `machine/ssh_keys/homeserver.pub` exists
@@ -66,16 +96,5 @@ For the `home` class, setup and publish SHALL write the public key to `machine/s
 - **THEN** it offers the hosts with a file in `machine/ssh_keys/`
 
 #### Scenario: Work host
-- **WHEN** a work host publishes its key
+- **WHEN** a work host uploads its key
 - **THEN** no file is written to `machine/ssh_keys/`
-
-### Requirement: Migration of secure-note items
-An existing item of type secure note with the fields `public_key` and `private_key` SHALL still be readable for restore. Publish and setup SHALL replace it with an SSH key item holding the same key and, once that item is created and read back with the same fingerprint, SHALL delete the old note (into the Bitwarden trash, not permanently).
-
-#### Scenario: Old note present
-- **WHEN** the host's item is a secure note with both fields
-- **THEN** an SSH key item with the same key is created, read back, and the old note is moved to the Bitwarden trash
-
-#### Scenario: New item cannot be confirmed
-- **WHEN** creating the SSH key item fails or reading it back shows another fingerprint
-- **THEN** the old note is kept and the problem is reported

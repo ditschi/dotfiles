@@ -192,12 +192,15 @@ def env_cmd(action) -> None:
     _exit(code)
 
 
-@app.command(name="ssh", help="publish/restore per-host SSH keys")
-@click.argument("action", type=click.Choice(["publish", "restore"]))
-@click.option("--private", is_flag=True, help="also store private key")
+@app.command(
+    name="ssh",
+    help="sync: choose which SSH key wins when host and Bitwarden differ; "
+    "rotate: replace the host key with a new one",
+)
+@click.argument("action", type=click.Choice(["sync", "rotate"]))
 @click.option("--yes", is_flag=True)
-def ssh_cmd(action, private, yes) -> None:
-    args = types.SimpleNamespace(action=action, private=private, yes=yes)
+def ssh_cmd(action, yes) -> None:
+    args = types.SimpleNamespace(action=action, yes=yes)
     cli = Machine()
     code = cli.cmd_ssh(args)
     if code:

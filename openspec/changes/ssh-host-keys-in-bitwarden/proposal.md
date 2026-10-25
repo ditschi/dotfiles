@@ -6,13 +6,13 @@
 
 ## What Changes
 
-- **BREAKING (CLI):** `machine ssh publish` always uploads the whole key as a Bitwarden item of type SSH key; the `--private` flag is removed.
-- With the feature `ssh-host-key`, `machine setup` (and therefore bootstrap) makes sure every host has a key: it restores the host's key from Bitwarden when an item exists, otherwise uploads an existing local key, otherwise generates an ed25519 key on the host (no passphrase) and uploads it.
-- When the local key differs from the Bitwarden item, setup and publish show both fingerprints and ask whether to update the item (default no); without a terminal nothing is changed.
-- `machine update` checks the key silently when a Bitwarden session is available without a prompt, and reports a missing or different item as an attention item; without a session it does nothing.
-- For the `home` class, the public key is written to `machine/ssh_keys/<hostname>.pub` in the repository, with the same commit offer as the host profile. `authorized_keys` is filled only by Ansible from the repository; `machine` no longer reads public keys from Bitwarden after Ansible.
+- **BREAKING (CLI):** `machine ssh publish` and `machine ssh restore` are removed. `machine ssh` keeps two actions: `sync` resolves a difference between the local key and the Bitwarden item, `rotate` replaces the host's key with a new one.
+- With the feature `ssh-host-key`, `machine setup` (and therefore bootstrap) provisions the key without asking whenever Bitwarden is available: it restores the host's key from its Bitwarden item, otherwise uploads the existing local key, otherwise generates an ed25519 key on the host (no passphrase) and uploads it. The key is stored as a Bitwarden item of type SSH key.
+- `machine update` uploads the key without asking when the item is missing and a Bitwarden session works without a prompt. A different key becomes an attention item. Without such a session it logs a warning that says how to log in to Bitwarden. The background job does not touch Bitwarden.
+- A difference between the local key and the item is never resolved automatically: `machine attention` or `machine ssh sync` asks which side wins. Old local keys are kept as `<key>.old-<date>`.
+- For the `home` class, the public key is written to `machine/ssh_keys/<hostname>.pub` without a question, with a hint to commit it. `authorized_keys` is filled only by Ansible from the repository; `machine` no longer reads public keys from Bitwarden after Ansible.
 - `machine setup` offers the hosts with a key in `machine/ssh_keys/` for `ssh_allow_from`, instead of the hosts published in Bitwarden.
-- Existing secure-note items (`public_key`/`private_key` fields) are read for restore and migrated to an SSH key item; once the new item is confirmed, the old note is moved to the Bitwarden trash.
+- Existing secure-note items are not read or migrated; the owner removes them by hand.
 
 ## Capabilities
 
@@ -26,5 +26,5 @@ Affected profiles: hosts with the feature `ssh-host-key` (default on private pro
 
 ## Impact
 
-- `machine_cli/ssh_keys.py`, `machine_cli/machine` (`ssh publish` options), `machine_cli/profile.py` (`ssh_allow_from` candidates), `machine_cli/commands.py`, `machine/ssh_keys/`, tests, Readme section "SSH keys".
-- Bitwarden: new items of type SSH key named `ssh/<class>/hosts/<hostname>`; the old secure notes go to the trash after the migration.
+- `machine_cli/ssh_keys.py`, `machine_cli/machine` (`ssh` actions), `machine_cli/profile.py` (`ssh_allow_from` candidates), `machine_cli/commands.py`, `machine_cli/updates.py`, `machine_cli/attention.py`, `machine/ssh_keys/`, tests, Readme section "SSH keys".
+- Bitwarden: new items of type SSH key named `ssh/<class>/hosts/<hostname>`; old secure notes are removed by hand.

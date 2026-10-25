@@ -194,7 +194,6 @@ def test_apply_syncs_then_runs_ansible(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(machine, "run_ansible", fake_ansible)
     monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
     monkeypatch.setattr(machine, "health_check_after_apply", lambda: True)
-    monkeypatch.setattr(machine, "apply_authorized_keys_from_bw", lambda *_a: None)
 
     args = argparse.Namespace(limit="", playbook="workstation", no_become=True)
     assert machine.cmd_apply(args) == 0
@@ -443,42 +442,19 @@ def test_debug_shows_commands_only_when_enabled(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out == "machine: $ true\n"
 
 
-def test_bw_ssh_hosts_lists_same_class_only(tmp_path: Path, monkeypatch):
-    import json
-    import subprocess
-
-    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
-    names = ["ssh/home/hosts/alpha", "ssh/work/hosts/beta", "ssh/home/hosts-old/x"]
-    listing = json.dumps([{"name": name} for name in names])
-    monkeypatch.setenv("BW_SESSION", "fake")
-    monkeypatch.setattr(cli_mod.system, "have", lambda _name: True)
-    monkeypatch.setattr(
-        cli_mod.system,
-        "run",
-        lambda cmd, **_k: subprocess.CompletedProcess(cmd, 0, listing, ""),
-    )
-    assert machine.bw_ssh_hosts("home-laptop") == ["alpha"]
-    assert machine.bw_ssh_hosts("work-machine") == ["beta"]
-    assert machine.bw_ssh_hosts("container") == []
-
-
-def test_ssh_allow_from_offers_hosts_from_repo_and_bitwarden(tmp_path, monkeypatch):
+def test_ssh_allow_from_offers_hosts_with_a_repo_key(tmp_path, monkeypatch):
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     keys = repo / "machine" / "ssh_keys"
     keys.mkdir(parents=True)
     for host in ("homeserver", "testhost"):  # testhost is this machine
         (keys / f"{host}.pub").write_text("ssh-ed25519 AAAA\n", encoding="utf-8")
-    monkeypatch.setattr(machine, "bw_ssh_hosts", lambda _p=None: ["homeserver", "pi"])
+    monkeypatch.setattr(
+        cli_mod.system, "run", lambda *_a, **_k: pytest.fail("no Bitwarden lookup")
+    )
 
-    assert machine.known_ssh_hosts("home-laptop") == {
-        "homeserver": "machine/ssh_keys + Bitwarden",
-        "pi": "Bitwarden",
-    }
+    assert machine.known_ssh_hosts("home-laptop") == {"homeserver": "machine/ssh_keys"}
     # repo keys belong to the home fleet only
-    assert machine.known_ssh_hosts("work-machine") == {
-        "homeserver": "Bitwarden",
-        "pi": "Bitwarden",
-    }
+    assert machine.known_ssh_hosts("work-machine") == {}
 
 
 def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatch):

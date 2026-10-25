@@ -47,7 +47,7 @@ From the laptop to a reachable device:
 | Status / drift | `machine status` / `machine profile show` |
 | Inventory (vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` from Bitwarden | `machine env pull` |
-| SSH public key to Bitwarden | `machine ssh publish` |
+| Resolve different SSH keys (host / Bitwarden) | `machine ssh sync` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
 `machine update` only runs what changed upstream: the tool install (`mise install`, plus the Azure CLI via `uv tool`) for a changed `home/core/.config/mise/*`, the dotfile apply (`mise dot apply --prune`) for added/removed files under `home/` or a changed `mise.toml`, Ansible when `ansible/**` changed in a part that applies to this host (roles of other profiles, docs and inventory are ignored; a host never set up by Ansible gets no system step), a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs the dotfile apply when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. Every `machine update` ends with a converge check (dotfile apply and tool install, also when nothing is incoming), and on a terminal the shell is reloaded afterwards by the `machine` shell function. A failed tool install reverts like a failed zsh check. `MACHINE_SKIP_TOOLS=1` skips the tool install in `machine setup` (tests). `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
@@ -169,7 +169,7 @@ The script itself only defines the command line. The implementation is the packa
 | `profile` | local profile, versioned host files, prompts |
 | `tools` | bootstrap tools, git / ansible runners |
 | `dotfiles`, `mise_tools`, `mise_check`, `terminal_fonts` | dotfile groups (`mise dot`), tool install, fragment checks, terminal fonts |
-| `bw_client`, `env_pull`, `ssh_keys` | Bitwarden client, `~/.env`, per-host SSH keys, authorized_keys |
+| `bw_client`, `env_pull`, `ssh_keys` | Bitwarden client, `~/.env`, per-host SSH keys |
 | `commands` | setup, apply, update, status, commit, push |
 | `updates`, `auto_update`, `local_changes`, `local_overrides`, `system_relevance` | update plan and resolvers, background update, relevance filter |
 | `attention`, `events` | `machine attention`, local event log |
@@ -312,27 +312,28 @@ machine env pull      # write ~/.env and ~/.env.host; preserve ~/.env.local
 
 ### SSH keys (home / work separated)
 
-Optional per host: `~/.ssh/id_ed25519_<hostname>`. Public key as text field `public_key` in Bitwarden:
-
-Setup reuses existing local private keys without changing their paths,
-permissions or passphrases. With multiple keys, interactive setup asks which to
-reuse; unattended setup prefers `id_ed25519`, then `id_rsa`, then an existing
-hostname key or sole other candidate. Ambiguous selection skips creation and
-publication. Set `MACHINE_SSH_KEY` to select a path explicitly; the choice is
-cached locally. A key is generated only when none exists. A missing public-key
-file may be derived without a passphrase prompt; otherwise the original key is
-kept and publication is skipped. Private upload remains opt-in, and restore
-refuses to overwrite an existing private key.
+One key per host, backed up whole (private key, public key, fingerprint) as a Bitwarden item of type **SSH key**:
 
 - Home: `ssh/home/hosts/<hostname>`
 - Work: `ssh/work/hosts/<hostname>`
 
-In `profile.yml`, `ssh_allow_from:` controls which hostnames (same class) may SSH into **this** machine. Ansible/setup only fetches public keys of the same class. Private keys only after explicit confirmation.
+With the feature `ssh-host-key`, `machine setup` (and so bootstrap) handles the key without asking, using the Bitwarden session setup already has:
+
+1. no local key, but an item in Bitwarden → the key is restored (a reinstalled host keeps its identity);
+2. an existing local key → it is uploaded unchanged;
+3. neither → an ed25519 key without passphrase is generated (`~/.ssh/id_ed25519_<hostname>`) and uploaded. Register it where needed, for example `gh ssh-key add`.
+
+Existing keys keep their path, permissions and passphrase. Selection order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, the hostname key, a sole other candidate; only when several keys make the choice unclear does interactive setup ask, and an ambiguous choice changes nothing. The choice is cached locally. Without an unlocked Bitwarden nothing is generated, restored or uploaded.
+
+`machine update` (the manual one) uploads the key when the item is missing and a Bitwarden session works without a prompt (environment or `~/.env.local`). Without such a session it warns that the key was not checked; log in with `machine env pull` in a terminal. The background job never uses Bitwarden. Only items of type SSH key are read; old secure notes with the same name are ignored.
+
+**Different keys** on the host and in Bitwarden are never resolved automatically: setup and update keep both and list the difference in `machine attention`. There, or with `machine ssh sync`, you choose: `local` (overwrite the item), `bitwarden` (replace the local key; the old one is kept as `<key>.old-<YYYYMMDD>`) or `later`.
+
+**authorized_keys:** for the `home` class, the public key is written to [`machine/ssh_keys/<hostname>.pub`](machine/ssh_keys/) without a question; commit and push it. Work keys never go into the repository. The role `sshd_home` adds the keys of the hosts in `ssh_allow_from` (same class) from there; `machine` does not read public keys from Bitwarden. Setup offers the hosts with a file in `machine/ssh_keys/` for `ssh_allow_from`.
 
 ```bash
-machine ssh publish           # upload public key
-machine ssh publish --private # including private key
-machine ssh restore           # restore private key
+machine ssh sync              # host and Bitwarden differ: choose which key wins
+machine ssh rotate            # new key at ~/.ssh/id_ed25519_<hostname>, old one kept, item overwritten
 ```
 
 ## Profiles / features

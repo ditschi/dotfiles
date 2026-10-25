@@ -54,7 +54,7 @@ class CommandsMixin:
             )
             features = defaults if args.yes else self.prompt_features(defaults)
 
-        # Before the ssh_allow_from prompt: it offers the hosts published in Bitwarden.
+        # Early, so the SSH host key and env pull find an unlocked vault.
         if need_bw:
             self.setup_bitwarden()
 
@@ -76,13 +76,7 @@ class CommandsMixin:
             self.run_ansible(args.playbook, args.limit, args.local, ask_become)
 
         if "ssh-host-key" in features and profile != "container":
-            store_private = False
-            if system.is_tty() and not args.yes:
-                store_private = system.prompt_yes_no(
-                    "Also store the private key in Bitwarden?", False
-                )
-            self.publish_ssh_key(store_private=store_private)
-            self.apply_authorized_keys_from_bw(allow_from)
+            self.provision_host_ssh_key()
 
         self.maybe_tailscale_login(features)
 
@@ -142,8 +136,6 @@ class CommandsMixin:
             log("container profile: nothing to apply")
             return 0
 
-        features = self.saved_features()
-        allow_from = self.saved_ssh_allow_from()
         try:
             self.ensure_bootstrap_tools(
                 False,
@@ -151,8 +143,6 @@ class CommandsMixin:
                 not system.in_docker() and os.environ.get("MACHINE_SKIP_BW") != "1",
             )
             self.run_ansible(playbook, force_local=True, ask_become=ask_become)
-            if "ssh-host-key" in features:
-                self.apply_authorized_keys_from_bw(allow_from)
             if not self.health_check_after_apply():
                 raise RuntimeError("health check failed")
         except (subprocess.CalledProcessError, RuntimeError) as exc:

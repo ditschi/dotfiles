@@ -41,7 +41,7 @@ FEATURE_HELP = {
     "syncthing": "Syncthing package",
     "thunderbird": "Thunderbird + tb CLI and bridge (extension: manual install)",
     "tailscale": "Tailscale package (+ optional login)",
-    "ssh-host-key": "Per-host ed25519 key + Bitwarden pub",
+    "ssh-host-key": "Per-host SSH key, backed up in Bitwarden",
     "stylus-touch-guard": "Disable touch while stylus near (Yoga / Xournal++)",
     "thinkpad-tuning": "ThinkPad battery thresholds, power profile, S3, zram, tablet OSK",
     "touch-device": "GNOME touch extensions (TouchUp, Screen Rotate)",

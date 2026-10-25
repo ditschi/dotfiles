@@ -2,25 +2,23 @@
 
 ## 1. Bitwarden SSH key items
 
-- [ ] 1.1 Store the host key as an item of type SSH key (`type: 5`, private key, public key, fingerprint) named `ssh/<class>/hosts/<hostname>`; stop with both fingerprints when the item holds another key. Verify unit tests with a stubbed `bw` for create, same key (no change) and other key.
-- [ ] 1.2 Remove `--private` from `machine ssh publish`; publish always stores the whole key. Verify `machine ssh --help` and the CLI tests.
-- [ ] 1.3 Restore reads SSH key items and the old secure notes (`private_key`/`public_key` fields), never overwriting an existing private key. Verify unit tests for both item types and for an existing key.
+- [x] 1.1 Store the host key as an item of type SSH key (`type: 5`, private key, public key, fingerprint) named `ssh/<class>/hosts/<hostname>`; read only SSH key items and ignore secure notes. Verify unit tests with a stubbed `bw` for create, same key (no change), other key (no change, attention item) and a secure note with the same name.
+- [x] 1.2 Replace `machine ssh publish|restore` with `machine ssh sync|rotate`. Verify `machine ssh --help` and the CLI tests.
 
-## 2. Every host gets a key
+## 2. Automatic provisioning
 
-- [ ] 2.1 With `ssh-host-key`, setup restores, else uploads the selected local key, else generates ed25519 without passphrase and uploads; keep the current selection order and leave existing keys unchanged. Verify unit tests for the three paths and for unattended setup without Bitwarden.
-- [ ] 2.2 When the local key differs from the item, show both fingerprints and ask whether to update the item (default no); without a terminal change nothing and report it. Verify unit tests for yes, no and no terminal.
-- [ ] 2.3 Migrate a secure-note item to an SSH key item with the same key; after reading the new item back with the same fingerprint, delete the old note with `bw delete item` (trash, not `--permanent`); keep the note when the new item cannot be confirmed. Verify unit tests for success and for a failed create.
-
-- [ ] 2.4 In `machine update`, compare key and item only with a valid session that needs no prompt; report a missing or different item as an attention item that `machine` resolves (upload or update); skip silently without a session. Verify unit tests for missing item, different key and no session (no prompt, no output).
+- [x] 2.1 With `ssh-host-key`, setup restores, else uploads the selected local key, else generates ed25519 without passphrase and uploads, without a question and without an extra unlock prompt; keep the selection order and leave existing keys unchanged. Verify unit tests for the three paths and for setup without Bitwarden.
+- [x] 2.2 The manual `machine update` creates a missing item without asking, reports a different key as attention item, and without a session logs a warning naming `machine env pull`; the background update does not call `bw`. Verify unit tests for missing item, different key, no session (warning, no prompt) and the background update.
+- [x] 2.3 Resolve a difference in `machine attention` and `machine ssh sync`: local wins, Bitwarden wins (old key kept as `<key>.old-<YYYYMMDD>`), later; without a terminal nothing changes. Verify unit tests for the three answers and for no terminal.
+- [x] 2.4 `machine ssh rotate`: new ed25519 key at `id_ed25519_<hostname>`, a key there kept as `.old-<YYYYMMDD>`, new key selected, item overwritten, repository key updated. Verify a unit test.
 
 ## 3. Public keys in the repository
 
-- [ ] 3.1 For the `home` class, write `machine/ssh_keys/<hostname>.pub` in setup and publish and offer the commit; never for `work`. Verify unit tests for both classes.
-- [ ] 3.2 Remove `apply_authorized_keys_from_bw` and its calls; `authorized_keys` comes only from the role `sshd_home`. Verify no `missing ssh/` message in an apply and the `sshd_home` role run in a container.
-- [ ] 3.3 Offer the hosts with a file in `machine/ssh_keys/` for `ssh_allow_from` in setup. Verify a unit test.
+- [x] 3.1 For the `home` class, write `machine/ssh_keys/<hostname>.pub` without a question in setup, sync and rotate and log a hint to commit; never for `work`. Verify unit tests for both classes.
+- [x] 3.2 Remove `apply_authorized_keys_from_bw` and its calls; `authorized_keys` comes only from the role `sshd_home`. Verify no `missing ssh/` message in an apply and the `sshd_home` role run in a container.
+- [x] 3.3 Offer the hosts with a file in `machine/ssh_keys/` for `ssh_allow_from` in setup. Verify a unit test.
 
 ## 4. Docs and checks
 
-- [ ] 4.1 Rewrite the Readme section "SSH keys". Verify the text matches the behaviour.
-- [ ] 4.2 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and `openspec validate ssh-host-keys-in-bitwarden --strict`. Verify all pass.
+- [x] 4.1 Rewrite the Readme section "SSH keys". Verify the text matches the behaviour.
+- [x] 4.2 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and `openspec validate ssh-host-keys-in-bitwarden --strict`. Verify all pass.

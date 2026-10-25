@@ -7,7 +7,7 @@ import os
 import re
 import shlex
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlsplit
 
 from . import system
@@ -304,49 +304,37 @@ class BwClientMixin:
         except json.JSONDecodeError:
             return None
 
-    def bw_upsert_ssh_item(
-        self, item_name: str, public_key: str, private_key: Optional[str] = None
-    ) -> bool:
-        if not system.have("bw") or not os.environ.get("BW_SESSION"):
-            return False
-        existing = self.bw_get_item_raw(item_name)
-        fields = [
-            {"name": "public_key", "value": public_key, "type": 0},
-        ]
-        if private_key:
-            fields.append({"name": "private_key", "value": private_key, "type": 1})
-        if existing:
-            existing["fields"] = fields
-            payload = json.dumps(existing)
-            encoded = system.run(
-                ["bw", "encode"], capture=True, input_text=payload, check=False
-            )
-            if encoded.returncode != 0:
-                return False
-            result = system.run(
-                ["bw", "edit", "item", existing["id"]],
-                capture=True,
-                input_text=encoded.stdout,
-                check=False,
-            )
-            return result.returncode == 0
-        template = {
-            "type": 2,
-            "name": item_name,
-            "notes": f"SSH host key for {system.hostname_short()}",
-            "secureNote": {"type": 0},
-            "fields": fields,
-        }
-        payload = json.dumps(template)
+    def bw_items_named(self, name: str) -> Optional[List[dict]]:
+        """Items whose name is exactly `name`; None when bw cannot list them."""
+        result = system.run(
+            ["bw", "list", "items", "--search", name], capture=True, check=False
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            items = json.loads(result.stdout or "[]")
+        except json.JSONDecodeError:
+            return None
+        return [item for item in items if item.get("name") == name]
+
+    def _bw_send_item(self, command: List[str], item: dict) -> Optional[dict]:
         encoded = system.run(
-            ["bw", "encode"], capture=True, input_text=payload, check=False
+            ["bw", "encode"], capture=True, input_text=json.dumps(item), check=False
         )
         if encoded.returncode != 0:
-            return False
+            return None
         result = system.run(
-            ["bw", "create", "item"],
-            capture=True,
-            input_text=encoded.stdout,
-            check=False,
+            ["bw", *command], capture=True, input_text=encoded.stdout, check=False
         )
-        return result.returncode == 0
+        if result.returncode != 0:
+            return None
+        try:
+            return json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            return {}
+
+    def bw_create_item(self, item: dict) -> Optional[dict]:
+        return self._bw_send_item(["create", "item"], item)
+
+    def bw_edit_item(self, item: dict) -> bool:
+        return self._bw_send_item(["edit", "item", item["id"]], item) is not None

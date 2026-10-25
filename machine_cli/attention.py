@@ -48,6 +48,15 @@ class AttentionMixin:
                     ),
                 )
             )
+        if self.ssh_key_attention.is_file():
+            items.append(
+                AttentionItem(
+                    "ssh-key",
+                    self.ssh_key_attention.read_text(encoding="utf-8").strip(),
+                    "Choose which SSH key wins now (machine ssh sync)?",
+                    self.resolve_ssh_key_difference,
+                )
+            )
         local = set(self.local_changes())
         for name, path, run, _pending in self.local_resolvers():
             if path in local:

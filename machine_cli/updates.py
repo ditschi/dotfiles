@@ -524,6 +524,7 @@ class UpdateMixin:
             self.run_dotfiles_apply()
             self.run_tools_install()
         self.cmd_env_pull()
+        self.check_ssh_key_backup()
         self.write_update_state("updated", pending="", failed_revision="")
 
         if profile_changed or args.system or "system" in steps:

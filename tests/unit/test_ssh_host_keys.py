@@ -14,7 +14,7 @@ HOST = "unit-test-host"
 ITEM = f"ssh/home/hosts/{HOST}"
 
 
-def ssh_machine(tmp_path, monkeypatch, fake_bw, profile="home-laptop", session=True):
+def ssh_machine(tmp_path, monkeypatch, fake_bw, context="private", session=True):
     from importlib.machinery import SourceFileLoader
 
     bw, store = fake_bw
@@ -29,7 +29,7 @@ def ssh_machine(tmp_path, monkeypatch, fake_bw, profile="home-laptop", session=T
     if session:
         monkeypatch.setenv("BW_SESSION", "fake-session")
     monkeypatch.setenv(
-        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+        "MACHINE_APPLIED_HOST_FILE", str(home / ".config/machine/profile.yml")
     )
     monkeypatch.setenv(
         "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
@@ -40,7 +40,7 @@ def ssh_machine(tmp_path, monkeypatch, fake_bw, profile="home-laptop", session=T
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     monkeypatch.setattr(cli.system, "hostname_short", lambda: HOST)
     machine = cli.Machine()
-    machine.write_profile(profile, ["zsh-full", "ssh-host-key"], [])
+    machine.write_profile(context, "desktop", ["zsh-full", "ssh-host-key"], [])
     return cli, machine, home, repo, store
 
 
@@ -167,7 +167,7 @@ def test_secure_note_with_the_same_name_is_ignored(tmp_path, monkeypatch, fake_b
 
 def test_work_key_is_not_written_to_the_repo(tmp_path, monkeypatch, fake_bw):
     _, machine, home, repo, store = ssh_machine(
-        tmp_path, monkeypatch, fake_bw, profile="work-machine"
+        tmp_path, monkeypatch, fake_bw, context="work"
     )
     make_key(home / ".ssh/id_ed25519")
     assert machine.provision_host_ssh_key() == 0

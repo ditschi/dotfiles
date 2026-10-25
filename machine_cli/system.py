@@ -25,6 +25,16 @@ def in_docker() -> bool:
     return Path("/.dockerenv").is_file() or os.environ.get("MACHINE_IN_DOCKER") == "1"
 
 
+def boots_graphical() -> bool:
+    """True when systemd boots into the graphical target (a desktop)."""
+    if not shutil.which("systemctl"):
+        return False
+    result = subprocess.run(
+        ["systemctl", "get-default"], capture_output=True, text=True, check=False
+    )
+    return result.stdout.strip() == "graphical.target"
+
+
 def have(name: str) -> bool:
     return shutil.which(name) is not None
 

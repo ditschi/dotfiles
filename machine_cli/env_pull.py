@@ -38,7 +38,7 @@ class EnvPullMixin:
     def cmd_env_status(self) -> int:
         if not self.require_bitwarden() or not self.unlock_bitwarden():
             die("Bitwarden is not ready; see the messages above")
-        print(f"profile: {self.current_profile()}")
+        print(f"context: {self.current_context() or '(none)'}")
         print(f"host: {system.hostname_short()}")
         found = missing = 0
         for name in self.env_item_names():
@@ -55,8 +55,8 @@ class EnvPullMixin:
         return 0
 
     def cmd_env_pull(self, interactive: bool = False) -> int:
-        if self.current_profile() == "container":
-            log("container profile: skip ~/.env sync")
+        if not self.current_context():
+            log("no context (container): skip ~/.env sync")
             return 0
         if interactive:
             if not self.require_bitwarden():

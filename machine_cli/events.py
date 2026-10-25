@@ -43,7 +43,8 @@ def record(
     reason: Optional[str] = None,
     duration: Optional[float] = None,
     revision: Optional[str] = None,
-    profile: Optional[str] = None,
+    context: Optional[str] = None,
+    device: Optional[str] = None,
     max_bytes: int = MAX_BYTES,
 ) -> None:
     """Append one event; never raises."""
@@ -59,8 +60,10 @@ def record(
             entry["duration_s"] = round(float(duration), 1)
         if revision:
             entry["rev"] = _code(revision, 12)
-        if profile:
-            entry["profile"] = _code(profile)
+        if context:
+            entry["context"] = _code(context)
+        if device:
+            entry["device"] = _code(device)
         state_dir.mkdir(parents=True, exist_ok=True)
         path = state_dir / LOG_NAME
         with path.open("a", encoding="utf-8") as handle:

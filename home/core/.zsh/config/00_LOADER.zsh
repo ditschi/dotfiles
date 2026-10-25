@@ -9,7 +9,7 @@ log() {
 # Ensure ZSH variable is set
 ZSH=${ZSH:-$HOME/.zsh}
 
-# MACHINE_PROFILE / WORK_SETUP, shared with bash
+# MACHINE_CONTEXT / MACHINE_DEVICE / WORK_SETUP, shared with bash
 source "$ZSH/machine-profile.sh"
 
 # Update state indicator (prompt segment, see 03_theme.zsh)

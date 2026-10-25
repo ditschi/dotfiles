@@ -1,0 +1,3 @@
+# opencode (feature `opencode`, which also selects the `openspec` group).
+[tools]
+opencode = "latest"

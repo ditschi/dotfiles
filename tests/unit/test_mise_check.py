@@ -15,10 +15,10 @@ def _repo(tmp_path, fragments, packages):
         path = tmp_path / "home" / "core" / ".config" / "mise" / "conf.d" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(textwrap.dedent(body))
-    group_vars = tmp_path / "ansible" / "group_vars"
+    group_vars = tmp_path / "ansible" / "group_vars" / "all"
     group_vars.mkdir(parents=True)
     lines = "\n".join(f"  - {p}" for p in packages)
-    (group_vars / "all.yml").write_text(
+    (group_vars / "packages.yml").write_text(
         f"packages_base:\n{lines}\npackages_by_feature:\n  x:\n  - curl\n"
     )
     return tmp_path

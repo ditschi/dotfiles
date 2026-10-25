@@ -201,7 +201,7 @@ class SshKeysMixin:
         """Setup: restore, else back up the local key, else generate one; no questions
         and no extra unlock prompt (only the session setup already has)."""
         if not self.ssh_class():
-            log("container profile: no SSH host key")
+            log("no context (container): no SSH host key")
             return 0
         if not self.bitwarden_session_ready():
             log(
@@ -389,7 +389,7 @@ class SshKeysMixin:
     def resolve_ssh_key_difference(self) -> int:
         """`machine ssh sync` / attention: ask which key wins when they differ."""
         if not self.ssh_class():
-            log("container profile: no SSH host key")
+            log("no context (container): no SSH host key")
             return 0
         interactive = system.is_tty() and not getattr(self, "unattended", False)
         if not self.bitwarden_session_ready() and not (
@@ -447,7 +447,7 @@ class SshKeysMixin:
     def rotate_ssh_key(self) -> int:
         """New ed25519 key at id_ed25519_<hostname>, old one kept, item overwritten."""
         if not self.ssh_class():
-            log("container profile: no SSH host key")
+            log("no context (container): no SSH host key")
             return 0
         if not self.unlock_bitwarden(allow_login=system.is_tty()):
             log("Bitwarden not unlocked; log in with `machine env pull` in a terminal")

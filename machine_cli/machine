@@ -32,7 +32,8 @@ from click.shell_completion import (  # noqa: E402
 from machine_cli import core, system  # noqa: E402,F401
 from machine_cli.core import (  # noqa: E402,F401
     MACHINE_PROG_NAME,
-    PROFILES,
+    CONTEXTS,
+    DEVICES,
     FEATURE_HELP,
     FEATURES,
     PLAYBOOKS,
@@ -51,7 +52,7 @@ from machine_cli.machine import Machine  # noqa: E402
 
 def _host_names(ctx, param, incomplete):
     try:
-        hosts = Machine().repo / "machine/hosts"
+        hosts = Machine().host_configs_dir
         names = [path.stem for path in hosts.glob("*.yml")]
     except Exception:  # completion must never print a traceback
         return []
@@ -112,7 +113,12 @@ PLAYBOOK_CHOICE = click.Choice(PLAYBOOKS)
 
 
 @app.command(help="Bootstrap this host or --limit HOST")
-@click.option("--profile", type=click.Choice(PROFILES), help="machine profile")
+@click.option("--context", type=click.Choice(CONTEXTS), help="private or work")
+@click.option(
+    "--device",
+    type=click.Choice(DEVICES),
+    help="desktop (graphical session), server or container",
+)
 @click.option(
     "--features",
     multiple=True,
@@ -127,10 +133,20 @@ PLAYBOOK_CHOICE = click.Choice(PLAYBOOKS)
 @click.option("--skip-dotfiles", is_flag=True)
 @click.option("--no-become", is_flag=True)
 def setup(
-    profile, features, yes, local, limit, playbook, skip_ansible, skip_dotfiles, no_become
+    context,
+    device,
+    features,
+    yes,
+    local,
+    limit,
+    playbook,
+    skip_ansible,
+    skip_dotfiles,
+    no_become,
 ) -> None:
     args = types.SimpleNamespace(
-        profile=profile,
+        context=context,
+        device=device,
         features=list(features) or None,
         yes=yes,
         local=local,
@@ -164,7 +180,7 @@ def update(apply_system, force, check, json_, auto) -> None:
 
 
 @app.command(
-    help="Sync host profile + ansible (local revert on fail; --limit for remote)"
+    help="Sync the host config + ansible (local revert on fail; --limit for remote)"
 )
 @click.option("--limit", default="", help="ansible host", shell_complete=_host_names)
 @click.option("--playbook", type=PLAYBOOK_CHOICE, default="workstation")
@@ -175,11 +191,11 @@ def apply(limit, playbook, no_become) -> None:
 
 
 @app.command(
-    name="profile", help="show/sync/save versioned machine/hosts/<hostname>.yml"
+    name="host", help="show/sync/save the host config machine/hosts/<hostname>.yml"
 )
 @click.argument("action", type=click.Choice(["show", "sync", "save"]), default="show")
-def profile_cmd(action) -> None:
-    _exit(Machine().cmd_profile(types.SimpleNamespace(action=action)))
+def host_cmd(action) -> None:
+    _exit(Machine().cmd_host(types.SimpleNamespace(action=action)))
 
 
 @app.command(name="env", help="Bitwarden -> ~/.env")
@@ -208,7 +224,7 @@ def ssh_cmd(action, yes) -> None:
     _exit(code)
 
 
-@app.command(help="git / dotfiles / profile")
+@app.command(help="git / dotfiles / host config")
 def status() -> None:
     _exit(Machine().cmd_status())
 

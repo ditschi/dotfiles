@@ -4,7 +4,7 @@
   connection: local
   gather_facts: false
   tasks:
-    - name: Resolve package list from profile features
+    - name: Resolve package list from hardware, context and features
       ansible.builtin.include_tasks: tasks/resolve_packages.yml
 
     - name: Write package list as JSON

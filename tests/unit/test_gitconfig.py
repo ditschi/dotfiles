@@ -174,7 +174,7 @@ def test_machine_commands_move_shared_host_settings_before_git(
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(cli.system, "run", fake_git)
-    monkeypatch.setattr(machine, "sync_host_profile_from_repo", lambda: False)
+    monkeypatch.setattr(machine, "sync_host_config_from_repo", lambda: False)
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: 0)
     monkeypatch.setattr(machine, "run_dotfiles_apply", lambda: None)
     if operation == "update":
@@ -262,9 +262,9 @@ def git_home(tmp_path: Path):
     (home / ".config/git").mkdir(parents=True)
     for snippet in (REPO / "home/core/.config/git").iterdir():
         (home / ".config/git" / snippet.name).symlink_to(snippet)
-    # Written by `machine` per host type; these tests use the work-machine variable.
+    # Written by `machine` per host type; these tests use the work variable.
     (home / ".config/git/github-token.gitconfig").write_text(
-        render_github_token_config("work-machine")
+        render_github_token_config("work")
     )
     (home / ".local/bin").mkdir(parents=True)
     (home / ".local/bin/git-credential-env").symlink_to(HELPER)
@@ -528,7 +528,7 @@ def test_branch_change_issue_id(git_home):
 def test_private_host_serves_github_token(git_home):
     home, repo, env = git_home
     (home / ".config/git/github-token.gitconfig").write_text(
-        render_github_token_config("home-laptop")
+        render_github_token_config("private")
     )
     _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")
     filled = _fill(

@@ -12,60 +12,27 @@ import yaml
 from rich.console import Console
 from rich.text import Text
 
+from . import features
+
 MACHINE_PROG_NAME = "machine"
-PROFILES = [
-    "work-machine",
-    "home-laptop",
-    "home-server",
-    "rpi",
-    "rpi-zero",
-    "container",
-]
-FEATURE_HELP = {
-    "zsh-full": "Shell stack (zsh)",
-    "fonts": "Meslo / Nerd fonts for prompts",
-    "starship": "Starship prompt config",
-    "yazi": "yazi terminal file manager",
-    "desktop": "Desktop extras (empty list today)",
-    "gnome": "GNOME tools (flameshot, guake, …)",
-    "cosmic": "Cosmic desktop packages (Pop OS)",
-    "docker": "Docker engine packages",
-    "gh-cli": "GitHub CLI (gh)",
-    "claude-code": "Claude Code CLI (+ OpenSpec)",
-    "copilot-cli": "GitHub Copilot CLI (+ OpenSpec)",
-    "kerberos": "krb5-user + ldap-utils (work)",
-    "azure-cli": "Azure CLI (work)",
-    "monitoring": "Telegraf agent (home profiles)",
-    "unattended-upgrades": "Automatic security upgrades",
-    "etckeeper": "Keep /etc in a local git repository (history of system config)",
-    "syncthing": "Syncthing package",
-    "thunderbird": "Thunderbird + tb CLI and bridge (extension: manual install)",
-    "tailscale": "Tailscale package (+ optional login)",
-    "ssh-host-key": "Per-host SSH key, backed up in Bitwarden",
-    "stylus-touch-guard": "Disable touch while stylus near (Yoga / Xournal++)",
-    "thinkpad-tuning": "ThinkPad battery thresholds, power profile, S3, zram, tablet OSK",
-    "touch-device": "GNOME touch extensions (TouchUp, Screen Rotate)",
-    "sshd-home": "sshd Port 5115 + authorized_keys from machine/ssh_keys",
-}
+# Context and device of a host; the feature table is the source of feature help.
+CONTEXTS = features.CONTEXTS
+DEVICES = features.DEVICES
+FEATURE_HELP = features.feature_help()
 FEATURES = list(FEATURE_HELP)
 PLAYBOOKS = ["workstation", "homelab", "site"]
-# Bitwarden env groups per profile: items env/groups/<group>, merged in this order.
-ENV_GROUPS = {
-    "work-machine": ["work"],
-    "home-laptop": ["private"],
-    "home-server": ["private", "server"],
-    "rpi": ["private", "server", "iot"],
-    "rpi-zero": ["private", "iot"],
-    "container": [],
+# Former single profile -> (context, device), for an old local file.
+LEGACY_PROFILES = {
+    "work-machine": ("work", "desktop"),
+    "home-laptop": ("private", "desktop"),
+    "home-server": ("private", "server"),
+    "rpi": ("private", "server"),
+    "rpi-zero": ("private", "server"),
+    "container": ("", "container"),
 }
-SSH_CLASS = {
-    "work-machine": "work",
-    "home-laptop": "home",
-    "home-server": "home",
-    "rpi": "home",
-    "rpi-zero": "home",
-    "container": "",
-}
+# Bitwarden env groups per context: items env/groups/<group>.
+ENV_GROUPS = {"private": ["private"], "work": ["work"], "": []}
+SSH_CLASS = {"private": "home", "work": "work", "": ""}
 
 
 # Colours only on a terminal (rich also honours NO_COLOR); soft_wrap keeps one
@@ -133,34 +100,46 @@ class _IndentDumper(yaml.SafeDumper):
 
 
 def parse_profile_file(path: Path) -> Dict[str, object]:
+    """A host config (repository file or applied copy) as a dict."""
     return parse_profile_text(
         path.read_text(encoding="utf-8") if path.is_file() else ""
     )
 
 
 def parse_profile_text(text: str) -> Dict[str, object]:
-    result: Dict[str, object] = {
-        "profile": "",
-        "features": [],
-        "ssh_allow_from": [],
-    }
+    """context, device, features, ssh_allow_from and ansible of a host config.
+
+    A former `profile:` key is mapped to context and device when they are missing."""
     data = yaml.safe_load(text) or {}
-    result["profile"] = str(data.get("profile") or "")
-    result["features"] = [str(x) for x in (data.get("features") or [])]
-    result["ssh_allow_from"] = [str(x) for x in (data.get("ssh_allow_from") or [])]
-    return result
+    context = str(data.get("context") or "")
+    device = str(data.get("device") or "")
+    legacy = str(data.get("profile") or "")
+    if not device and legacy in LEGACY_PROFILES:
+        context, device = LEGACY_PROFILES[legacy]
+    return {
+        "context": context,
+        "device": device,
+        "features": [str(x) for x in (data.get("features") or [])],
+        "ssh_allow_from": [str(x) for x in (data.get("ssh_allow_from") or [])],
+        "ansible": data.get("ansible") is not False,
+    }
 
 
 def format_profile_yaml(
-    profile: str,
+    context: str,
+    device: str,
     features: Sequence[str],
     ssh_allow_from: Optional[Sequence[str]] = None,
+    ansible: bool = True,
 ) -> str:
-    data = {
-        "profile": profile,
-        "features": list(features) or ["zsh-full"],
-        "ssh_allow_from": list(ssh_allow_from or []),
-    }
+    data: Dict[str, object] = {}
+    if context:
+        data["context"] = context
+    data["device"] = device
+    if not ansible:
+        data["ansible"] = False
+    data["features"] = list(features) or ["zsh-full"]
+    data["ssh_allow_from"] = list(ssh_allow_from or [])
     return "---\n" + yaml.dump(
         data, Dumper=_IndentDumper, sort_keys=False, default_flow_style=False
     )
@@ -172,7 +151,10 @@ def profile_fingerprint(path: Path) -> str:
     data = parse_profile_file(path)
     feats = sorted(str(x) for x in (data.get("features") or []))
     allow = sorted(str(x) for x in (data.get("ssh_allow_from") or []))
-    return f"{data.get('profile')}|{','.join(feats)}|{','.join(allow)}"
+    return (
+        f"{data.get('context')}|{data.get('device')}|{data.get('ansible')}|"
+        f"{','.join(feats)}|{','.join(allow)}"
+    )
 
 
 def write_private(path: Path, content: bytes) -> None:

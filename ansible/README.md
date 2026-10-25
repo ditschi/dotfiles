@@ -7,11 +7,13 @@ OS-Bootstrap for hosts managed by the `machine` CLI. **Not** for K3s/Traefik/Pi-
 ```bash
 ansible-galaxy collection install -r requirements.yml
 # usually via CLI:
-machine apply                 # local, uses ~/.config/machine/profile.yml
+machine apply                 # local, uses ~/.local/share/machine/applied-host.yml
 machine apply --limit homeserver
 ```
 
-Host desired state: `../machine/hosts/<hostname>.yml`  
+Host desired state: `../machine/hosts/<hostname>.yml` (context, device, features)  
+Feature table: `group_vars/all/features.yml`; every role gate is `'<feature>' in machine_features`, the host's features without the ones the table excludes.  
+Hardware facts (`hw_laptop`, `hw_pi`, `hw_pi_zero`): `tasks/detect_hardware.yml`  
 Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 
 ## Roles

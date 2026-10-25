@@ -6,6 +6,7 @@ import hashlib
 import urllib.request
 from pathlib import Path
 
+from . import features as feature_table
 from . import system, terminal_fonts
 from .core import die, log, parse_profile_file, warn
 
@@ -38,7 +39,11 @@ class MiseToolsMixin:
             capture=True,
         )
         system.run(["mise", "install"], env=env, cwd=self.repo)
-        features = parse_profile_file(self.profile_path)["features"]
+        features, _ = feature_table.split(
+            parse_profile_file(self.applied_host_path)["features"],
+            self.current_context(),
+            self.current_device(),
+        )
         if AZURE_FEATURE in features:
             self.ensure_azure_cli(env)
         self.link_fonts(env, FONT_FEATURE in features)

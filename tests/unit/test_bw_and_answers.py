@@ -25,12 +25,12 @@ def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatc
     profile = home / ".config/machine/profile.yml"
     profile.parent.mkdir(parents=True)
     profile.write_text(
-        "---\nprofile: home-laptop\nfeatures:\n  - zsh-full\n  - monitoring\nssh_allow_from: []\n",
+        "---\ncontext: private\ndevice: desktop\nfeatures:\n  - zsh-full\n  - monitoring\nssh_allow_from: []\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(profile))
+    monkeypatch.setenv("MACHINE_APPLIED_HOST_FILE", str(profile))
     monkeypatch.setenv(
         "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
     )
@@ -298,34 +298,45 @@ def test_bitwarden_login_captures_token_without_printing(
 @pytest.mark.parametrize(
     "user,expected",
     [
-        ("dci2lr", "work-machine"),
-        ("abc12def", "work-machine"),
-        ("ditschi", "home-laptop"),
+        ("dci2lr", "work"),
+        ("abc12def", "work"),
+        ("ditschi", "private"),
     ],
 )
-def test_profile_default_matches_work_account(tmp_path, monkeypatch, user, expected):
+def test_context_default_matches_work_account(tmp_path, monkeypatch, user, expected):
     cli, machine = isolated_machine(tmp_path, monkeypatch)
+    machine.applied_host_path.unlink(missing_ok=True)
+    monkeypatch.delenv("MACHINE_CONTEXT", raising=False)
+    monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     monkeypatch.setattr(getpass, "getuser", lambda: user)
-    assert machine.default_profile() == expected
-    machine.write_profile("home-server", ["zsh-full"], [])
-    monkeypatch.setenv("MACHINE_PROFILE", "work-machine")
-    assert machine.default_profile() == "home-server"
+    assert machine.default_context() == expected
+    machine.write_profile("private", "server", ["zsh-full"], [])
+    monkeypatch.setenv("MACHINE_CONTEXT", "work")
+    assert machine.default_context() == "private"
 
 
 def test_container_default_beats_work_username(tmp_path, monkeypatch):
     cli, machine = isolated_machine(tmp_path, monkeypatch)
     monkeypatch.setattr(cli.system, "in_docker", lambda: True)
     monkeypatch.setattr(getpass, "getuser", lambda: "dci2lr")
-    assert machine.default_profile() == "container"
+    monkeypatch.delenv("MACHINE_CONTEXT_OVERRIDE", raising=False)
+    monkeypatch.delenv("MACHINE_DEVICE_OVERRIDE", raising=False)
+    assert (machine.default_context(), machine.default_device()) == ("", "container")
 
 
-def test_container_ignores_saved_profile_unless_overridden(tmp_path, monkeypatch):
+def test_container_ignores_saved_host_config_unless_overridden(tmp_path, monkeypatch):
     cli, machine = isolated_machine(tmp_path, monkeypatch)
-    machine.write_profile("work-machine", ["zsh-full"], [])
+    machine.write_profile("work", "desktop", ["zsh-full"], [])
     monkeypatch.setattr(cli.system, "in_docker", lambda: True)
-    assert machine.default_profile() == "container"
-    monkeypatch.setenv("MACHINE_PROFILE_OVERRIDE", "home-server")
-    assert machine.default_profile() == "home-server"
+    monkeypatch.delenv("MACHINE_CONTEXT_OVERRIDE", raising=False)
+    monkeypatch.delenv("MACHINE_DEVICE_OVERRIDE", raising=False)
+    assert machine.default_device() == "container"
+    monkeypatch.setenv("MACHINE_DEVICE_OVERRIDE", "server")
+    monkeypatch.setenv("MACHINE_CONTEXT_OVERRIDE", "private")
+    assert (machine.default_context(), machine.default_device()) == (
+        "private",
+        "server",
+    )
 
 
 def test_company_user_regex_is_identical_in_cli_and_shell():
@@ -337,28 +348,46 @@ def test_company_user_regex_is_identical_in_cli_and_shell():
 @pytest.mark.parametrize(
     "saved,env,user,expected",
     [
-        ("work-machine", {}, "tester", "work-machine|true"),
-        ("home-laptop", {}, "abc1de", "home-laptop|true"),
-        ("work-machine", {"MACHINE_IN_DOCKER": "1"}, "tester", "container|"),
-        ("home-laptop", {"MACHINE_IN_DOCKER": "1"}, "abc1de", "container|"),
+        ("context: work\ndevice: desktop", {}, "tester", "work|desktop|true"),
+        ("context: private\ndevice: desktop", {}, "abc1de", "private|desktop|true"),
+        ("context: private\ndevice: server", {}, "tester", "private|server|"),
+        ("profile: home-server", {}, "tester", "private|server|"),
         (
-            "home-laptop",
-            {"MACHINE_IN_DOCKER": "1", "MACHINE_PROFILE_OVERRIDE": "work-machine"},
+            "context: work\ndevice: desktop",
+            {"MACHINE_IN_DOCKER": "1"},
             "tester",
-            "work-machine|true",
+            "|container|",
+        ),
+        (
+            "context: private\ndevice: desktop",
+            {"MACHINE_IN_DOCKER": "1"},
+            "abc1de",
+            "|container|",
+        ),
+        (
+            "context: private\ndevice: desktop",
+            {
+                "MACHINE_IN_DOCKER": "1",
+                "MACHINE_CONTEXT_OVERRIDE": "work",
+                "MACHINE_DEVICE_OVERRIDE": "desktop",
+            },
+            "tester",
+            "work|desktop|true",
         ),
     ],
 )
-def test_shell_profile_follows_docker_rule(tmp_path, saved, env, user, expected):
-    profile = tmp_path / ".config/machine/profile.yml"
-    profile.parent.mkdir(parents=True)
-    profile.write_text(f"---\nprofile: {saved}\n")
+def test_shell_values_follow_docker_rule(tmp_path, saved, env, user, expected):
+    applied = tmp_path / ".local/share/machine/applied-host.yml"
+    if saved.startswith("profile:"):
+        applied = tmp_path / ".config/machine/profile.yml"
+    applied.parent.mkdir(parents=True)
+    applied.write_text(f"---\n{saved}\n")
     script = REPO / "home/core/.zsh/machine-profile.sh"
     result = subprocess.run(
         [
             "sh",
             "-c",
-            '. "$1"; echo "$MACHINE_PROFILE|${WORK_SETUP:-}"',
+            '. "$1"; echo "${MACHINE_CONTEXT:-}|$MACHINE_DEVICE|${WORK_SETUP:-}"',
             "_",
             str(script),
         ],

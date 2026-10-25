@@ -1,5 +1,5 @@
 ---
-# Profile-driven package sets (see tasks/resolve_packages.yml).
+# Package sets per hardware, context and feature (see tasks/resolve_packages.yml).
 packages_base:
   - curl
   - wget
@@ -9,12 +9,12 @@ packages_base:
   - python3-venv
   - python-is-python3
 
-# Slim replacement for packages_base on profile rpi-zero.
+# Slim replacement for packages_base on a Raspberry Pi Zero (detected).
 packages_rpi_zero:
   - curl
   - zsh
 
-# Every profile except rpi-zero and container.
+# Every host except a Pi Zero and containers.
 packages_host:
   - fonts-firacode
   - fonts-powerline
@@ -22,7 +22,7 @@ packages_host:
   - libsecret-tools
   - pipx
 
-# Profile work-machine, and feature kerberos on other profiles.
+# Context work, and feature kerberos.
 packages_work: &packages_work
   - ldap-utils
   - krb5-user
@@ -73,21 +73,8 @@ machine_manage_services: >-
   {{ ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
      and ansible_connection | default('') != 'docker' }}
 
-# Telegraf config names (SoT). Role roles/monitoring resolves the list from
-# profile + features; CLI must not duplicate this map.
-monitoring_by_profile:
-  home-laptop:
-    - machine/base
-    - machine/laptop
-  home-server:
-    - machine/base
-    - machine/server
-  rpi:
-    - machine/base
-    - machine/pi
-  rpi-zero:
-    - machine/base
-    - machine/pi
+# Telegraf config names are resolved in tasks/resolve_monitoring.yml from the detected
+# hardware and the device; the CLI must not duplicate this.
 
 # Prefer Influx Telegraf config URLs when set (from ~/.env / Bitwarden).
 # Fallback: files under roles/monitoring/files/<name with / -> _>.conf

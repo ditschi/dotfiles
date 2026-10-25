@@ -33,5 +33,5 @@ def classify_paths(changes: Iterable[tuple[str, str]]) -> list[str]:
         elif path.startswith("ansible/"):
             steps.add("system")
         elif path.startswith("machine/hosts/"):
-            steps.add("profile")
+            steps.add("host-config")
     return sorted(steps)

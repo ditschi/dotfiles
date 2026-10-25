@@ -1,0 +1,66 @@
+---
+# Hardware facts that follow from the host itself, never from the host config:
+#   hw_laptop   portable chassis with a system battery (not a mouse or headset)
+#   hw_pi       Raspberry Pi (device-tree model)
+#   hw_pi_zero  Raspberry Pi Zero, Zero W or Zero 2 W
+# Nothing is detected for the container device: a container sees the host's hardware.
+# Tests set MACHINE_HARDWARE (comma list of laptop, pi, pi-zero) instead of detecting.
+
+- name: Hardware facts for containers
+  ansible.builtin.set_fact:
+    hw_laptop: false
+    hw_pi: false
+    hw_pi_zero: false
+  when: device | default('') == 'container'
+
+- name: Hardware facts given by MACHINE_HARDWARE (tests)
+  ansible.builtin.set_fact:
+    hw_laptop: "{{ 'laptop' in machine_hardware_override }}"
+    hw_pi: "{{ 'pi' in machine_hardware_override or 'pi-zero' in machine_hardware_override }}"
+    hw_pi_zero: "{{ 'pi-zero' in machine_hardware_override }}"
+  vars:
+    machine_hardware_override: "{{ (lookup('env', 'MACHINE_HARDWARE') | default('', true)).split(',') | map('trim') | list }}"
+  when:
+    - device | default('') != 'container'
+    - lookup('env', 'MACHINE_HARDWARE') | default('', true) | length > 0
+
+- name: Detect hardware
+  when:
+    - device | default('') != 'container'
+    - lookup('env', 'MACHINE_HARDWARE') | default('', true) | length == 0
+  block:
+    - name: Read the device-tree model
+      ansible.builtin.slurp:
+        src: /proc/device-tree/model
+      register: hw_model_file
+      failed_when: false
+
+    - name: Find system batteries
+      ansible.builtin.shell: |
+        for supply in /sys/class/power_supply/*; do
+          [ "$(cat "$supply/type" 2>/dev/null)" = Battery ] || continue
+          [ "$(cat "$supply/scope" 2>/dev/null)" = Device ] && continue
+          echo "${supply##*/}"
+        done
+      args:
+        executable: /bin/sh
+      register: hw_batteries
+      changed_when: false
+      failed_when: false
+
+    - name: Set hardware facts
+      ansible.builtin.set_fact:
+        hw_laptop: >-
+          {{ (ansible_facts.form_factor | default('')) in hw_portable_form_factors
+             and (hw_batteries.stdout_lines | default([]) | length) > 0 }}
+        hw_pi: "{{ 'Raspberry Pi' in hw_model }}"
+        hw_pi_zero: "{{ 'Raspberry Pi Zero' in hw_model }}"
+      vars:
+        hw_model: "{{ (hw_model_file.content | default('')) | b64decode }}"
+        hw_portable_form_factors:
+          - Notebook
+          - Laptop
+          - Convertible
+          - Portable
+          - Sub Notebook
+          - Detachable

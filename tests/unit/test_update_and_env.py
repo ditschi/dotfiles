@@ -17,7 +17,8 @@ MACHINE = REPO / "machine_cli/machine"
 
 HOST_YAML = """\
 ---
-profile: {profile}
+context: {context}
+device: {device}
 features:
   - zsh-full
 ssh_allow_from: []
@@ -40,7 +41,7 @@ def _base_env(tmp_path: Path, monkeypatch, repo: Path) -> Path:
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("DOTFILES_REPO", str(repo))
     monkeypatch.setenv(
-        "MACHINE_PROFILE_FILE", str(home / ".config/machine/profile.yml")
+        "MACHINE_APPLIED_HOST_FILE", str(home / ".config/machine/profile.yml")
     )
     monkeypatch.setenv(
         "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
@@ -71,7 +72,7 @@ def update_env(tmp_path: Path, monkeypatch):
     (seed / "home").mkdir()
     (seed / "home/dot_placeholder").write_text("")
     (seed / "machine/hosts/testhost.yml").write_text(
-        HOST_YAML.format(profile="home-laptop")
+        HOST_YAML.format(context="private", device="desktop")
     )
     _git("add", "-A", cwd=seed)
     _git("commit", "-q", "-m", "seed", cwd=seed)
@@ -84,7 +85,7 @@ def update_env(tmp_path: Path, monkeypatch):
     machine = cli.Machine()
     # never let a broken fixture fall back to the real checkout (it would git pull)
     assert machine.repo == repo
-    machine.sync_host_profile_from_repo()  # host already in sync before update
+    machine.sync_host_config_from_repo()  # host already in sync before update
     machine.record_ansible_applied()  # a host that has run Ansible
 
     calls: list[str] = []
@@ -246,12 +247,18 @@ def test_auto_update_stops_before_first_system_commit(update_env):
 def test_auto_update_treats_own_host_profile_as_system_change(update_env):
     machine, repo, other, _home, _calls = update_env
     _push_change(
-        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
     )
     assert _auto(machine) == 0
     assert machine.read_update_state()["state"] == "available"
     # another host's profile does not block the automatic update
-    _push_change(other, "machine/hosts/other.yml", HOST_YAML.format(profile="rpi"))
+    _push_change(
+        other,
+        "machine/hosts/other.yml",
+        HOST_YAML.format(context="private", device="server"),
+    )
     assert machine.safe_update_target("origin/main") is None
 
 
@@ -352,11 +359,13 @@ def test_auto_update_skips_when_another_update_runs(update_env):
 def test_update_applies_when_host_profile_changed_upstream(update_env):
     machine, _repo, other, _home, calls = update_env
     _push_change(
-        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
     )
 
     assert _update(machine) == 0
-    assert "profile: home-server" in machine.profile_path.read_text()
+    assert "device: server" in machine.applied_host_path.read_text()
     # new local group config from the synced profile is applied before ansible
     assert calls == ["dotfiles", "tools", "env", "apply"]
 
@@ -380,12 +389,14 @@ def test_update_restores_profile_when_ansible_fails(update_env, monkeypatch):
     ansible_calls: list[str] = []
     _failing_ansible_env(machine, monkeypatch, ansible_calls)
     _push_change(
-        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
     )
 
     with pytest.raises(SystemExit):
         _update(machine)
-    assert "profile: home-laptop" in machine.profile_path.read_text()
+    assert "device: desktop" in machine.applied_host_path.read_text()
     assert ansible_calls == ["ansible", "ansible"]  # failed apply + revert run
 
 
@@ -399,12 +410,14 @@ def test_update_restores_profile_when_health_check_fails(update_env, monkeypatch
     monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
     monkeypatch.setattr(machine, "health_check_after_apply", lambda: False)
     _push_change(
-        other, "machine/hosts/testhost.yml", HOST_YAML.format(profile="home-server")
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
     )
 
     with pytest.raises(SystemExit):
         _update(machine)
-    assert "profile: home-laptop" in machine.profile_path.read_text()
+    assert "device: desktop" in machine.applied_host_path.read_text()
     assert ansible_calls == ["ansible", "ansible"]
 
 
@@ -412,11 +425,11 @@ def test_update_keeps_unchanged_profile_when_ansible_fails(update_env, monkeypat
     machine, _repo, _other, _home, _calls = update_env
     ansible_calls: list[str] = []
     _failing_ansible_env(machine, monkeypatch, ansible_calls)
-    before = machine.profile_path.read_bytes()
+    before = machine.applied_host_path.read_bytes()
 
     with pytest.raises(SystemExit):
         _update(machine, system=True)
-    assert machine.profile_path.read_bytes() == before
+    assert machine.applied_host_path.read_bytes() == before
     assert ansible_calls == ["ansible"]  # not retried
 
 
@@ -679,7 +692,7 @@ def test_classify_incoming_paths():
     assert classify([("M", "machine_cli/machine")]) == []
     assert classify([("A", "machine_cli/updates.py")]) == []
     assert classify([("M", "ansible/site.yml"), ("M", "machine/hosts/h.yml")]) == [
-        "profile",
+        "host-config",
         "system",
     ]
     assert classify([("M", "docs/x.md")]) == []
@@ -701,7 +714,9 @@ def _env_machine(tmp_path, monkeypatch, fake_bw, profile: str, items: dict):
     monkeypatch.setattr(cli.system, "hostname_short", lambda: "testhost")
     machine = cli.Machine()
     assert machine.repo == repo
-    machine.write_profile(profile, ["zsh-full"], [])
+    from machine_cli.core import LEGACY_PROFILES
+
+    machine.write_profile(*LEGACY_PROFILES[profile], ["zsh-full"], [])
     return machine, home
 
 
@@ -727,7 +742,8 @@ def _item(notes: str = "", **fields: str) -> dict:
 def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     items = {
         "env/groups/private": _item("SHARED=1\nLAYER=shared\nFIELD_WINS=from-notes"),
-        "env/groups/server": _item("LAYER=profile"),
+        # groups other than private and work are no longer read
+        "env/groups/server": _item("LAYER=server"),
         "env/hosts/testhost": _item("LAYER=host", FIELD_WINS="from-field"),
         # must never be read by a home host
         "env/groups/work": _item("WORK_ONLY=leak"),
@@ -738,7 +754,7 @@ def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     env_file = home / ".env"
     values = _sourced(env_file)
     assert values["SHARED"] == "1"
-    assert values["LAYER"] == "profile"
+    assert values["LAYER"] == "shared"
     assert values["FIELD_WINS"] == "from-notes"
     assert "WORK_ONLY" not in values
     host_values = _sourced(home / ".env.host")

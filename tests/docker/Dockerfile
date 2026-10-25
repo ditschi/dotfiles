@@ -8,7 +8,10 @@ ARG INSECURE_TLS=0
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 
-RUN apt-get update \
+# Test-only: no recommended packages, so the Ansible APT runs install only what we
+# ask for (the GNOME set pulls ~450 extra packages otherwise)
+RUN printf 'APT::Install-Recommends "false";\n' >/etc/apt/apt.conf.d/99-no-recommends \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \

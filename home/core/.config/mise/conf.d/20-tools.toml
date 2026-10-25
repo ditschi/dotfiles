@@ -1,5 +1,7 @@
-# Other user-space tools.
+# Other user-space tools, on every host. uv also installs the Azure CLI as a uv tool
+# (feature azure-cli, see machine_cli/mise_tools.py), so no mise-managed Python is on PATH.
 [tools]
 gh = "latest"
 yazi = "latest"
 node = "lts"
+uv = "latest"

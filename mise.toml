@@ -17,3 +17,15 @@ root = "home/fonts"
 
 [dotfile_groups.thunderbird]
 root = "home/thunderbird"
+
+[dotfile_groups.claude]
+root = "home/claude"
+
+[dotfile_groups.copilot]
+root = "home/copilot"
+
+[dotfile_groups.opencode]
+root = "home/opencode"
+
+[dotfile_groups.openspec]
+root = "home/openspec"

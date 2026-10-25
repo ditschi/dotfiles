@@ -24,13 +24,19 @@ def _lines(directory: Path) -> list[dict]:
 def test_appends_one_json_line_per_event(tmp_path: Path):
     events.record(tmp_path, "update-auto", "applied", duration=1.26, revision="abc1234")
     events.record(
-        tmp_path, "update-auto", "reverted", "zsh-unhealthy", profile="work-machine"
+        tmp_path,
+        "update-auto",
+        "reverted",
+        "zsh-unhealthy",
+        context="work",
+        device="desktop",
     )
 
     first, second = _lines(tmp_path)
     assert first["event"] == "update-auto" and first["outcome"] == "applied"
     assert first["duration_s"] == 1.3 and first["rev"] == "abc1234"
-    assert second["reason"] == "zsh-unhealthy" and second["profile"] == "work-machine"
+    assert second["reason"] == "zsh-unhealthy" and second["context"] == "work"
+    assert second["device"] == "desktop"
     assert "ts" in first
 
 
@@ -50,7 +56,8 @@ def test_only_whitelisted_fields_and_no_free_text(tmp_path: Path):
         "reason",
         "duration_s",
         "rev",
-        "profile",
+        "context",
+        "device",
     }
     assert "/" not in entry["reason"] and " " not in entry["reason"]
     assert len(entry["reason"]) <= 40

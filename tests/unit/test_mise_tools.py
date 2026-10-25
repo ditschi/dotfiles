@@ -19,7 +19,7 @@ from machine_cli.machine import Machine  # noqa: E402
 def machine(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("DOTFILES_REPO", str(tmp_path))
-    monkeypatch.setenv("MACHINE_PROFILE_FILE", str(tmp_path / "profile.yml"))
+    monkeypatch.setenv("MACHINE_APPLIED_HOST_FILE", str(tmp_path / "profile.yml"))
     host = Machine()
     commands: list[list[str]] = []
 
@@ -35,8 +35,10 @@ def machine(tmp_path, monkeypatch):
 
 
 def _profile(host, features):
-    host.profile_path.write_text(
-        "profile: work-machine\nfeatures:\n" + "".join(f"  - {f}\n" for f in features)
+    context = "work" if "azure-cli" in features else "private"
+    host.applied_host_path.write_text(
+        f"context: {context}\ndevice: desktop\nfeatures:\n"
+        + "".join(f"  - {f}\n" for f in features)
     )
 
 

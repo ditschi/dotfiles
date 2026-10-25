@@ -5,11 +5,11 @@ githubCopilot:
 
 # Constraints an agent cannot infer from the code. Facts about the code live in Readme.md.
 context: |
-  Personal dotfiles + machine setup for one owner, shared by work and private hosts
-  (profiles: work-machine, home-laptop, home-server, rpi, rpi-zero, container).
+  Personal dotfiles + machine setup for one owner, shared by work and private hosts.
   Secrets and host-only Git settings must never be committed.
-  Changes must keep work and private hosts working; work machines may not allow
-  Ansible to become root.
+  Hosts have a context (private, work) and a device (desktop, server, container);
+  hardware is detected by Ansible. Changes must keep work and private hosts working.
+  Root is assumed on every host; a host config with `ansible: false` skips Ansible.
 
   Artifacts are self-contained and read as the lasting record of intent. Content in
   proposal Why, design Decisions and specs is owner-confirmed because the owner was

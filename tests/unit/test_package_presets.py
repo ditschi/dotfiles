@@ -10,21 +10,13 @@ import yaml
 
 from package_sets import (
     ANSIBLE,
+    HOSTS,
     REPO,
+    host_vars,
     load_group_vars,
-    load_profile,
     resolve_monitoring,
     resolve_packages,
 )
-
-PROFILES = [
-    "home-laptop",
-    "work-machine",
-    "home-server",
-    "rpi",
-    "rpi-zero",
-    "container",
-]
 
 
 def run_task_fixture(tmp_path, tasks, variables, facts=None):
@@ -95,10 +87,12 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
         if task["name"] == "Preserve the installed Docker provider"
     )
     for nested in task["block"]:
-        if "ansible.builtin.package_facts" in nested:
-            del nested["ansible.builtin.package_facts"]
+        if "ansible.builtin.shell" in nested:
+            name = nested.pop("register")
+            del nested["ansible.builtin.shell"]
+            nested.pop("args", None)
             nested["ansible.builtin.set_fact"] = {
-                "ansible_facts": {"packages": {provider: [{"version": "fixture"}]}}
+                name: {"stdout_lines": [] if provider == "custom" else [provider]}
             }
         if "ansible.builtin.command" in nested:
             name = nested.pop("register")
@@ -111,7 +105,7 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
         tmp_path,
         [task],
         {
-            "features": ["docker"],
+            "machine_features": ["docker"],
             "packages_by_feature": {"docker": ["docker.io", "docker-compose-v2"]},
             "install_packages": ["docker.io", "docker-compose-v2"],
         },
@@ -119,77 +113,89 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
     assert result["packages"] == expected
 
 
-def test_cli_defaults_match_ansible_profiles(monkeypatch, tmp_path: Path):
-    from importlib.machinery import SourceFileLoader
-
-    machine_mod = SourceFileLoader(
-        "machine_cli_presets",
-        str(REPO / "machine_cli/machine"),
-    ).load_module()
-    monkeypatch.setenv("DOTFILES_REPO", str(REPO))
-    monkeypatch.setenv("HOME", str(tmp_path))
-    machine = machine_mod.Machine()
-    for name in PROFILES:
-        data = load_profile(name)
-        assert data["profile"] == name
-        assert machine.default_features_for(name) == data["features"]
-
-
-@pytest.mark.parametrize("name", PROFILES)
+@pytest.mark.parametrize("name", list(HOSTS))
 def test_expected_package_invariants(name: str):
-    data = load_profile(name)
-    packages = resolve_packages(data["profile"], data["features"])
+    packages = resolve_packages(host_vars(name))
     assert "curl" in packages
-    if name == "rpi-zero":
+    if name == "pi-zero":
         assert "eza" not in packages
         assert "ldap-utils" not in packages
         assert "guake" not in packages
         assert "zsh" in packages
-        assert "fzf" not in packages
+        assert "fonts-firacode" not in packages
         assert "unattended-upgrades" in packages
-    if name == "work-machine":
+    if name == "work-desktop":
         assert "ldap-utils" in packages
         assert "krb5-user" in packages
         assert "guake" in packages
-    if name == "home-laptop":
+        assert "unattended-upgrades" not in packages
+        assert "openssh-server" not in packages
+    if name == "private-laptop":
         assert "ldap-utils" not in packages
         assert "guake" in packages
-        assert "evtest" in packages
-        assert "python3-evdev" in packages
         assert "openssh-server" in packages
-    if name == "home-server":
+        assert "thunderbird" in packages
+    if name == "private-server":
         assert "docker.io" in packages
         assert "unattended-upgrades" in packages
         assert "openssh-server" in packages
+        assert "guake" not in packages
     if name == "container":
-        assert "eza" not in packages
+        assert "fonts-firacode" not in packages
         assert "ldap-utils" not in packages
+
+
+def test_excluded_features_bring_no_packages():
+    host = host_vars("work-desktop", ["zsh-full", "monitoring", "sshd-home"])
+    assert "openssh-server" not in resolve_packages(host)
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("private-laptop", ["machine/base", "machine/laptop", "machine/docker"]),
+        ("private-desktop", ["machine/base", "machine/docker"]),
+        ("private-server", ["machine/base", "machine/server", "machine/docker"]),
+        ("pi", ["machine/base", "machine/pi", "machine/docker"]),
+        ("work-desktop", []),
+        ("container", []),
+    ],
+)
+def test_monitoring_fragments_from_hardware(name, expected):
+    assert resolve_monitoring(host_vars(name)) == expected
+
+
+def _dump(playbook: str, name: str, tmp_path: Path, features=None):
+    dump_path = tmp_path / "dump.json"
+    extra = tmp_path / "extra.json"
+    extra.write_text(json.dumps(host_vars(name, features)))
+    subprocess.run(
+        [
+            "ansible-playbook",
+            str(ANSIBLE / playbook),
+            "-i",
+            str(ANSIBLE / "inventory/local.yml"),
+            "-e",
+            f"@{extra}",
+            "-e",
+            f"dump_path={dump_path}",
+        ],
+        check=True,
+        cwd=ANSIBLE,
+        capture_output=True,
+    )
+    return json.loads(dump_path.read_text())
 
 
 @pytest.mark.skipif(
     shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed"
 )
 @pytest.mark.parametrize(
-    "name", ["home-laptop", "work-machine", "rpi-zero", "container"]
+    "name", ["private-laptop", "work-desktop", "pi-zero", "container"]
 )
 def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
-    dump_path = tmp_path / "packages.json"
-    playbook = ANSIBLE / "dump_packages.yml"
-    cmd = [
-        "ansible-playbook",
-        str(playbook),
-        "-i",
-        str(ANSIBLE / "inventory/local.yml"),
-        "-e",
-        f"@{ANSIBLE / 'profiles' / f'{name}.yml'}",
-        "-e",
-        f"dump_path={dump_path}",
-    ]
-    subprocess.run(cmd, check=True, cwd=ANSIBLE)
-    ansible_packages = sorted(json.loads(dump_path.read_text()))
-    data = load_profile(name)
-    assert ansible_packages == resolve_packages(
-        data["profile"], data["features"], load_group_vars()
+    assert sorted(_dump("dump_packages.yml", name, tmp_path)) == resolve_packages(
+        host_vars(name), load_group_vars()
     )
 
 
@@ -199,37 +205,17 @@ def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
 @pytest.mark.parametrize(
     "name,features",
     [
-        ("home-laptop", None),
-        ("home-server", None),
-        ("rpi-zero", None),
-        ("home-laptop", ["monitoring", "docker"]),
+        ("private-laptop", None),
+        ("private-server", None),
+        ("pi-zero", None),
+        ("private-desktop", ["monitoring"]),
     ],
 )
 def test_python_monitoring_matches_ansible(name: str, features, tmp_path: Path):
-    data = load_profile(name)
-    feats = features if features is not None else data["features"]
-    dump_path = tmp_path / "monitoring.json"
-    # Build a temp extra-vars file so we can override features for docker case
-    extra = tmp_path / "extra.yml"
-    extra.write_text(
-        f"---\nprofile: {name}\nfeatures:\n"
-        + "".join(f"  - {f}\n" for f in feats)
-        + "ssh_allow_from: []\n",
-        encoding="utf-8",
+    host = host_vars(name, features)
+    assert _dump("dump_monitoring.yml", name, tmp_path, features) == resolve_monitoring(
+        host
     )
-    cmd = [
-        "ansible-playbook",
-        str(ANSIBLE / "dump_monitoring.yml"),
-        "-i",
-        str(ANSIBLE / "inventory/local.yml"),
-        "-e",
-        f"@{extra}",
-        "-e",
-        f"dump_path={dump_path}",
-    ]
-    subprocess.run(cmd, check=True, cwd=ANSIBLE)
-    ansible_names = json.loads(dump_path.read_text())
-    assert ansible_names == resolve_monitoring(name, feats, load_group_vars())
 
 
 def test_group_vars_are_lists():
@@ -238,8 +224,8 @@ def test_group_vars_are_lists():
         assert isinstance(variables[key], list)
     for feature, packages in variables["packages_by_feature"].items():
         assert isinstance(packages, list), feature
-    assert isinstance(variables["monitoring_by_profile"], dict)
-    assert "home-laptop" in variables["monitoring_by_profile"]
+    assert "monitoring_by_profile" not in variables
+    assert isinstance(variables["feature_table"], dict)
 
 
 def test_monitoring_fallback_files_exist():

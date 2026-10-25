@@ -1,21 +1,28 @@
 ---
-# Single source: derive Telegraf config names from profile + features.
+# Single source: derive Telegraf config names from hardware, device and features.
 # Do not compute this list in the machine CLI.
+
+- name: Detect hardware facts
+  ansible.builtin.include_tasks: detect_hardware.yml
+  when: hw_laptop is not defined
 
 - name: Clear monitoring configs when feature is off
   ansible.builtin.set_fact:
     monitoring_configs: []
-  when: "'monitoring' not in (features | default([]))"
+  when: "'monitoring' not in machine_features"
 
-- name: Base monitoring configs for profile
+- name: Monitoring configs from hardware and device
   ansible.builtin.set_fact:
-    monitoring_configs: "{{ monitoring_by_profile[profile | default('')] | default([]) }}"
-  when: "'monitoring' in (features | default([]))"
+    monitoring_configs: >-
+      {{ ['machine/base']
+         + (['machine/laptop'] if hw_laptop | bool else [])
+         + (['machine/pi'] if hw_pi | bool else [])
+         + (['machine/server'] if device | default('') == 'server' and not (hw_pi | bool) else []) }}
+  when: "'monitoring' in machine_features"
 
 - name: Add docker monitoring fragment
   ansible.builtin.set_fact:
     monitoring_configs: "{{ monitoring_configs + ['machine/docker'] }}"
   when:
-    - "'monitoring' in (features | default([]))"
-    - "'docker' in (features | default([]))"
-    - (monitoring_configs | default([]) | length) > 0
+    - "'monitoring' in machine_features"
+    - "'docker' in machine_features"

@@ -20,8 +20,8 @@ class AutoUpdateMixin:
         )
 
     def is_system_commit(self, commit: str) -> bool:
-        """System commits need Ansible or a profile apply and are never applied unattended."""
-        own_profile = self.host_profile_path().relative_to(self.repo).as_posix()
+        """System commits need Ansible or a host-config apply and are never applied unattended."""
+        own_profile = self.host_config_path().relative_to(self.repo).as_posix()
         result = self._git(
             "diff-tree",
             "--root",

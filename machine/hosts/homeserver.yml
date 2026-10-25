@@ -1,5 +1,6 @@
 ---
-profile: home-server
+context: private
+device: server
 features:
   - zsh-full
   - docker
@@ -8,6 +9,8 @@ features:
   - ssh-host-key
   - sshd-home
   - etckeeper
+  - claude-code
+  - opencode
 ssh_allow_from:
   - ditschi-ThinkPad-L13-Yoga-Gen-2
   - ditschi-ThinkPad-T470

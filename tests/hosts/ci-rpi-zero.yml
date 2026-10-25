@@ -1,7 +1,8 @@
 ---
 # CI / integration: docker --hostname ci-rpi-zero
 # Used by tests/integration/test_host_yaml_install.py
-profile: rpi-zero
+context: private
+device: server
 features:
   - zsh-full
   - monitoring

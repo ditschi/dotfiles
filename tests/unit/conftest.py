@@ -14,7 +14,7 @@ def isolate_machine_environment(monkeypatch):
         "DOTFILES_UPDATE_LAST_CHECK",
         "MACHINE_PROFILE",
         "MACHINE_PROFILE_NAME",
-        "MACHINE_PROFILE_FILE",
+        "MACHINE_APPLIED_HOST_FILE",
         "MACHINE_STATE_DIR",
         "MACHINE_SSH_KEY",
         "MISE_LOCAL_CONFIG",

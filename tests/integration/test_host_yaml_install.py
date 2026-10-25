@@ -3,17 +3,31 @@ from __future__ import annotations
 import re
 
 import pytest
+import yaml
 import testinfra
 
-from conftest import MACHINE_CLI, REPO, run_checked, running_container, wants_apt
+from conftest import (
+    MACHINE_CLI,
+    REPO,
+    apt_proxy_for,
+    host_env,
+    run_checked,
+    running_container,
+    wants_apt,
+)
+
+
+# Hardware the CI hosts stand for; Docker shows none of it to Ansible.
+HARDWARE = {"ci-rpi-zero": "pi,pi-zero", "ci-home-laptop": "laptop"}
+APPLIED = "/home/{user}/.local/share/machine/applied-host.yml"
 
 
 @pytest.fixture
 def host_yaml_container(docker_image, request):
-    """Clean container whose hostname matches machine/hosts/<name>.yml."""
+    """Clean container whose hostname matches tests/hosts/<name>.yml."""
     hostname = request.param
-    host_file = REPO / "machine" / "hosts" / f"{hostname}.yml"
-    assert host_file.is_file(), f"missing versioned host profile {host_file}"
+    host_file = REPO / "tests" / "hosts" / f"{hostname}.yml"
+    assert host_file.is_file(), f"missing host config {host_file}"
     # sudo_prompt marker: user whose sudo prompts; Ansible gets the password from a file.
     with_password = request.node.get_closest_marker("sudo_prompt") is not None
     user = "pwtester" if with_password else "tester"
@@ -27,7 +41,8 @@ def host_yaml_container(docker_image, request):
     if not wants_apt(request):
         setup_cmd.append("--skip-ansible")
 
-    profile = re.search(r"^profile:\s*(\S+)", host_file.read_text(), re.M).group(1)
+    config = yaml.safe_load(host_file.read_text())
+    hardware = HARDWARE.get(hostname, "")
     with running_container(
         docker_image,
         f"hy-{hostname}",
@@ -36,12 +51,14 @@ def host_yaml_container(docker_image, request):
         env=(
             "MACHINE_SKIP_BW=1",
             "MACHINE_SKIP_TOOLS=1",
-            f"MACHINE_PROFILE_OVERRIDE={profile}",
+            "MACHINE_HOSTS_DIR=tests/hosts",
+            *host_env(config.get("context", ""), config["device"], hardware),
         ),
         exec_env=exec_env,
+        apt_proxy=apt_proxy_for(request),
     ) as (name, exec_cmd):
         run_checked(
-            exec_cmd, [*MACHINE_CLI, "profile", "sync"], f"profile sync for {hostname}"
+            exec_cmd, [*MACHINE_CLI, "host", "sync"], f"host sync for {hostname}"
         )
         run_checked(exec_cmd, setup_cmd, f"setup from host yaml for {hostname}")
         yield testinfra.get_host(f"docker://{name}"), hostname, host_file
@@ -69,10 +86,10 @@ def assert_second_apply_is_idempotent(host) -> None:
 def test_clean_install_from_versioned_host_yaml_container(host_yaml_container):
     host, _hostname, host_file = host_yaml_container
     expected = host_file.read_text(encoding="utf-8")
-    local = host.file("/home/tester/.config/machine/profile.yml")
+    local = host.file(APPLIED.format(user="tester"))
     assert local.exists
-    assert "profile: container" in local.content_string
-    assert "profile: container" in expected
+    assert "device: container" in local.content_string
+    assert "device: container" in expected
     zshrc = host.file("/home/tester/.zshrc")
     assert zshrc.exists
     assert zshrc.is_symlink
@@ -84,11 +101,11 @@ def test_clean_install_from_versioned_host_yaml_container(host_yaml_container):
 @pytest.mark.apt
 @pytest.mark.parametrize("host_yaml_container", ["ci-rpi-zero"], indirect=True)
 def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
-    """Full ansible apply driven by machine/hosts/ci-rpi-zero.yml."""
+    """Full ansible apply driven by tests/hosts/ci-rpi-zero.yml."""
     host, _hostname, _host_file = host_yaml_container
-    local = host.file("/home/tester/.config/machine/profile.yml")
+    local = host.file(APPLIED.format(user="tester"))
     assert local.exists
-    assert "profile: rpi-zero" in local.content_string
+    assert "device: server" in local.content_string
     assert "monitoring" in local.content_string
     assert host.package("zsh").is_installed
     assert not host.package("fzf").is_installed
@@ -97,6 +114,7 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert host.package("etckeeper").is_installed
     assert host.file("/etc/.git").is_directory
     assert not host.package("guake").is_installed
+    assert not host.package("ldap-utils").is_installed
     conf_dir = host.file("/etc/telegraf/telegraf.d")
     assert conf_dir.exists
     assert conf_dir.is_directory
@@ -115,7 +133,7 @@ def test_install_with_sudo_password(host_yaml_container):
     """Ansible become through a real password prompt (sudo-rs on Ubuntu 25.10+)."""
     host, _hostname, _host_file = host_yaml_container
     # pwtester's home is not readable for the default container user
-    assert host.run("sudo test -f /home/pwtester/.config/machine/profile.yml").rc == 0
+    assert host.run(f"sudo test -f {APPLIED.format(user='pwtester')}").rc == 0
     assert "NOPASSWD" not in host.check_output("sudo -l -U pwtester")
     assert host.package("zsh").is_installed
     assert host.file("/etc/telegraf/telegraf.conf").user == "root"
@@ -125,11 +143,11 @@ def test_install_with_sudo_password(host_yaml_container):
 @pytest.mark.apt_gnome
 @pytest.mark.parametrize("host_yaml_container", ["ci-home-laptop"], indirect=True)
 def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container):
-    """Full ansible apply mirroring the ThinkPad home-laptop host YAML."""
+    """Full ansible apply mirroring the L13 Yoga host config."""
     host, _hostname, _host_file = host_yaml_container
-    local = host.file("/home/tester/.config/machine/profile.yml")
+    local = host.file(APPLIED.format(user="tester"))
     assert local.exists
-    assert "profile: home-laptop" in local.content_string
+    assert "device: desktop" in local.content_string
     assert "monitoring" in local.content_string
     assert "gnome" in local.content_string
     assert host.package("zsh").is_installed

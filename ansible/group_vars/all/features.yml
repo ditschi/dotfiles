@@ -1,0 +1,122 @@
+---
+# Feature table: the single source for feature help, dotfile groups and defaults.
+# Read by Ansible (as group vars) and by the machine CLI (machine_cli/features.py).
+#
+# Per feature: help, groups (dotfile groups it selects) and a value per context
+# (private, work) and device (desktop, server, container):
+#   default   preselected in the menu
+#   optional  offered, not preselected
+#   excluded  not offered and not applied
+# A missing key means default. The stricter of context and device wins
+# (excluded > optional > default); a container without context uses only the device.
+feature_table:
+  zsh-full:
+    help: Shell stack (zsh)
+  fonts:
+    help: Meslo / Nerd fonts for prompts
+    groups: [fonts]
+    server: excluded
+    container: excluded
+  desktop:
+    help: Desktop extras (empty list today)
+    server: excluded
+    container: excluded
+  gnome:
+    help: GNOME tools (flameshot, guake, …)
+    server: excluded
+    container: excluded
+  cosmic:
+    help: Cosmic desktop packages (Pop OS)
+    desktop: optional
+    server: excluded
+    container: excluded
+  docker:
+    help: Docker engine packages
+    work: optional
+    container: excluded
+  claude-code:
+    help: Claude Code CLI (+ OpenSpec)
+    groups: [claude, openspec]
+    container: optional
+  copilot-cli:
+    help: GitHub Copilot CLI (+ OpenSpec)
+    groups: [copilot, openspec]
+    private: optional
+    container: optional
+  opencode:
+    help: opencode CLI (+ OpenSpec)
+    groups: [opencode, openspec]
+    private: optional
+    work: optional
+    container: optional
+  kerberos:
+    help: krb5-user + ldap-utils (work)
+    private: excluded
+    container: excluded
+  azure-cli:
+    help: Azure CLI (work)
+    private: excluded
+    container: excluded
+  monitoring:
+    help: Telegraf agent (private hosts)
+    work: excluded
+    container: excluded
+  unattended-upgrades:
+    help: Automatic security upgrades
+    work: excluded
+    container: excluded
+  etckeeper:
+    help: Keep /etc in a local git repository (history of system config)
+    container: excluded
+  syncthing:
+    help: Syncthing package
+    work: excluded
+    server: excluded
+    container: excluded
+  thunderbird:
+    help: 'Thunderbird + tb CLI and bridge (extension: manual install)'
+    groups: [thunderbird]
+    work: excluded
+    server: excluded
+    container: excluded
+  tailscale:
+    help: Tailscale package (+ optional login)
+    private: optional
+    work: excluded
+    container: excluded
+  ssh-host-key:
+    help: Per-host SSH key, backed up in Bitwarden
+    container: excluded
+  stylus-touch-guard:
+    help: Disable touch while stylus near (Yoga / Xournal++)
+    desktop: optional
+    server: excluded
+    container: excluded
+  thinkpad-tuning:
+    help: ThinkPad battery thresholds, power profile, S3, zram, tablet OSK
+    desktop: optional
+    server: excluded
+    container: excluded
+  touch-device:
+    help: GNOME touch extensions (TouchUp, Screen Rotate)
+    desktop: optional
+    server: excluded
+    container: excluded
+  sshd-home:
+    help: sshd Port 5115 + authorized_keys from machine/ssh_keys
+    work: excluded
+    container: excluded
+
+# The host's features without the ones the table excludes for its context and device
+# (or that no longer exist). Every role and package condition uses this list.
+machine_features: >-
+  {%- set ns = namespace(out=[]) -%}
+  {%- for name in features | default([]) -%}
+  {%- set row = feature_table[name] | default(none) -%}
+  {%- if row is not none
+        and (context | default('') == '' or row[context] | default('default') != 'excluded')
+        and row[device | default('desktop')] | default('default') != 'excluded' -%}
+  {%- set ns.out = ns.out + [name] -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {{ ns.out }}

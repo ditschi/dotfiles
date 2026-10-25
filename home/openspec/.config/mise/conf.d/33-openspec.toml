@@ -1,0 +1,3 @@
+# OpenSpec, selected by every LLM CLI feature (`claude-code`, `copilot-cli`, `opencode`).
+[tools]
+"npm:@fission-ai/openspec" = "latest"

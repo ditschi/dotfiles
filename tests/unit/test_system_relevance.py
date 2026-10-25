@@ -16,11 +16,9 @@ PLAYBOOK = """\
   hosts: all
   roles:
     - role: stylus_touch_guard
-      when: "'stylus-touch-guard' in (features | default([]))"
+      when: "'stylus-touch-guard' in machine_features"
     - role: sshd_home
-      when:
-        - "'sshd-home' in (features | default([]))"
-        - profile | default('') not in ['container', 'work-machine']
+      when: "'sshd-home' in machine_features"
     - role: odd
       when: ansible_facts.os_family == 'Debian'
 """
@@ -32,13 +30,14 @@ def ansible_dir(tmp_path):
     return tmp_path
 
 
-def relevant(ansible_dir, paths, features=(), profile="home-laptop"):
+def relevant(ansible_dir, paths, features=(), context="private", device="desktop"):
     return relevant_system_paths(
         paths,
         ansible_dir=ansible_dir,
         features=list(features),
-        profile=profile,
-        own_profile="machine/hosts/me.yml",
+        context=context,
+        device=device,
+        own_host_config="machine/hosts/me.yml",
     )
 
 
@@ -46,7 +45,7 @@ def test_always_relevant_paths(ansible_dir):
     paths = [
         "ansible/workstation.yml",
         "ansible/tasks/resolve_packages.yml",
-        "ansible/group_vars/all.yml",
+        "ansible/group_vars/all/packages.yml",
         "machine/hosts/me.yml",
     ]
     assert relevant(ansible_dir, paths) == sorted(paths)
@@ -69,10 +68,10 @@ def test_role_not_enabled_is_ignored_and_enabled_counts(ansible_dir):
     assert relevant(ansible_dir, path, features=["stylus-touch-guard"]) == path
 
 
-def test_profile_exclusion_is_evaluated(ansible_dir):
+def test_excluded_feature_is_not_relevant(ansible_dir):
     path = ["ansible/roles/sshd_home/tasks/main.yml"]
-    assert relevant(ansible_dir, path, ["sshd-home"], "work-machine") == []
-    assert relevant(ansible_dir, path, ["sshd-home"], "home-server") == path
+    assert relevant(ansible_dir, path, ["sshd-home"], "work", "desktop") == []
+    assert relevant(ansible_dir, path, ["sshd-home"], "private", "server") == path
 
 
 def test_unknown_conditions_and_roles_count(ansible_dir):

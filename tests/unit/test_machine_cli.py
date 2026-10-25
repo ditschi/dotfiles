@@ -89,41 +89,17 @@ def test_dynamic_completion_resolves_subcommands():
     assert "plain,update" in result.stdout.split()
 
 
-def test_env_groups_by_profile(tmp_path: Path, monkeypatch):
+def test_env_groups_by_context(tmp_path: Path, monkeypatch):
     cli = _cli()
-    assert cli.ENV_GROUPS["work-machine"] == ["work"]
-    assert cli.ENV_GROUPS["home-server"] == ["private", "server"]
-    assert cli.ENV_GROUPS["container"] == []
+    assert cli.ENV_GROUPS["work"] == ["work"]
+    assert cli.ENV_GROUPS["private"] == ["private"]
+    assert cli.ENV_GROUPS[""] == []
     monkeypatch.setenv("DOTFILES_REPO", str(REPO))
     monkeypatch.setenv("HOME", str(tmp_path))
     machine = cli.Machine()
-    assert "monitoring" in machine.default_features_for("home-laptop")
-    assert "monitoring" not in machine.default_features_for("work-machine")
-    assert "ssh-host-key" in machine.default_features_for("home-laptop")
-
-
-def test_monitoring_resolved_in_ansible_group_vars():
-    from package_sets import resolve_monitoring
-
-    assert resolve_monitoring("home-laptop", ["monitoring"]) == [
-        "machine/base",
-        "machine/laptop",
-    ]
-    assert resolve_monitoring("home-laptop", ["monitoring", "docker"]) == [
-        "machine/base",
-        "machine/laptop",
-        "machine/docker",
-    ]
-    assert resolve_monitoring("rpi-zero", ["monitoring"]) == [
-        "machine/base",
-        "machine/pi",
-    ]
-    assert resolve_monitoring("work-machine", ["kerberos"]) == []
-    assert resolve_monitoring("home-server", ["monitoring", "docker"]) == [
-        "machine/base",
-        "machine/server",
-        "machine/docker",
-    ]
+    assert "monitoring" in machine.default_features_for("private", "desktop")
+    assert "monitoring" not in machine.default_features_for("work", "desktop")
+    assert "ssh-host-key" in machine.default_features_for("private", "server")
 
 
 def test_cli_has_no_monitoring_map():
@@ -135,9 +111,9 @@ def test_cli_has_no_monitoring_map():
 
 def test_ssh_item_names_separated_by_class():
     cli = _cli()
-    assert cli.SSH_CLASS["home-laptop"] == "home"
-    assert cli.SSH_CLASS["work-machine"] == "work"
-    assert cli.SSH_CLASS["rpi-zero"] == "home"
+    assert cli.SSH_CLASS["private"] == "home"
+    assert cli.SSH_CLASS["work"] == "work"
+    assert cli.SSH_CLASS[""] == ""
 
 
 def test_parse_profile_file_roundtrip(tmp_path: Path):
@@ -147,7 +123,8 @@ def test_parse_profile_file_roundtrip(tmp_path: Path):
         textwrap.dedent(
             """\
             ---
-            profile: home-laptop
+            context: private
+            device: desktop
             features:
               - zsh-full
               - monitoring
@@ -159,7 +136,7 @@ def test_parse_profile_file_roundtrip(tmp_path: Path):
         encoding="utf-8",
     )
     data = cli.parse_profile_file(path)
-    assert data["profile"] == "home-laptop"
+    assert (data["context"], data["device"]) == ("private", "desktop")
     assert data["features"] == ["zsh-full", "monitoring"]
     assert data["ssh_allow_from"] == ["homeserver", "laptop2"]
 
@@ -168,7 +145,7 @@ def test_parse_empty_ssh_allow_from(tmp_path: Path):
     cli = _cli()
     path = tmp_path / "profile.yml"
     path.write_text(
-        "---\nprofile: home-laptop\nfeatures:\n  - zsh-full\nssh_allow_from: []\n",
+        "---\ncontext: private\ndevice: desktop\nfeatures:\n  - zsh-full\nssh_allow_from: []\n",
         encoding="utf-8",
     )
     data = cli.parse_profile_file(path)
@@ -183,13 +160,13 @@ def test_apply_reverts_profile_synced_by_update(tmp_path, monkeypatch, passed_st
     from test_bw_and_answers import isolated_machine
 
     cli, machine = isolated_machine(tmp_path, monkeypatch)
-    machine.write_profile("home-laptop", ["zsh-full"])
-    backup = machine.backup_local_profile()
-    machine.write_profile("work-machine", ["zsh-full"])
+    machine.write_profile("private", "desktop", ["zsh-full"])
+    backup = machine.backup_applied_host()
+    machine.write_profile("work", "desktop", ["zsh-full"])
     calls = []
 
     def fail_ansible(*_args, **_kwargs):
-        calls.append(machine.current_profile())
+        calls.append(machine.current_context())
         if len(calls) == 1:
             raise sp.CalledProcessError(2, "ansible")
 
@@ -204,11 +181,9 @@ def test_apply_reverts_profile_synced_by_update(tmp_path, monkeypatch, passed_st
     )
     with pytest.raises(SystemExit):
         machine.cmd_apply(args)
-    expected = "home-laptop" if passed_state else "work-machine"
-    assert machine.current_profile() == expected
-    assert calls == (
-        ["work-machine", "home-laptop"] if passed_state else ["work-machine"]
-    )
+    expected = "private" if passed_state else "work"
+    assert machine.current_context() == expected
+    assert calls == (["work", "private"] if passed_state else ["work"])
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])

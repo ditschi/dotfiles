@@ -72,24 +72,35 @@ def test_command_reaches_the_entry_script():
     assert _entry_args(args) == [ME.pw_dir, "0", "0", "bash", "-lc", "machine"]
 
 
-def test_profile_override_is_passed():
-    args = testenv.build_run_args("img", [], rootless=True, profile="home-laptop")
-    assert "MACHINE_PROFILE_OVERRIDE=home-laptop" in _opt(args, "-e")
+def test_context_and_device_overrides_are_passed():
+    args = testenv.build_run_args(
+        "img", [], rootless=True, context="private", device="desktop"
+    )
+    assert "MACHINE_CONTEXT_OVERRIDE=private" in _opt(args, "-e")
+    assert "MACHINE_DEVICE_OVERRIDE=desktop" in _opt(args, "-e")
     assert "MACHINE_TESTENV=1" in _opt(args, "-e")
 
 
-def test_host_profile_prefers_saved_profile(tmp_path):
-    saved = tmp_path / ".config/machine/profile.yml"
-    saved.parent.mkdir(parents=True)
-    saved.write_text("profile: work-machine\nfeatures: []\n")
+def test_host_values_prefer_the_applied_host_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("MACHINE_STATE_DIR", raising=False)
+    applied = tmp_path / ".local/share/machine/applied-host.yml"
+    applied.parent.mkdir(parents=True)
+    applied.write_text("---\ncontext: work\ndevice: desktop\nfeatures: []\n")
+    legacy = tmp_path / ".config/machine/profile.yml"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("profile: home-server\n")
     hosts = tmp_path / "dotfiles/machine/hosts"
     hosts.mkdir(parents=True)
-    (hosts / f"{socket.gethostname()}.yml").write_text("profile: home-laptop\n")
-    assert testenv.host_profile(tmp_path) == "work-machine"
-    saved.unlink()
-    assert testenv.host_profile(tmp_path) == "home-laptop"
+    (hosts / f"{socket.gethostname()}.yml").write_text(
+        "context: private\ndevice: desktop\n"
+    )
+    assert testenv.host_values(tmp_path) == ("work", "desktop")
+    applied.unlink()
+    assert testenv.host_values(tmp_path) == ("private", "server")
+    legacy.unlink()
+    assert testenv.host_values(tmp_path) == ("private", "desktop")
     (hosts / f"{socket.gethostname()}.yml").unlink()
-    assert testenv.host_profile(tmp_path) == ""
+    assert testenv.host_values(tmp_path) == ("", "")
 
 
 def test_image_matches_host_os_and_changes_with_mode(monkeypatch):

@@ -9,26 +9,12 @@ from pathlib import Path
 from typing import Sequence
 
 from . import system
+from . import features
 from .core import die, log, parse_profile_file
 
-# Groups are directories `home/<group>/` declared in the repository's `mise.toml`.
-GROUP_ALWAYS = ("core", "prompt")
-GROUP_SYSTEMD_EXCLUDED = ("container",)
-GROUP_WORK_PROFILES = ("work-machine",)
-
-
-def dotfile_groups(profile: str, features: Sequence[str] = ()) -> list[str]:
-    """Groups a host receives, derived from its profile (and features)."""
-    groups = list(GROUP_ALWAYS)
-    if profile not in GROUP_SYSTEMD_EXCLUDED:
-        groups.append("systemd")
-    if profile in GROUP_WORK_PROFILES:
-        groups.append("work")
-    if "fonts" in features:
-        groups.append("fonts")
-    if "thunderbird" in features:
-        groups.append("thunderbird")
-    return groups
+# Groups are directories `home/<group>/` declared in the repository's `mise.toml`;
+# which ones a host gets comes from its context, device and the feature table.
+dotfile_groups = features.dotfile_groups
 
 
 def render_local_config(groups: Sequence[str]) -> str:
@@ -39,7 +25,7 @@ def render_local_config(groups: Sequence[str]) -> str:
 GITCONFIG_LOCAL_HEADER = """\
 # Host-local git config, included near the end of ~/.gitconfig; only the owner rules
 # (remote URL -> work/private identity) come after it.
-# Created once by `machine setup` from the machine profile and never overwritten — edit freely.
+# Created once by `machine setup` from the host config and never overwritten — edit freely.
 # Put host-only settings here: signingkey/gpg, safe.directory, credential helpers, proxy.
 # Per-repo exceptions: `git user-work` / `git user-private`.
 """
@@ -51,9 +37,9 @@ CA_INFO_BLOCK = """\
 """
 
 
-def render_gitconfig_local(profile: str) -> str:
-    """Profile defaults for ~/.gitconfig.local (identity, CA bundle, safe.directory)."""
-    if profile == "work-machine":
+def render_gitconfig_local(context: str, device: str) -> str:
+    """Defaults for ~/.gitconfig.local (identity, CA bundle, safe.directory)."""
+    if context == "work":
         name, email = (
             "Ditscher Christian (XC-AS/ESE1)",
             "christian.ditscher@de.bosch.com",
@@ -62,10 +48,10 @@ def render_gitconfig_local(profile: str) -> str:
         name, email = "Christian Ditscher", "chris@ditscher.me"
     text = f"{GITCONFIG_LOCAL_HEADER}\n[user]\n    name = {name}\n    email = {email}\n"
     text += "\n[credential]\n    helper = store\n"
-    if profile == "work-machine":
+    if context == "work":
         text += f"\n{CA_INFO_BLOCK}"
         text += "\n[safe]\n    directory = /opt/osd/ansible/osd-ansible-custom\n"
-    if profile == "container":
+    if device == "container":
         text += "\n[safe]\n    directory = /workspace\n"
     return text
 
@@ -73,22 +59,19 @@ def render_gitconfig_local(profile: str) -> str:
 GITHUB_TOKEN_CONFIG = ".config/git/github-token.gitconfig"
 
 
-def github_token_variable(profile: str) -> str:
-    """On work machines GITHUB_TOKEN is the work token, so private GitHub uses its own."""
-    return "GITHUB_PRIVATE_TOKEN" if profile in GROUP_WORK_PROFILES else "GITHUB_TOKEN"
+def github_token_variable(context: str) -> str:
+    """On work hosts GITHUB_TOKEN is the work token, so private GitHub uses its own."""
+    return "GITHUB_PRIVATE_TOKEN" if context == "work" else "GITHUB_TOKEN"
 
 
-def render_github_token_config(profile: str) -> str:
+def render_github_token_config(context: str) -> str:
     return (
-        "# Written by `machine` from the host profile on every dotfile apply; do not edit.\n"
+        "# Written by `machine` from the host config on every dotfile apply; do not edit.\n"
         "# Included by ~/.config/git/private.gitconfig after its credential reset.\n"
         '[credential "https://github.com"]\n'
         "    helper = !$HOME/.local/bin/git-credential-env "
-        f"{github_token_variable(profile)}\n"
+        f"{github_token_variable(context)}\n"
     )
-
-
-SSH_REMOTE_EXCLUDED = ("work-machine", "container")
 
 
 def github_ssh_url(url: str) -> str:
@@ -187,14 +170,14 @@ def clear_conflicting_targets(
 
 
 class DotfilesMixin:
-    def ensure_gitconfig_local(self, profile: str) -> None:
+    def ensure_gitconfig_local(self, context: str, device: str) -> None:
         """Create ~/.gitconfig.local once; an existing file is only extended on work hosts
         that lack the CA bundle key (the user-space Git ignores the system store)."""
         path = self.home / ".gitconfig.local"
         if not path.exists():
-            path.write_text(render_gitconfig_local(profile), encoding="utf-8")
+            path.write_text(render_gitconfig_local(context, device), encoding="utf-8")
             return
-        if profile != "work-machine":
+        if context != "work":
             return
         text = path.read_text(encoding="utf-8")
         if "sslcainfo" not in text.lower():
@@ -203,13 +186,18 @@ class DotfilesMixin:
             )
             log("added http.sslCAInfo to ~/.gitconfig.local")
 
-    def write_dotfile_groups(self, profile: str) -> None:
+    def host_dotfile_groups(self) -> list[str]:
+        data = parse_profile_file(self.applied_host_path)
+        return dotfile_groups(
+            self.current_context(), self.current_device(), data["features"]
+        )
+
+    def write_dotfile_groups(self) -> None:
         """Write the host's group list into the local mise configuration."""
-        features = parse_profile_file(self.profile_path)["features"]
         self.ensure_dirs()
         self.mise_local_config.parent.mkdir(parents=True, exist_ok=True)
         self.mise_local_config.write_text(
-            render_local_config(dotfile_groups(profile, features)), encoding="utf-8"
+            render_local_config(self.host_dotfile_groups()), encoding="utf-8"
         )
 
     def dotfiles_env(self) -> dict:
@@ -222,12 +210,11 @@ class DotfilesMixin:
             die("mise is not installed (run: ./bootstrap)")
         if not self.mise_local_config.is_file():
             die(f"missing {self.mise_local_config} (run: machine setup)")
-        profile = str(parse_profile_file(self.profile_path)["profile"] or "home-laptop")
-        self.ensure_gitconfig_local(profile)
-        self.write_github_token_config(profile)
-        features = parse_profile_file(self.profile_path)["features"]
+        context, device = self.current_context(), self.current_device()
+        self.ensure_gitconfig_local(context, device)
+        self.write_github_token_config(context)
         for target, what in clear_conflicting_targets(
-            Path(self.repo), self.home, dotfile_groups(profile, features)
+            Path(self.repo), self.home, self.host_dotfile_groups()
         ):
             log(f"{target}: {what}")
         env = self.dotfiles_env()
@@ -240,19 +227,20 @@ class DotfilesMixin:
             log(f"removed dangling link {link}")
         self.ensure_machine_link()
 
-    def write_github_token_config(self, profile: str) -> None:
+    def write_github_token_config(self, context: str) -> None:
         path = self.home / GITHUB_TOKEN_CONFIG
-        text = render_github_token_config(profile)
+        text = render_github_token_config(context)
         if path.is_file() and path.read_text(encoding="utf-8") == text:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        log(f"GitHub token for github.com: {github_token_variable(profile)} ({path})")
+        log(f"GitHub token for github.com: {github_token_variable(context)} ({path})")
 
-    def switch_origin_to_ssh(self, profile: str) -> None:
+    def switch_origin_to_ssh(self, context: str, device: str) -> None:
         """Private hosts push with their SSH key: move an https github.com origin to SSH,
-        but only when SSH to GitHub authenticates. Work machines keep HTTPS."""
-        if profile in SSH_REMOTE_EXCLUDED:
+        but only when SSH to GitHub authenticates. Work hosts and containers keep HTTPS.
+        """
+        if context != "private" or device == "container":
             return
         current = system.run(
             ["git", "-C", str(self.repo), "remote", "get-url", "origin"],

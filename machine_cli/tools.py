@@ -231,7 +231,7 @@ class ToolsMixin:
             die(f"playbook not found: {playbook}")
         cmd = ["ansible-playbook", str(playbook), *self.ansible_inventory_args()]
         extra: List[str] = []
-        vars_file = extra_vars_file or self.profile_path
+        vars_file = extra_vars_file or self.applied_host_path
         if vars_file.is_file():
             extra.extend(["--extra-vars", f"@{vars_file}"])
         if force_local or not limit:

@@ -116,9 +116,9 @@ if [ -d "$DOTFILES_DIR" ]; then
     . "$DOTFILES_DIR/01_env.zsh"
     . "$DOTFILES_DIR/06_history.zsh"
 
-    # MACHINE_PROFILE / WORK_SETUP, shared with zsh
+    # MACHINE_CONTEXT / MACHINE_DEVICE / WORK_SETUP, shared with zsh
     . "$HOME/.zsh/machine-profile.sh"
-    # work modules are only linked on work-machine, not in dev containers
+    # work modules are only linked on work hosts, not in dev containers
     if [ "${WORK_SETUP:-}" = "true" ] && [ -f "$DOTFILES_DIR/01_work.zsh" ]; then
         . "$DOTFILES_DIR/01_work_tools.zsh"
         . "$DOTFILES_DIR/01_work.zsh"

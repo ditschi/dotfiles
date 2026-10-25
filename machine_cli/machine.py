@@ -38,14 +38,9 @@ class Machine(
         self.repo = system.detect_repo()
         self.core_source = self.repo / "home" / "core"
         self.ansible_dir = self.repo / "ansible"
-        self.host_profiles_dir = self.repo / "machine" / "hosts"
-        # Path to local cache. Do not use MACHINE_PROFILE — zsh exports that as the
-        # profile *name* (see 00_LOADER.zsh).
-        self.profile_path = Path(
-            os.environ.get(
-                "MACHINE_PROFILE_FILE",
-                self.home / ".config/machine/profile.yml",
-            )
+        # Where host configs live; tests point it at tests/hosts (relative to the repo).
+        self.host_configs_dir = self.repo / os.environ.get(
+            "MACHINE_HOSTS_DIR", "machine/hosts"
         )
         self.mise_local_config = Path(
             os.environ.get(
@@ -66,6 +61,15 @@ class Machine(
         self.state_dir = Path(
             os.environ.get("MACHINE_STATE_DIR", self.home / ".local/share/machine")
         )
+        # The last applied host config: what a failed apply restores, what the shell
+        # reads at start, and the host config of containers and new hosts.
+        self.applied_host_path = Path(
+            os.environ.get(
+                "MACHINE_APPLIED_HOST_FILE", self.state_dir / "applied-host.yml"
+            )
+        )
+        self.legacy_profile_path = self.home / ".config/machine/profile.yml"
+        self.takeover_legacy_profile()
         self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
         os.environ["DOTFILES_REPO"] = str(self.repo)
 
@@ -78,10 +82,11 @@ class Machine(
     ) -> None:
         """Append an event to the local log; best effort."""
         try:
-            profile = str(parse_profile_file(self.profile_path).get("profile") or "")
+            data = parse_profile_file(self.applied_host_path)
+            context, device = str(data["context"]), str(data["device"])
             revision = self.repo_revision()
         except Exception:
-            profile = revision = ""
+            context = device = revision = ""
         events.record(
             self.state_dir,
             event,
@@ -89,5 +94,6 @@ class Machine(
             reason=reason,
             duration=duration,
             revision=revision,
-            profile=profile,
+            context=context,
+            device=device,
         )

@@ -5,15 +5,23 @@
   gather_facts: true
   tags: [packages]
   tasks:
-    - name: Resolve package list from profile features
+    - name: Resolve package list from hardware, context and features
       ansible.builtin.include_tasks: tasks/resolve_packages.yml
 
     - name: Preserve the installed Docker provider
-      when: "'docker' in (features | default([]))"
+      when: "'docker' in machine_features"
       block:
-        - name: Inspect installed package providers
-          ansible.builtin.package_facts:
-            manager: auto
+        # dpkg-query instead of package_facts: the uv-installed Ansible has no apt bindings.
+        - name: Inspect installed Docker packages
+          ansible.builtin.shell: >-
+            dpkg-query -W -f='${db:Status-Status} ${Package}\n'
+            docker-ce docker.io moby-engine 2>/dev/null
+            | awk '$1 == "installed" { print $2 }'
+          args:
+            executable: /bin/sh
+          register: machine_docker_packages
+          changed_when: false
+          failed_when: false
 
         - name: Check existing Docker CLI as the login user
           ansible.builtin.command: docker --version
@@ -37,15 +45,15 @@
           ansible.builtin.set_fact:
             install_packages: "{{ install_packages | difference(packages_by_feature.docker) }}"
           when: >-
-            machine_docker.rc == 0 or 'docker-ce' in ansible_facts.packages
-            or 'docker.io' in ansible_facts.packages or 'moby-engine' in ansible_facts.packages
+            machine_docker.rc == 0 or 'docker-ce' in machine_docker_packages.stdout_lines
+            or 'docker.io' in machine_docker_packages.stdout_lines or 'moby-engine' in machine_docker_packages.stdout_lines
 
         - name: Add only a missing provider-compatible Compose package
           ansible.builtin.set_fact:
-            install_packages: "{{ install_packages + ['docker-compose-plugin' if 'docker-ce' in ansible_facts.packages else 'docker-compose-v2'] }}"
+            install_packages: "{{ install_packages + ['docker-compose-plugin' if 'docker-ce' in machine_docker_packages.stdout_lines else 'docker-compose-v2'] }}"
           when:
             - machine_compose.rc != 0
-            - "'docker-ce' in ansible_facts.packages or 'docker.io' in ansible_facts.packages"
+            - "'docker-ce' in machine_docker_packages.stdout_lines or 'docker.io' in machine_docker_packages.stdout_lines"
 
         - name: Report unmanaged Docker installations lacking Compose
           ansible.builtin.debug:
@@ -53,7 +61,38 @@
           when:
             - machine_docker.rc == 0
             - machine_compose.rc != 0
-            - "'docker-ce' not in ansible_facts.packages and 'docker.io' not in ansible_facts.packages"
+            - "'docker-ce' not in machine_docker_packages.stdout_lines and 'docker.io' not in machine_docker_packages.stdout_lines"
+
+    - name: Install Docker only where a package exists for this architecture
+      when:
+        - "'docker' in machine_features"
+        - ansible_facts.os_family == "Debian"
+        - (packages_by_feature.docker | intersect(install_packages)) | length > 0
+      block:
+        - name: Refresh the apt cache
+          ansible.builtin.apt:
+            update_cache: true
+            cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+
+        - name: Look up the Docker package candidate
+          ansible.builtin.command: apt-cache policy docker.io
+          register: machine_docker_candidate
+          changed_when: false
+          failed_when: false
+
+        - name: Skip Docker without a package for this architecture
+          ansible.builtin.set_fact:
+            install_packages: "{{ install_packages | difference(packages_by_feature.docker) }}"
+          when: >-
+            'Candidate:' not in machine_docker_candidate.stdout
+            or 'Candidate: (none)' in machine_docker_candidate.stdout
+
+        - name: Report skipped Docker
+          ansible.builtin.debug:
+            msg: "Docker has no package for {{ ansible_facts.architecture }}; skipped."
+          when: >-
+            'Candidate:' not in machine_docker_candidate.stdout
+            or 'Candidate: (none)' in machine_docker_candidate.stdout
 
     - name: Install workstation packages
       ansible.builtin.apt:
@@ -68,13 +107,12 @@
   gather_facts: true
   tags: [monitoring]
   pre_tasks:
-    - name: Resolve monitoring config names from profile features
+    - name: Resolve monitoring config names from hardware, device and features
       ansible.builtin.include_tasks: tasks/resolve_monitoring.yml
   roles:
     - role: monitoring
       when:
-        - "'monitoring' in (features | default([]))"
-        - profile | default('') not in ['container', 'work-machine']
+        - "'monitoring' in machine_features"
         - (monitoring_configs | default([])) | length > 0
 
 - name: Stylus touch-guard (Yoga / convertible)
@@ -84,7 +122,7 @@
   tags: [stylus]
   roles:
     - role: stylus_touch_guard
-      when: "'stylus-touch-guard' in (features | default([]))"
+      when: "'stylus-touch-guard' in machine_features"
 
 - name: ThinkPad tuning (battery, power profile, suspend, zram, tablet mode)
   hosts: "{{ target_hosts | default('all') }}"
@@ -93,7 +131,7 @@
   tags: [thinkpad]
   roles:
     - role: thinkpad_tuning
-      when: "'thinkpad-tuning' in (features | default([]))"
+      when: "'thinkpad-tuning' in machine_features"
 
 - name: Touch device (GNOME extensions for the login user)
   hosts: "{{ target_hosts | default('all') }}"
@@ -102,7 +140,7 @@
   tags: [touch]
   roles:
     - role: touch_device
-      when: "'touch-device' in (features | default([]))"
+      when: "'touch-device' in machine_features"
 
 - name: SSH port + authorized_keys (home fleet)
   hosts: "{{ target_hosts | default('all') }}"
@@ -111,6 +149,4 @@
   tags: [sshd]
   roles:
     - role: sshd_home
-      when:
-        - "'sshd-home' in (features | default([]))"
-        - profile | default('') not in ['container', 'work-machine']
+      when: "'sshd-home' in machine_features"

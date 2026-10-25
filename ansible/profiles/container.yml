@@ -1,5 +1,0 @@
----
-profile: container
-features:
-  - zsh-full
-ssh_allow_from: []

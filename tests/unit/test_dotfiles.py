@@ -18,23 +18,21 @@ from machine_cli.dotfiles import (  # noqa: E402
 
 
 @pytest.mark.parametrize(
-    "profile, expected",
+    "context, device, expected",
     [
-        ("work-machine", ["core", "prompt", "systemd", "work"]),
-        ("home-laptop", ["core", "prompt", "systemd"]),
-        ("home-server", ["core", "prompt", "systemd"]),
-        ("rpi", ["core", "prompt", "systemd"]),
-        ("rpi-zero", ["core", "prompt", "systemd"]),
-        ("container", ["core", "prompt"]),
+        ("work", "desktop", ["core", "prompt", "systemd", "work"]),
+        ("private", "desktop", ["core", "prompt", "systemd"]),
+        ("private", "server", ["core", "prompt", "systemd"]),
+        ("", "container", ["core", "prompt"]),
     ],
 )
-def test_groups_per_profile(profile, expected):
-    assert dotfile_groups(profile, ["zsh-full"]) == expected
+def test_groups_per_context_and_device(context, device, expected):
+    assert dotfile_groups(context, device, ["zsh-full"]) == expected
 
 
 def test_work_group_only_for_work_machine():
-    profiles = ["home-laptop", "home-server", "rpi", "rpi-zero", "container"]
-    assert all("work" not in dotfile_groups(p) for p in profiles)
+    hosts = [("private", "desktop"), ("private", "server"), ("", "container")]
+    assert all("work" not in dotfile_groups(c, d) for c, d in hosts)
 
 
 def test_local_config_lists_groups():
@@ -49,25 +47,25 @@ class _Host(DotfilesMixin):
 
 
 @pytest.mark.parametrize(
-    "profile, email",
+    "context, device, email",
     [
-        ("work-machine", "christian.ditscher@de.bosch.com"),
-        ("home-laptop", "chris@ditscher.me"),
-        ("container", "chris@ditscher.me"),
+        ("work", "desktop", "christian.ditscher@de.bosch.com"),
+        ("private", "desktop", "chris@ditscher.me"),
+        ("", "container", "chris@ditscher.me"),
     ],
 )
-def test_first_setup_creates_gitconfig_local(tmp_path, profile, email):
-    _Host(tmp_path).ensure_gitconfig_local(profile)
+def test_first_setup_creates_gitconfig_local(tmp_path, context, device, email):
+    _Host(tmp_path).ensure_gitconfig_local(context, device)
     text = (tmp_path / ".gitconfig.local").read_text()
     assert f"email = {email}" in text
-    assert ("sslCAInfo" in text) == (profile == "work-machine")
-    assert ("directory = /workspace" in text) == (profile == "container")
+    assert ("sslCAInfo" in text) == (context == "work")
+    assert ("directory = /workspace" in text) == (device == "container")
 
 
 def test_existing_gitconfig_local_is_left_alone(tmp_path):
     local = tmp_path / ".gitconfig.local"
     local.write_text("[user]\n    email = mine@example.com\n")
-    _Host(tmp_path).ensure_gitconfig_local("home-laptop")
+    _Host(tmp_path).ensure_gitconfig_local("private", "desktop")
     assert local.read_text() == "[user]\n    email = mine@example.com\n"
 
 
@@ -75,11 +73,11 @@ def test_work_host_gets_missing_ca_bundle_key_only(tmp_path):
     local = tmp_path / ".gitconfig.local"
     local.write_text("[user]\n    email = mine@example.com\n")
     host = _Host(tmp_path)
-    host.ensure_gitconfig_local("work-machine")
+    host.ensure_gitconfig_local("work", "desktop")
     seeded = local.read_text()
     assert seeded.startswith("[user]\n    email = mine@example.com\n")
     assert seeded.count("sslCAInfo") == 1
-    host.ensure_gitconfig_local("work-machine")
+    host.ensure_gitconfig_local("work", "desktop")
     assert local.read_text() == seeded
 
 
@@ -131,10 +129,11 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
 
 
 def test_fonts_group_follows_the_feature():
-    assert "fonts" in dotfile_groups("home-laptop", ["fonts"])
-    assert "fonts" not in dotfile_groups("home-laptop", [])
-    assert "thunderbird" in dotfile_groups("home-laptop", ["thunderbird"])
-    assert "thunderbird" not in dotfile_groups("home-laptop", [])
+    assert "fonts" in dotfile_groups("private", "desktop", ["fonts"])
+    assert "fonts" not in dotfile_groups("private", "desktop", [])
+    assert "thunderbird" in dotfile_groups("private", "desktop", ["thunderbird"])
+    assert "thunderbird" not in dotfile_groups("private", "desktop", [])
+    assert "thunderbird" not in dotfile_groups("work", "desktop", ["thunderbird"])
 
 
 def _checkout_with_cli(tmp_path):
@@ -174,17 +173,16 @@ def test_machine_link_follows_the_running_checkout(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "profile, variable",
+    "context, variable",
     [
-        ("work-machine", "GITHUB_PRIVATE_TOKEN"),
-        ("home-laptop", "GITHUB_TOKEN"),
-        ("home-server", "GITHUB_TOKEN"),
-        ("container", "GITHUB_TOKEN"),
+        ("work", "GITHUB_PRIVATE_TOKEN"),
+        ("private", "GITHUB_TOKEN"),
+        ("", "GITHUB_TOKEN"),
     ],
 )
-def test_github_token_variable_follows_the_profile(tmp_path, profile, variable):
+def test_github_token_variable_follows_the_context(tmp_path, context, variable):
     host = _Host(tmp_path)
-    host.write_github_token_config(profile)
+    host.write_github_token_config(context)
     text = (tmp_path / ".config/git/github-token.gitconfig").read_text()
     assert f"git-credential-env {variable}\n" in text
     other = (
@@ -201,7 +199,7 @@ def test_private_gitconfig_includes_the_token_file_after_the_reset(tmp_path):
     home = tmp_path
     (home / ".config/git").mkdir(parents=True)
     (home / ".config/git/github-token.gitconfig").write_text(
-        render_github_token_config("home-laptop")
+        render_github_token_config("private")
     )
     env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
     out = subprocess.run(
@@ -234,15 +232,15 @@ def test_github_ssh_url(url, expected):
 
 
 @pytest.mark.parametrize(
-    "profile, ssh_reply, switched",
+    "context, ssh_reply, switched",
     [
-        ("home-laptop", "Hi ditschi! You've successfully authenticated", True),
-        ("home-laptop", "Permission denied (publickey).", False),
-        ("work-machine", "Hi ditschi! You've successfully authenticated", False),
+        ("private", "Hi ditschi! You've successfully authenticated", True),
+        ("private", "Permission denied (publickey).", False),
+        ("work", "Hi ditschi! You've successfully authenticated", False),
     ],
 )
 def test_origin_switches_to_ssh_only_when_it_works(
-    tmp_path, monkeypatch, profile, ssh_reply, switched
+    tmp_path, monkeypatch, context, ssh_reply, switched
 ):
     import subprocess
 
@@ -265,7 +263,7 @@ def test_origin_switches_to_ssh_only_when_it_works(
     host = _Host(tmp_path)
     host.repo = tmp_path
 
-    host.switch_origin_to_ssh(profile)
+    host.switch_origin_to_ssh(context, "desktop")
 
     set_url = [c for c in calls if "set-url" in c]
     assert bool(set_url) == switched

@@ -158,7 +158,8 @@ def build_run_args(
     *,
     rootless: bool,
     tty: bool = False,
-    profile: str = "",
+    context: str = "",
+    device: str = "",
 ) -> list[str]:
     entry = pwd.getpwuid(os.getuid())
     home = entry.pw_dir
@@ -171,9 +172,10 @@ def build_run_args(
         "TERM": os.environ.get("TERM", "xterm-256color"),
         "LANG": os.environ.get("LANG", "C.UTF-8"),
         "MACHINE_TESTENV": "1",
-        # In Docker the machine CLI and the shells default to the container
-        # profile; the override makes them behave like this host.
-        "MACHINE_PROFILE_OVERRIDE": profile,
+        # In Docker the machine CLI and the shells default to the container device
+        # without context; the overrides make them behave like this host.
+        "MACHINE_CONTEXT_OVERRIDE": context,
+        "MACHINE_DEVICE_OVERRIDE": device,
         "LOWER": LOWER,
         "RW": RW,
     }
@@ -207,20 +209,37 @@ def build_run_args(
     return args + command
 
 
-def host_profile(home: Path) -> str:
-    """The saved profile of this host (what `machine` would use outside Docker)."""
+# Former single profile -> (context, device); stdlib copy of core.LEGACY_PROFILES.
+LEGACY_PROFILES = {
+    "work-machine": ("work", "desktop"),
+    "home-laptop": ("private", "desktop"),
+    "home-server": ("private", "server"),
+    "rpi": ("private", "server"),
+    "rpi-zero": ("private", "server"),
+    "container": ("", "container"),
+}
+
+
+def host_values(home: Path) -> tuple[str, str]:
+    """Context and device of this host (what `machine` uses outside Docker)."""
+    state = Path(os.environ.get("MACHINE_STATE_DIR", home / ".local/share/machine"))
     for path in (
+        state / "applied-host.yml",
         home / ".config/machine/profile.yml",
         home / "dotfiles/machine/hosts" / f"{socket.gethostname()}.yml",
     ):
         try:
+            values = {}
             for line in path.read_text().splitlines():
                 key, _, value = line.partition(":")
-                if key == "profile" and value.strip():
-                    return value.strip().strip("'\"")
+                values[key.strip()] = value.strip().strip("'\"")
         except OSError:
             continue
-    return ""
+        if values.get("device"):
+            return values.get("context", ""), values["device"]
+        if values.get("profile") in LEGACY_PROFILES:
+            return LEGACY_PROFILES[values["profile"]]
+    return "", ""
 
 
 def shell_command(command: list[str]) -> list[str]:
@@ -244,9 +263,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     add = parser.add_argument
     add(
-        "--profile",
+        "--context",
         default=None,
-        help="machine profile inside (default: this host's saved one; '' for container)",
+        help="context inside (default: this host's; '' for none)",
+    )
+    add(
+        "--device",
+        default=None,
+        help="device inside (default: this host's; '' for container)",
     )
     add(
         "--rebuild",
@@ -267,12 +291,14 @@ def main(argv: list[str] | None = None) -> int:
     rootless = docker_rootless()
     image = ensure_image(rootless, args.rebuild)
     command = shell_command(args.command)
+    host_context, host_device = host_values(Path.home())
     run = build_run_args(
         image,
         command,
         rootless=rootless,
         tty=sys.stdin.isatty() and sys.stdout.isatty(),
-        profile=host_profile(Path.home()) if args.profile is None else args.profile,
+        context=host_context if args.context is None else args.context,
+        device=host_device if args.device is None else args.device,
     )
     return docker(*run, check=False).returncode
 

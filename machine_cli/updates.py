@@ -14,7 +14,7 @@ from . import events, local_overrides, system
 from .core import die, log, parse_profile_file, parse_profile_text, warn
 from .local_changes import classify_paths
 from .system_relevance import relevant_system_paths
-from .profile import profile_changes
+from .profile import host_config_changes
 
 Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
 
@@ -225,14 +225,16 @@ class UpdateMixin:
         )
 
     def system_paths_relevant(self, paths: Iterable[str]) -> list[str]:
-        profile = self.current_profile() if self.profile_path.is_file() else ""
-        features = self.saved_features() if self.profile_path.is_file() else []
+        if not self.saved_ansible():
+            return []
+        known = self.applied_host_path.is_file()
         return relevant_system_paths(
             paths,
             ansible_dir=self.ansible_dir,
-            features=features,
-            profile=profile,
-            own_profile=self.host_profile_path().relative_to(self.repo).as_posix(),
+            features=self.saved_features() if known else [],
+            context=self.current_context() if known else "",
+            device=self.current_device() if known else "",
+            own_host_config=self.host_config_path().relative_to(self.repo).as_posix(),
         )
 
     def pending_system_paths(self, ref: str) -> list[str]:
@@ -304,7 +306,9 @@ class UpdateMixin:
         return {
             "upstream": upstream,
             "state": state,
-            "profile_changes": self.incoming_profile_changes(incoming, upstream),
+            "host_config_changes": self.incoming_host_config_changes(
+                incoming, upstream
+            ),
             "incoming": [{"status": s, "path": p} for s, p in incoming],
             "steps": self.plan_steps(incoming, upstream if incoming else "HEAD"),
             "local_changes": remaining,
@@ -313,12 +317,12 @@ class UpdateMixin:
             "blockers": blockers,
         }
 
-    def incoming_profile_changes(
+    def incoming_host_config_changes(
         self, incoming: list[tuple[str, str]], upstream: str
     ) -> list[str]:
         """What an incoming commit changes in this host's machine/hosts file."""
         try:
-            rel = str(self.host_profile_path().relative_to(self.repo))
+            rel = str(self.host_config_path().relative_to(self.repo))
         except ValueError:  # host files outside this checkout
             return []
         if rel not in {path for _status, path in incoming}:
@@ -329,8 +333,8 @@ class UpdateMixin:
             capture=True,
         )
         new_text = shown.stdout if shown.returncode == 0 else ""
-        return profile_changes(
-            parse_profile_file(self.profile_path), parse_profile_text(new_text)
+        return host_config_changes(
+            parse_profile_file(self.applied_host_path), parse_profile_text(new_text)
         )
 
     def repo_revision(self) -> str:
@@ -390,8 +394,8 @@ class UpdateMixin:
         print(f"upstream: {plan['upstream']} ({plan['state']})")
         print(f"incoming files: {len(plan['incoming'])}")
         print("steps: " + (", ".join(plan["steps"]) or "none"))
-        if plan.get("profile_changes"):
-            print("host profile changes: " + "; ".join(plan["profile_changes"]))
+        if plan.get("host_config_changes"):
+            print("host config changes: " + "; ".join(plan["host_config_changes"]))
         if plan["resolvable"]:
             print("resolved automatically: " + ", ".join(plan["resolvable"]))
         if plan["local_changes"]:
@@ -516,8 +520,8 @@ class UpdateMixin:
         self.merge_upstream(plan, args.force)
         steps = set(plan["steps"])
 
-        profile_backup = self.backup_local_profile()
-        profile_changed = self.sync_host_profile_from_repo()
+        profile_backup = self.backup_applied_host()
+        profile_changed = self.sync_host_config_from_repo()
 
         # Converge check: runs also when nothing was incoming; idempotent and cheap.
         if self.mise_local_config.is_file() and system.have("mise"):
@@ -527,7 +531,9 @@ class UpdateMixin:
         self.check_ssh_key_backup()
         self.write_update_state("updated", pending="", failed_revision="")
 
-        if profile_changed or args.system or "system" in steps:
+        if not self.saved_ansible():
+            log("ansible: false in the host config; system changes are not applied")
+        elif profile_changed or args.system or "system" in steps:
             apply_args = types.SimpleNamespace(
                 limit="",
                 playbook="workstation",
@@ -536,7 +542,7 @@ class UpdateMixin:
                 profile_changed=profile_changed,
             )
             reason = (
-                "host profile changed"
+                "host config changed"
                 if profile_changed
                 else "--system" if args.system else "system files changed"
             )

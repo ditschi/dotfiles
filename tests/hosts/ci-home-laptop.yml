@@ -1,11 +1,12 @@
 ---
 # CI / integration: docker --hostname ci-home-laptop
-# Mirrors ThinkPad home-laptop (stylus/sshd services skipped or soft in containers).
-profile: home-laptop
+# Mirrors the L13 Yoga (private desktop); the test sets the context and device by
+# override inside its container. Stylus/sshd services are skipped or soft there.
+context: private
+device: desktop
 features:
   - zsh-full
   - fonts
-  - starship
   - desktop
   - gnome
   - monitoring

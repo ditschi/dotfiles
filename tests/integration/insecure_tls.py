@@ -11,11 +11,11 @@ from typing import Callable, Mapping, Optional
 MACHINE = Path(__file__).resolve().parents[2] / "machine_cli/machine"
 
 
-def _default_profile() -> Optional[str]:
-    """The profile `machine` would pick on this host, or None if it cannot run."""
+def _default_context() -> Optional[str]:
+    """The context `machine` would pick on this host, or None if it cannot run."""
     try:
         module = SourceFileLoader("machine_cli_tls", str(MACHINE)).load_module()
-        return module.Machine().default_profile()
+        return module.Machine().default_context()
     except Exception:  # missing dependency or unreadable profile: keep verification
         return None
     finally:
@@ -24,10 +24,10 @@ def _default_profile() -> Optional[str]:
 
 def insecure_tls(
     env: Mapping[str, str] = os.environ,
-    profile: Callable[[], Optional[str]] = _default_profile,
+    context: Callable[[], Optional[str]] = _default_context,
 ) -> bool:
-    """An explicit 0 or 1 wins; otherwise on for work machines only."""
+    """An explicit 0 or 1 wins; otherwise on for work hosts only."""
     explicit = env.get("DOTFILES_TEST_INSECURE_TLS")
     if explicit in ("0", "1"):
         return explicit == "1"
-    return profile() == "work-machine"
+    return context() == "work"

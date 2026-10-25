@@ -5,7 +5,7 @@
   gather_facts: false
   connection: local
   tasks:
-    - name: Resolve monitoring config names from profile features
+    - name: Resolve monitoring config names from hardware, device and features
       ansible.builtin.include_tasks: tasks/resolve_monitoring.yml
 
     - name: Write monitoring_configs JSON

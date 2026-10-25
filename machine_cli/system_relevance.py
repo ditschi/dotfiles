@@ -8,20 +8,19 @@ from typing import Iterable, Sequence
 
 import yaml
 
-FEATURE_RE = re.compile(r"""^'([\w-]+)' in \(features \| default\(\[\]\)\)$""")
-PROFILE_RE = re.compile(r"""^profile \| default\(''\) not in \[(.*)\]$""")
+from . import features as feature_table
+
+FEATURE_RE = re.compile(r"""^'([\w-]+)' in machine_features$""")
 
 
-def _condition_holds(condition: object, features: Sequence[str], profile: str) -> bool:
-    """False only when the condition is understood and false; unknown conditions hold."""
+def _condition_holds(condition: object, features: Sequence[str]) -> bool:
+    """False only when the condition is understood and false; unknown conditions hold.
+
+    `features` are the host's features the table allows (Ansible's machine_features)."""
     if not isinstance(condition, str):
         return True
-    text = condition.strip()
-    if match := FEATURE_RE.match(text):
+    if match := FEATURE_RE.match(condition.strip()):
         return match.group(1) in features
-    if match := PROFILE_RE.match(text):
-        excluded = [part.strip().strip("'\"") for part in match.group(1).split(",")]
-        return profile not in excluded
     return True
 
 
@@ -54,10 +53,9 @@ def is_relevant_path(
     *,
     uses: dict[str, list[list[object]]],
     features: Sequence[str],
-    profile: str,
-    own_profile: str,
+    own_host_config: str,
 ) -> bool:
-    if path == own_profile:
+    if path == own_host_config:
         return True
     if not path.startswith("ansible/"):
         return False
@@ -72,10 +70,10 @@ def is_relevant_path(
         if not places:
             return True  # a role no playbook names cannot be evaluated: count it
         return any(
-            all(_condition_holds(c, features, profile) for c in conditions)
+            all(_condition_holds(c, features) for c in conditions)
             for conditions in places
         )
-    return True  # playbooks, tasks/, group_vars/, profiles/, requirements, cfg
+    return True  # playbooks, tasks/, group_vars/, requirements, cfg
 
 
 def relevant_system_paths(
@@ -83,14 +81,16 @@ def relevant_system_paths(
     *,
     ansible_dir: Path,
     features: Sequence[str],
-    profile: str,
-    own_profile: str,
+    context: str,
+    device: str,
+    own_host_config: str,
 ) -> list[str]:
     uses = role_conditions(ansible_dir)
+    allowed, _ = feature_table.split(features, context, device)
     return sorted(
         p
         for p in set(paths)
         if is_relevant_path(
-            p, uses=uses, features=features, profile=profile, own_profile=own_profile
+            p, uses=uses, features=allowed, own_host_config=own_host_config
         )
     )

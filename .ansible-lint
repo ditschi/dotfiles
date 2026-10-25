@@ -1,8 +1,7 @@
 ---
-# ansible-lint for ansible/ + related host profiles
+# ansible-lint for ansible/
 profile: basic
 exclude_paths:
-  - ansible/profiles/
   - ansible/inventory/
   - tests/
 skip_list:

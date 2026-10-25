@@ -23,15 +23,15 @@ Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout.
 Non-interactive:
 
 ```bash
-./bootstrap --profile home-laptop --yes
-./bootstrap --profile work-machine --yes
-./bootstrap --profile rpi-zero --yes --no-become
+./bootstrap --context private --device desktop --yes
+./bootstrap --context work --device desktop --yes
+./bootstrap --context private --device server --yes
 ```
 
 From the laptop to a reachable device:
 
 ```bash
-./bootstrap --limit rpi-zero-1 --profile rpi-zero
+./bootstrap --limit rpi-zero-1 --context private --device server
 ```
 
 ## Day to day
@@ -41,16 +41,16 @@ From the laptop to a reachable device:
 | Change an alias for all hosts | Edit the file in `$HOME` (it is the repo file), `machine commit -m "..." && machine push` |
 | Bring other hosts up to date | `machine update` (pulls, runs only the affected steps) |
 | Packages/system | `machine update --system` or `machine apply` |
-| Apply a host profile remotely | `machine apply --limit homeserver` |
+| Apply a host config remotely | `machine apply --limit homeserver` |
 | Full setup / change features | `machine setup` (saved answers as defaults) |
-| Save host profile to the repo | `machine profile save` |
-| Status / drift | `machine status` / `machine profile show` |
+| Save the host config to the repo | `machine host save` |
+| Status / drift | `machine status` / `machine host show` |
 | Inventory (vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` from Bitwarden | `machine env pull` |
 | Resolve different SSH keys (host / Bitwarden) | `machine ssh sync` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 
-`machine update` only runs what changed upstream: the tool install (`mise install`, plus the Azure CLI via `uv tool`) for a changed `home/core/.config/mise/*`, the dotfile apply (`mise dot apply --prune`) for added/removed files under `home/` or a changed `mise.toml`, Ansible when `ansible/**` changed in a part that applies to this host (roles of other profiles, docs and inventory are ignored; a host never set up by Ansible gets no system step), a profile sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's profile, runs the dotfile apply when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. Every `machine update` ends with a converge check (dotfile apply and tool install, also when nothing is incoming), and on a terminal the shell is reloaded afterwards by the `machine` shell function. A failed tool install reverts like a failed zsh check. `MACHINE_SKIP_TOOLS=1` skips the tool install in `machine setup` (tests). `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
+`machine update` only runs what changed upstream: the tool install (`mise install`, plus the Azure CLI via `uv tool`) for a changed `home/core/.config/mise/*`, the dotfile apply (`mise dot apply --prune`) for added/removed files under `home/` or a changed `mise.toml`, Ansible when `ansible/**` changed in a part that applies to this host (roles of features this host does not have, docs and inventory are ignored; a host never set up by Ansible or with `ansible: false` gets no system step), a host-config sync when `machine/hosts/**` changed. Local edits are kept; the update stops only when a locally edited file is also changed upstream or history diverged (`--force` stashes overlapping edits, merges, restores them). `machine update --check [--json]` shows the plan without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own when the checkout has no local changes after the resolvers: it fast-forwards to just before the first commit that touches `ansible/**` or this host's config, runs the dotfile apply when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, does not retry that revision and shows needs-attention. Everything from the first system commit on stays pending for a manual `machine update`. Every `machine update` ends with a converge check (dotfile apply and tool install, also when nothing is incoming), and on a terminal the shell is reloaded afterwards by the `machine` shell function. A failed tool install reverts like a failed zsh check. `MACHINE_SKIP_TOOLS=1` skips the tool install in `machine setup` (tests). `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
 The background update check (`dotfiles-update-check-job`) and `machine update` write `~/.dotfiles-update-state` (`state`, `reason`, `revision`, `pending`, `failed_revision`, `ansible_applied_rev`; the only state file). Interactive zsh and bash show it in the prompt (Starship `env_var` module; without Starship, at the right of the zsh prompt or as a `PS1` prefix in bash), re-read before every prompt without forking: `⬆ dotfiles update` (run `machine update`), `↻ reload shell` (an update was applied after this shell started; run `reload`), `⚠ dotfiles: check` (needs attention, e.g. diverged history; a line with the reason is also printed at shell start). A shell started after the update shows nothing. `machine status` prints the state, the reason and the fix. `machine attention` (also plain `machine`, which prints the help when all is clean) lists open items (needs-attention, pending system update, local-override conflicts) and offers to resolve each on a terminal. When linking dotfiles, an existing regular file at a target is deleted if identical to the repository file, else moved to `<name>.pre-dotfiles`.
 
@@ -58,7 +58,7 @@ The background update check (`dotfiles-update-check-job`) and `machine update` w
 
 ### Shell: prompt and plugins
 
-Both shells use [Starship](https://starship.rs) with the shared `~/.config/starship.toml` (all profiles). The prompt character shows the shell: a green `❯` in zsh, a purple `❯` in bash; `🐳` marks a container, and a failed command shows in the status segment. Without Starship both shells fall back to a plain prompt (directory and `❯`).
+Both shells use [Starship](https://starship.rs) with the shared `~/.config/starship.toml` (every host). The prompt character shows the shell: a green `❯` in zsh, a purple `❯` in bash; `🐳` marks a container, and a failed command shows in the status segment. Without Starship both shells fall back to a plain prompt (directory and `❯`).
 
 zsh plugins are managed by [antidote](https://antidote.sh): edit `~/.zsh/plugins.txt` (one plugin per line; order matters) and open a new shell — the generated `~/.cache/zsh/plugins.zsh` is rebuilt and missing plugins are cloned to `~/.local/share/antidote`. `antidote update` updates them. The prompt appears first; completion (`compinit`), fzf-tab, history-substring-search, autosuggestions and fast-syntax-highlighting load right after it via zsh-defer. Tools such as fzf, zoxide, eza, fd, delta and Starship come from mise; their shell init is cached in `~/.cache/zsh` and regenerated when the binary changes.
 
@@ -81,23 +81,18 @@ Before bash hands over to zsh, a startup health check runs. If zsh fails or load
 Node LTS (with npm) comes from mise (`20-tools.toml`), user-local and without sudo.
 NVM and pyenv are no longer loaded by the shell configuration.
 
-`machine setup` offers `claude-code` and `copilot-cli` in its feature picker.
-New private host profiles default to Claude Code; `work-machine` defaults to both.
-Containers have neither CLI enabled by default.
-Existing saved host features remain authoritative: rerun `machine setup` and
-select the desired CLIs, then save the host profile to roll them out.
-The CLIs are installed by mise (`30-llm.toml`) without sudo. Authentication remains a manual step.
-
-OpenSpec is installed automatically when either CLI is selected or an existing
-Claude, Copilot, Codex, Gemini, Aider or Ollama command is found, even when both
-features are disabled.
+The LLM CLIs are features with their own dotfile groups: `claude-code` (group `claude`),
+`copilot-cli` (group `copilot`) and `opencode` (group `opencode`). Each also selects the
+group `openspec`, so OpenSpec comes with any of them. Private hosts preselect Claude Code,
+work hosts Claude Code and Copilot; opencode and containers are opt-in. mise installs
+them without sudo; authentication remains a manual step.
 
 ### Git config
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.
-- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. `machine setup` creates it once from the profile (`work-machine` → work user, otherwise private) and never overwrites it; on work hosts an existing file only gets a missing `http.sslCAInfo` appended. Signing key, `safe.directory`, credentials and proxy go here.
+- `~/.gitconfig.local` → host-local, not in git, included after the shared settings. `machine setup` creates it once from the context (`work` → work user, otherwise private) and never overwrites it; on work hosts an existing file only gets a missing `http.sslCAInfo` appended. Signing key, `safe.directory`, credentials and proxy go here.
 - Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
-- `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. For github.com the variable follows the host type: `GITHUB_TOKEN` on private hosts, `GITHUB_PRIVATE_TOKEN` on work machines (where `GITHUB_TOKEN` is the work token); `machine` writes the choice to `~/.config/git/github-token.gitconfig` on every dotfile apply. On private hosts `machine setup` also switches the checkout's `origin` to SSH (`git@github.com:…`) when the SSH key authenticates at GitHub, so pushing needs no token. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
+- `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. For github.com the variable follows the host type: `GITHUB_TOKEN` on private hosts, `GITHUB_PRIVATE_TOKEN` on work hosts (where `GITHUB_TOKEN` is the work token); `machine` writes the choice to `~/.config/git/github-token.gitconfig` on every dotfile apply. On private hosts `machine setup` also switches the checkout's `origin` to SSH (`git@github.com:…`) when the SSH key authenticates at GitHub, so pushing needs no token. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
 - Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
 - `machine update` and `machine commit` move host-only entries from the shared config into `~/.gitconfig.local`. A key that is absent locally moves, an equal value is dropped from the shared file, and a different local value is a conflict that `machine update` asks about (non-interactive runs keep both and leave the shared file dirty). Repeated values are preserved. Backups live under `~/.local/share/machine/local-overrides-backup/`. Text added to `~/.bashrc` is handled the same way: known text is removed silently, new text is moved only when you select it, and moved text stands between `# machine-local begin/end` markers in `~/.bashrc-local`.
 - The installed pre-commit hook does the same before an ordinary Git commit. If it changes the shared file, review and stage the cleaned file, then commit again.
@@ -138,7 +133,8 @@ ansible/
   requirements.yml        # ansible.posix (+ Galaxy notes)
   inventory/local.yml     # always localhost
   inventory/hosts.example.yml
-  profiles/               # feature defaults per profile
+  group_vars/all/         # packages.yml (apt per feature), features.yml (feature table)
+  tasks/detect_hardware.yml # laptop, Raspberry Pi, Pi Zero
   roles/
     monitoring/           # Telegraf agent configs
     sshd_home/            # port 5115 + authorized_keys
@@ -164,9 +160,10 @@ The script itself only defines the command line. The implementation is the packa
 
 | Module | Content |
 | --- | --- |
-| `core` | constants (profiles, features) and pure helpers |
+| `core` | constants (contexts, devices, features) and pure helpers |
 | `system` | everything touching the outside world (`run`, `have`, tty, hostname); tests replace these here |
-| `profile` | local profile, versioned host files, prompts |
+| `features` | the feature table: defaults, menu, dotfile groups |
+| `profile` | host config (context, device, features), applied copy, prompts |
 | `tools` | bootstrap tools, git / ansible runners |
 | `dotfiles`, `mise_tools`, `mise_check`, `terminal_fonts` | dotfile groups (`mise dot`), tool install, fragment checks, terminal fonts |
 | `bw_client`, `env_pull`, `ssh_keys` | Bitwarden client, `~/.env`, per-host SSH keys |
@@ -175,32 +172,35 @@ The script itself only defines the command line. The implementation is the packa
 | `attention`, `events` | `machine attention`, local event log |
 | `machine` | the `Machine` class combining the modules above |
 
-**Only source per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — profile, features and `ssh_allow_from`. `machine setup` writes the selection there directly (also with `--yes`) and offers to commit; commit and push it to share. A host's file can also be changed from another host: the next `machine update` (or the background job) takes it over without a question and prints what changed (for example `+ thunderbird`); `machine update --check` lists it beforehand.  
-Applied copy: `~/.config/machine/profile.yml` (not in git, written only by `machine`; hand edits are undone by the next update). It is the state a failed apply reverts to and the profile of containers. Dotfile groups of the host: `~/.config/mise/config.local.toml` (written by `machine`).
+**Only source per host:** the host config [`machine/hosts/<hostname>.yml`](machine/hosts/) — `context`, `device`, features, `ssh_allow_from` and optionally `ansible: false`. `machine setup` writes the selection there directly (also with `--yes`) and offers to commit; commit and push it to share. A host's file can also be changed from another host: the next `machine update` (or the background job) takes it over without a question and prints what changed (for example `+ thunderbird`); `machine update --check` lists it beforehand.  
+Applied copy: `~/.local/share/machine/applied-host.yml` (not in git, written only by `machine`; hand edits are undone by the next update; a former `~/.config/machine/profile.yml` is taken over once). It is the state a failed apply reverts to, what the shell reads at start, and the host config of containers. Dotfile groups of the host: `~/.config/mise/config.local.toml` (written by `machine`).
 
-### Versioning and pushing host profiles
+### Versioning and pushing host configs
 
 ```bash
 # On the host, once (or after changing features):
 machine setup                 # interactive
-machine profile save          # → machine/hosts/$(hostname -s).yml
-machine commit -m "host profile" && machine push
+machine host save             # → machine/hosts/$(hostname -s).yml
+machine commit -m "host config" && machine push
 
 # Laptop: allow SSH from this laptop to the server
 # edit machine/hosts/homeserver.yml → ssh_allow_from: [this-hostname]
+# A new host gets its host config from `machine setup`; to prepare one for
+# `machine apply --limit <host>` write machine/hosts/<host>.yml by hand
+# (context, device, features, ssh_allow_from), like the files already there.
 machine commit -m "allow laptop on homeserver" && machine push
 
 # On the server:
-machine update                # pull → sync profile → apply on drift
+machine update                # pull → sync host config → apply on drift
 
 # Or from the laptop without logging in to the server:
 machine apply --limit homeserver
 ```
 
-`machine apply` locally: if Ansible or the health check fails, the previous `profile.yml` is restored. The health check fails when the zsh startup check fails or when the group configuration cannot be read (unprivileged checks only; telegraf is a warning). The same restore applies to the apply step of `machine update`. If the profile changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the profile in git and apply again.
+`machine apply` locally: if Ansible or the health check fails, the previously applied host config is restored. The health check fails when the zsh startup check fails or when the group configuration cannot be read (unprivileged checks only; telegraf is a warning). The same restore applies to the apply step of `machine update`. If the host config changed, Ansible runs again with the old state. Remote (`--limit`): no auto-revert — fix the host config in git and apply again.
 
-The recovery Ansible run only happens when syncing the host profile changed it;
-an unchanged profile is restored without repeating the same failed command.
+The recovery Ansible run only happens when syncing the host config changed it;
+an unchanged host config is restored without repeating the same failed command.
 Package and system changes are not transactionally rolled back.
 
 Managed work machines may allow only specific sudo commands. The workstation
@@ -208,8 +208,9 @@ playbook requires approval to execute Ansible modules as root, not just permissi
 to run selected APT commands. A correct sudo password does not grant that approval.
 If fact gathering reports "not allowed to execute", stop and contact the machine
 administrator for an approved deployment route. `--no-become` only suppresses the
-password prompt; it does not disable the playbook's root tasks. Dotfile and
-environment management can remain active without applying system roles.
+password prompt; it does not disable the playbook's root tasks. For such a host set
+`ansible: false` in its host config: setup, apply and update then skip Ansible, while
+dotfiles, tools and environment management stay active.
 
 ## Secrets / Bitwarden
 
@@ -255,7 +256,7 @@ The shell loads exactly these files, in order (later assignments win):
 
 | File | Contents | Ownership |
 | --- | --- | --- |
-| `~/.env` | Class-shared and profile Bitwarden items | Generated |
+| `~/.env` | The context's Bitwarden group item | Generated |
 | `~/.env.host` | This host's Bitwarden item | Generated |
 | `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local, never overwritten |
 
@@ -274,13 +275,13 @@ content, the pull leaves both generated files unchanged, exits with an error, an
 for manual review. Existing overlays are never overwritten; secret values are
 not printed in warnings.
 
-Each profile belongs to groups (`ENV_GROUPS` in `machine_cli/core.py`): `work-machine` → `work`; `home-laptop` → `private`; `home-server` → `private`, `server`; `rpi` → `private`, `server`, `iot`; `rpi-zero` → `private`, `iot`; `container` → none.
+The group follows the context (`ENV_GROUPS` in `machine_cli/core.py`): `private` → `private`, `work` → `work`, a container without context → none.
 
 Item names (secure note, or login with note + custom fields). Later items and custom fields win for identical keys:
 
 | Layer | Item name | Example |
 | --- | --- | --- |
-| Groups (in order) | `env/groups/<group>` | `env/groups/work`, `env/groups/private`, `env/groups/server`, `env/groups/iot` |
+| Group | `env/groups/<group>` | `env/groups/work`, `env/groups/private` |
 | This host | `env/hosts/<hostname>` | `env/hosts/ditschi-ThinkPad-L13-Yoga-Gen-2` |
 | Infra | `ansible-vault` | vault password |
 
@@ -288,7 +289,6 @@ Item names (secure note, or login with note + custom fields). Later items and cu
 
 - `work` — work laptops only (`env/groups/work`, SSH/VPN)
 - `home` — private machines and shared home secrets
-- `iot` — Pis / Zero (`env/groups/iot`, `env/hosts/rpi-zero-1`)
 - `infra` — `ansible-vault`, host password hashes, not for shell `.env`
 
 Contents of an `env/…` item:
@@ -336,17 +336,27 @@ machine ssh sync              # host and Bitwarden differ: choose which key wins
 machine ssh rotate            # new key at ~/.ssh/id_ed25519_<hostname>, old one kept, item overwritten
 ```
 
-## Profiles / features
+## Context, device, hardware and features
 
-`work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
+Every host has three levels:
 
-Features (selected during bootstrap, stored in `machine/hosts/<hostname>.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `thunderbird`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
+| Level | Values | How it is set | Selects |
+| --- | --- | --- | --- |
+| Context | `private`, `work` | chosen (default: `work` for a company user ID) | dotfile behaviour (Bitwarden group, Git identity, CA bundle, work group, SSH class, `WORK_SETUP`), work roles; private infrastructure only for `private` |
+| Device | `desktop` (graphical session), `server` (none), `container` | chosen (default from the boot target); `container` is set in Docker | graphical features |
+| Hardware | laptop, Raspberry Pi, Pi Zero | detected by Ansible (`tasks/detect_hardware.yml`) | Pi Zero package set, Telegraf fragment, Docker only where installable |
 
-Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
+The feature table [`ansible/group_vars/all/features.yml`](ansible/group_vars/all/features.yml) lists every feature with its help text, its dotfile groups and, per context and device, `default` (preselected), `optional` or `excluded`; the stricter of the two wins. `machine setup` offers only the features that are not excluded; Ansible applies only those (`machine_features`). A feature in a host config that is excluded or unknown is reported and dropped at the next write.
+
+Adding a feature: one row in the feature table plus either apt packages (`packages_by_feature` in `group_vars/all/packages.yml`), a role with `when: "'<feature>' in machine_features"`, or a dotfile group (`home/<group>/` declared in `mise.toml`, named under `groups:`). The CLI needs no change. Tools for every host go into a `core` fragment instead.
+
+In Docker the device is `container` without context; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` set others (used by `machine testenv` and the tests). `MACHINE_HARDWARE=laptop,pi,pi-zero` replaces the hardware detection in tests.
+
+Private hosts get `monitoring` (Telegraf) by default. Config names are resolved **only** in `tasks/resolve_monitoring.yml` from the hardware and the device (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 
 Yoga/convertible (L13): feature `stylus-touch-guard` → role `stylus_touch_guard`. Previously: [helpers-and-automation](https://github.com/ditschi/helpers-and-automation) (**archived / deprecated**).
 ThinkPad laptops: features `thinkpad-tuning` → role `thinkpad_tuning` and `touch-device` → role `touch_device`, see [docs/thinkpad-l13-yoga-gen2.md](docs/thinkpad-l13-yoga-gen2.md).
-Mail: feature `thunderbird` (default on `home-laptop`) installs Thunderbird and the mise group `home/thunderbird` with `tb` and `tb-bridge` of [thunderbird-cli](https://github.com/vitalio-sh/thunderbird-cli). The bridge extension is not installed automatically, because it accepts any local bridge, also one of another user: `machine` downloads the pinned XPI to `downloads/` in the checkout (gitignored); install it once in Thunderbird (Add-ons and Themes → gear → Install Add-on From File). Start the bridge with `tb-bridge &`, then `tb health`.
+Mail: feature `thunderbird` (default on private desktops) installs Thunderbird and the mise group `home/thunderbird` with `tb` and `tb-bridge` of [thunderbird-cli](https://github.com/vitalio-sh/thunderbird-cli). The bridge extension is not installed automatically, because it accepts any local bridge, also one of another user: `machine` downloads the pinned XPI to `downloads/` in the checkout (gitignored); install it once in Thunderbird (Add-ons and Themes → gear → Install Add-on From File). Start the bridge with `tb-bridge &`, then `tb health`.
 
 SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `authorized_keys` from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
 
@@ -365,31 +375,31 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 
 | Layer | Responsible for |
 | --- | --- |
-| `machine/hosts/*.yml` | Desired state (profile, features) |
+| `machine/hosts/*.yml` | Desired state (context, device, features) |
 | `machine` CLI | Orchestration, UX, secrets, git, calling mise and Ansible |
 | mise | Dotfile groups and user-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
 | Inventory | Reachability only — no features |
 
-Work modules (`01_work.zsh`) are only linked for profile `work-machine`.
+Work modules (`01_work.zsh`) are only linked for the context `work`.
 
 Fresh setup uses the shell's work-account naming rule
-(`^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`), so `dci2lr` defaults to
-`work-machine`. Explicit `--profile` / `MACHINE_PROFILE_NAME` choices and saved
-host profiles take precedence outside Docker. In Docker (`/.dockerenv` or
-`MACHINE_IN_DOCKER=1`) the profile is always `container`, in the CLI and the
-shell, and `WORK_SETUP` stays off; set `MACHINE_PROFILE_OVERRIDE=<profile>` to
-test another profile in a container.
+(`^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`), so `dci2lr` defaults to the context
+`work`. Explicit `--context` / `--device` choices and saved host configs take
+precedence outside Docker. In Docker (`/.dockerenv` or `MACHINE_IN_DOCKER=1`) the
+device is `container` without context, in the CLI and the shell, and `WORK_SETUP`
+stays off; set `MACHINE_CONTEXT_OVERRIDE` / `MACHINE_DEVICE_OVERRIDE` to test
+another host in a container. The shell exports `MACHINE_CONTEXT` and `MACHINE_DEVICE`.
 
 Working Azure CLI and GitHub CLI installations are kept, including their
 authentication and package sources. Docker provisioning preserves an existing
 provider instead of replacing it with `docker.io`; only a missing,
 provider-compatible Compose package is added. Unmanaged providers may need
-manual Compose setup. The work profile does not enable Docker by default.
+manual Compose setup. Work hosts do not preselect Docker.
 
-User-space tools (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `zellij`, `gh`,
-`yazi`, Node, the LLM CLIs (Claude Code, Copilot, opencode) and OpenSpec, Azure CLI) come from mise fragments in
-`home/core/.config/mise/conf.d/`. Versions are pinned in `home/core/.config/mise/mise.lock`
+User-space tools for every host (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`, `tmux`, `zellij`, `gh`,
+`yazi`, Node, `uv`) come from mise fragments in `home/core/.config/mise/conf.d/`; the LLM CLIs,
+OpenSpec and the fonts come from the feature groups (`home/<group>/.config/mise/conf.d/`). Versions are pinned in `home/core/.config/mise/mise.lock`
 and `locks/` next to it; regenerate them with
 `mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
 A tool declared in two fragments, or in a fragment and an Ansible package list,
@@ -405,20 +415,22 @@ uvx nox -l                      # list sessions; run one with `uvx nox -s tests 
 DOTFILES_TEST_INSECURE_TLS=1 uvx nox -s docker   # test containers skip TLS verification (hosts that intercept TLS)
 # automatic on work machines; DOTFILES_TEST_INSECURE_TLS=0 forces verification there
 pytest tests/unit -q            # logic incl. apply revert, host YAML schema (needs tests/requirements.txt)
-pytest tests/integration -m "docker and not apt and not apt_gnome"
-pytest tests/integration -m apt # rpi-zero APT + machine/hosts/ci-rpi-zero.yml
-pytest tests/integration -m apt_gnome  # home-laptop APT + ci-home-laptop.yml (~10+ min)
+pytest tests/integration -n auto -m "docker and not apt and not apt_gnome"   # -n: parallel (pytest-xdist)
+pytest tests/integration -n auto -m apt # Pi Zero APT + tests/hosts/ci-rpi-zero.yml
+pytest tests/integration -m apt_gnome  # private desktop APT + ci-home-laptop.yml (slow on a cold cache)
 ansible-lint ansible/*.yml      # locally / in CI on changes under ansible/ or machine/hosts/
 ansible-galaxy collection install -r ansible/requirements.yml
 ```
 
+Locally the APT tests download through a caching apt proxy (`dotfiles-test-apt-cache`, apt-cacher-ng on the Docker network `dotfiles-test`), so later runs fetch almost nothing. It is started on first use and kept running; `docker rm -f dotfiles-test-apt-cache` stops it (after a change to `tests/docker/apt-cache/` as well), `docker volume rm dotfiles-test-apt-cache` drops the cache. It is off in CI; `DOTFILES_TEST_APT_CACHE=0|1` overrides. The test image installs no recommended packages.
+
 CI (`.github/workflows/verify.yml`):
 
 - Unit + Ansible syntax (amd64 + arm)
-- Docker matrix of all profiles (without APT)
-- Clean install from `machine/hosts/ci-container.yml`
-- APT + Ansible from `machine/hosts/ci-rpi-zero.yml` and `ci-home-laptop.yml`
-- **ansible-lint + host YAML validation** only when `ansible/**` or `machine/hosts/**` (or similar) changed
+- Docker matrix of context/device combinations (without APT)
+- Clean install from `tests/hosts/ci-container.yml`
+- APT + Ansible from `tests/hosts/ci-rpi-zero.yml` and `ci-home-laptop.yml` (CI host configs, read through `MACHINE_HOSTS_DIR=tests/hosts`)
+- **ansible-lint + host YAML validation** only when `ansible/**`, `machine/hosts/**` or `tests/hosts/**` (or similar) changed
 
 **Deliberately not in CI:** real Pi hardware, Kerberos against the work KDC, Cosmic session, real `bw login`/2FA, real Influx.
 
@@ -427,8 +439,8 @@ CI (`.github/workflows/verify.yml`):
 ```bash
 docker compose -f tests/compose.yaml run --rm shell
 # inside the container:
-./bootstrap --profile home-laptop          # with prompts
-./bootstrap --profile home-laptop --yes    # quiet
+./bootstrap                                # with prompts
+./bootstrap --context private --device desktop --yes    # quiet
 machine setup                              # previous answers preselected
 machine update                             # only bring up to date
 ```
@@ -443,4 +455,4 @@ machine testenv -- 'machine update && machine'         # quote shell syntax, or 
 python3 machine_cli/testenv.py -- machine              # same, from a checkout when the installed machine is broken
 ```
 
-Inside, `machine` uses the host's saved profile (`--profile` to change it) and the host name. The container has no systemd user bus and no `bw`, so the timer, linger and `~/.env` steps are skipped there, and Ansible system steps only change the container.
+Inside, `machine` uses the host's applied context and device (`--context` / `--device` to change them) and the host name. The container has no systemd user bus and no `bw`, so the timer, linger and `~/.env` steps are skipped there, and Ansible system steps only change the container.

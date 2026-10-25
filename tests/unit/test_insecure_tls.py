@@ -11,14 +11,14 @@ from insecure_tls import insecure_tls  # noqa: E402
 
 
 @pytest.mark.parametrize(
-    "env, profile, expected",
+    "env, context, expected",
     [
-        ({}, "work-machine", True),
-        ({}, "home-laptop", False),
+        ({}, "work", True),
+        ({}, "private", False),
         ({}, None, False),
-        ({"DOTFILES_TEST_INSECURE_TLS": "0"}, "work-machine", False),
-        ({"DOTFILES_TEST_INSECURE_TLS": "1"}, "home-laptop", True),
+        ({"DOTFILES_TEST_INSECURE_TLS": "0"}, "work", False),
+        ({"DOTFILES_TEST_INSECURE_TLS": "1"}, "private", True),
     ],
 )
-def test_insecure_tls_default_and_override(env, profile, expected):
-    assert insecure_tls(env, lambda: profile) is expected
+def test_insecure_tls_default_and_override(env, context, expected):
+    assert insecure_tls(env, lambda: context) is expected

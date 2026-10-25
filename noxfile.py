@@ -70,6 +70,8 @@ def docker(session: nox.Session) -> None:
         "-q",
         "-m",
         "docker and not apt and not apt_gnome",
+        "-n",
+        "auto",
         *session.posargs
     )
     session.log("Full apt profile: pytest tests/integration -m apt")

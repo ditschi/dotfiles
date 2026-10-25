@@ -17,7 +17,7 @@ The six machine profiles mix two independent questions: whether a host is privat
 - Bitwarden environment groups are only `private` or `work`; the groups `server` and `iot` are dropped (no such items exist in the vault).
 - A host-config setting `ansible: false` skips Ansible in `setup`, `apply` and `update`. It replaces the implicit "work machine without root" fallback; `--skip-ansible` and `--no-become` stay for single runs.
 - Names: `--context` and `--device` replace `--profile`; the shell exports `MACHINE_CONTEXT` and `MACHINE_DEVICE` instead of `MACHINE_PROFILE`; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` replace `MACHINE_PROFILE_OVERRIDE`. `WORK_SETUP` stays. The project container launcher and `machine testenv` use the new options.
-- All host configs in the repository are rewritten in this change.
+- All host configs in the repository are rewritten in this change. The CI host configs move to `tests/hosts/` and the template `_example-thinkpad-copy.yml` is removed.
 - Default changes for new hosts: `copilot-cli` is optional, never preselected, on private hosts; `syncthing` is preselected on private desktops and no longer offered on servers or at work.
 
 ## Capabilities

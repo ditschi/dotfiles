@@ -77,7 +77,7 @@ repos:
         entry: python3 -m machine_cli.mise_check
         language: python
         additional_dependencies: [pyyaml]
-        files: (^|/)mise/conf\.d/.*\.toml$|^ansible/group_vars/all\.yml$
+        files: (^|/)mise/conf\.d/.*\.toml$|^ansible/group_vars/all/packages\.yml$
         pass_filenames: false
       - id: no-co-authored-by
         name: forbid Co-authored-by trailers in commit messages

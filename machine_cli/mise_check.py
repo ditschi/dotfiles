@@ -54,7 +54,7 @@ def short_name(tool: str) -> str:
 
 def apt_packages(repo: Path = REPO) -> List[str]:
     variables = yaml.safe_load(
-        (repo / "ansible" / "group_vars" / "all.yml").read_text()
+        (repo / "ansible" / "group_vars" / "all" / "packages.yml").read_text()
     )
     names: List[str] = []
 
@@ -92,7 +92,7 @@ def check(repo: Path = REPO) -> List[str]:
         if apt in packages or name in packages:
             errors.append(
                 f"{name!r} is a mise tool ({paths[0]}) and an Ansible package in "
-                "ansible/group_vars/all.yml; keep one"
+                "ansible/group_vars/all/packages.yml; keep one"
             )
     return errors
 

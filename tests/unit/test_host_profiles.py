@@ -619,3 +619,79 @@ def test_unknown_profile_aborts_without_tty(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
     with pytest.raises(SystemExit):
         machine.current_profile()
+
+
+def test_profile_changes_are_readable():
+    from machine_cli.profile import profile_changes
+
+    old = {"profile": "home-laptop", "features": ["a", "b"], "ssh_allow_from": []}
+    new = {"profile": "home-laptop", "features": ["a", "c"], "ssh_allow_from": ["nas"]}
+    assert profile_changes(old, new) == ["+ c, - b", "ssh_allow_from + nas"]
+    assert profile_changes(new, {**new, "profile": "rpi"}) == [
+        "profile home-laptop -> rpi"
+    ]
+    assert profile_changes(new, new) == []
+
+
+@pytest.mark.parametrize("yes", [True, False])
+def test_setup_writes_the_repo_host_file_without_asking(tmp_path, monkeypatch, yes):
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    asked = []
+    monkeypatch.setattr(
+        cli_mod.system, "prompt_yes_no", lambda q, d: asked.append(q) or False
+    )
+    host_file = machine.host_profile_path()
+    host_file.write_text(cli_mod.format_profile_yaml("home-laptop", ["zsh-full"], []))
+
+    machine.maybe_persist_host_profile(
+        "home-laptop", ["zsh-full", "thunderbird"], [], yes=yes
+    )
+
+    assert "thunderbird" in host_file.read_text()
+    assert not [q for q in asked if "Update versioned host profile" in q]
+    assert [q for q in asked if q.startswith("Commit now")] == (
+        [] if yes else [asked[0]]
+    )
+
+
+def test_setup_writes_no_repo_host_file_in_a_container(tmp_path, monkeypatch):
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    machine.maybe_persist_host_profile("container", ["zsh-full"], [], yes=True)
+    assert not machine.host_profile_path().exists()
+
+
+def test_update_applies_the_repo_profile_with_a_notice(tmp_path, monkeypatch):
+    import machine_cli.profile as profile_mod
+
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    messages = []
+    monkeypatch.setattr(profile_mod, "log", messages.append)
+    monkeypatch.setattr(machine, "write_dotfile_groups", lambda _p: None)
+    machine.write_profile("home-laptop", ["zsh-full", "docker"], [])  # hand-edited copy
+    machine.host_profile_path().write_text(
+        cli_mod.format_profile_yaml("home-laptop", ["zsh-full", "thunderbird"], [])
+    )
+
+    assert machine.sync_host_profile_from_repo()
+    assert machine.saved_features() == ["zsh-full", "thunderbird"]
+    assert any("+ thunderbird, - docker" in m for m in messages)
+
+
+def test_update_check_lists_incoming_profile_changes(tmp_path, monkeypatch):
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    machine.write_profile("home-laptop", ["zsh-full"], [])
+    rel = str(machine.host_profile_path().relative_to(repo))
+    upstream = cli_mod.format_profile_yaml(
+        "home-laptop", ["zsh-full", "thunderbird"], []
+    )
+
+    def run(args, **_kw):
+        out = upstream if args[-1] == f"origin/main:{rel}" else ""
+        return subprocess.CompletedProcess(args, 0, out, "")
+
+    monkeypatch.setattr(cli_mod.system, "run", run)
+    changes = machine.incoming_profile_changes([("M", rel)], "origin/main")
+    assert changes == ["+ thunderbird"]
+    assert machine.incoming_profile_changes([("M", "README.md")], "origin/main") == []

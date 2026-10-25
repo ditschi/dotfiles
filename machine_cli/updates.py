@@ -11,9 +11,10 @@ import types
 from typing import Callable, Iterable, Iterator
 
 from . import events, local_overrides, system
-from .core import die, log, warn
+from .core import die, log, parse_profile_file, parse_profile_text, warn
 from .local_changes import classify_paths
 from .system_relevance import relevant_system_paths
+from .profile import profile_changes
 
 Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
 
@@ -303,6 +304,7 @@ class UpdateMixin:
         return {
             "upstream": upstream,
             "state": state,
+            "profile_changes": self.incoming_profile_changes(incoming, upstream),
             "incoming": [{"status": s, "path": p} for s, p in incoming],
             "steps": self.plan_steps(incoming, upstream if incoming else "HEAD"),
             "local_changes": remaining,
@@ -310,6 +312,26 @@ class UpdateMixin:
             "overlap": overlap,
             "blockers": blockers,
         }
+
+    def incoming_profile_changes(
+        self, incoming: list[tuple[str, str]], upstream: str
+    ) -> list[str]:
+        """What an incoming commit changes in this host's machine/hosts file."""
+        try:
+            rel = str(self.host_profile_path().relative_to(self.repo))
+        except ValueError:  # host files outside this checkout
+            return []
+        if rel not in {path for _status, path in incoming}:
+            return []
+        shown = system.run(
+            ["git", "-C", str(self.repo), "show", f"{upstream}:{rel}"],
+            check=False,
+            capture=True,
+        )
+        new_text = shown.stdout if shown.returncode == 0 else ""
+        return profile_changes(
+            parse_profile_file(self.profile_path), parse_profile_text(new_text)
+        )
 
     def repo_revision(self) -> str:
         result = system.run(
@@ -368,6 +390,8 @@ class UpdateMixin:
         print(f"upstream: {plan['upstream']} ({plan['state']})")
         print(f"incoming files: {len(plan['incoming'])}")
         print("steps: " + (", ".join(plan["steps"]) or "none"))
+        if plan.get("profile_changes"):
+            print("host profile changes: " + "; ".join(plan["profile_changes"]))
         if plan["resolvable"]:
             print("resolved automatically: " + ", ".join(plan["resolvable"]))
         if plan["local_changes"]:

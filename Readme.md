@@ -171,8 +171,8 @@ The script itself only defines the command line. The implementation is the packa
 | `attention`, `events` | `machine attention`, local event log |
 | `machine` | the `Machine` class combining the modules above |
 
-Profile cache: `~/.config/machine/profile.yml` (not in git).  
-**Source of truth per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — features and `ssh_allow_from`. Dotfile groups of the host: `~/.config/mise/config.local.toml` (written by `machine`).
+**Only source per host:** [`machine/hosts/<hostname>.yml`](machine/hosts/) — profile, features and `ssh_allow_from`. `machine setup` writes the selection there directly (also with `--yes`) and offers to commit; commit and push it to share. A host's file can also be changed from another host: the next `machine update` (or the background job) takes it over without a question and prints what changed (for example `+ thunderbird`); `machine update --check` lists it beforehand.  
+Applied copy: `~/.config/machine/profile.yml` (not in git, written only by `machine`; hand edits are undone by the next update). It is the state a failed apply reverts to and the profile of containers. Dotfile groups of the host: `~/.config/mise/config.local.toml` (written by `machine`).
 
 ### Versioning and pushing host profiles
 
@@ -335,7 +335,7 @@ machine ssh restore           # restore private key
 
 `work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero`, `container`
 
-Features (selected during bootstrap, answers stored in `profile.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `thunderbird`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
+Features (selected during bootstrap, stored in `machine/hosts/<hostname>.yml`): `zsh-full`, `fonts`, `starship`, `yazi`, `desktop`, `gnome`, `cosmic`, `docker`, `gh-cli`, `claude-code`, `copilot-cli`, `kerberos`, `azure-cli`, `monitoring`, `unattended-upgrades`, `etckeeper`, `syncthing`, `thunderbird`, `tailscale`, `ssh-host-key`, `stylus-touch-guard`, `thinkpad-tuning`, `touch-device`, `sshd-home`
 
 Home profiles get `monitoring` (Telegraf) by default. Config names live **only** in `ansible/group_vars/all.yml` → `monitoring_by_profile` and are resolved in `tasks/resolve_monitoring.yml` (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
 

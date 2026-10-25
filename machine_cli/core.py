@@ -133,14 +133,18 @@ class _IndentDumper(yaml.SafeDumper):
 
 
 def parse_profile_file(path: Path) -> Dict[str, object]:
+    return parse_profile_text(
+        path.read_text(encoding="utf-8") if path.is_file() else ""
+    )
+
+
+def parse_profile_text(text: str) -> Dict[str, object]:
     result: Dict[str, object] = {
         "profile": "",
         "features": [],
         "ssh_allow_from": [],
     }
-    if not path.is_file():
-        return result
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = yaml.safe_load(text) or {}
     result["profile"] = str(data.get("profile") or "")
     result["features"] = [str(x) for x in (data.get("features") or [])]
     result["ssh_allow_from"] = [str(x) for x in (data.get("ssh_allow_from") or [])]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import difflib
 import getpass
 import os
 import re
@@ -24,6 +23,7 @@ from .core import (
     log,
     die,
     parse_profile_file,
+    parse_profile_text,
     format_profile_yaml,
     profile_fingerprint,
 )
@@ -158,12 +158,17 @@ class ProfileMixin:
             return False
         self.ensure_dirs()
         before = profile_fingerprint(self.profile_path)
+        old = parse_profile_file(self.profile_path)
         text = path.read_text(encoding="utf-8")
         self.profile_path.write_text(text, encoding="utf-8")
         self.profile_path.chmod(0o600)
         after = profile_fingerprint(self.profile_path)
         if before != after:
-            log(f"synced local profile from {path.relative_to(self.repo)}")
+            changes = profile_changes(old, parse_profile_text(text))
+            log(
+                f"applied host profile {path.relative_to(self.repo)}"
+                + (": " + "; ".join(changes) if changes else "")
+            )
             data = parse_profile_file(self.profile_path)
             self.write_dotfile_groups(str(data.get("profile") or "home-laptop"))
             return True
@@ -195,54 +200,28 @@ class ProfileMixin:
         *,
         yes: bool,
     ) -> None:
+        """The repository host file is the only source: write the selection there
+        (no question, also with --yes); only committing stays an explicit offer."""
         if profile == "container" or system.in_docker():
             return
         path = self.host_profile_path()
         new_text = format_profile_yaml(profile, features, allow_from)
-        if path.is_file() and path.read_text(encoding="utf-8") == new_text:
+        old_text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        if old_text == new_text:
             return
-        if path.is_file():
-            if yes:
-                return
-            rel = path.relative_to(self.repo)
-            if system.is_tty():
-                diff = difflib.unified_diff(
-                    path.read_text(encoding="utf-8").splitlines(keepends=True),
-                    new_text.splitlines(keepends=True),
-                    fromfile=f"{rel} (repo)",
-                    tofile=f"{rel} (new settings)",
-                )
-                sys.stdout.write("".join(diff))
-            if not system.is_tty() or not system.prompt_yes_no(
-                f"Update versioned host profile {rel} with the changes above?",
-                False,
-            ):
-                log("left repo host profile unchanged; " "run: machine profile save")
-                return
-        elif not yes and system.is_tty():
-            if not system.prompt_yes_no(
-                f"Write host profile to {path.relative_to(self.repo)}?",
-                True,
-            ):
-                return
-        elif yes and not path.is_file():
-            # non-interactive first setup: always create so fleet can version it
-            pass
+        changes = profile_changes(
+            parse_profile_text(old_text), parse_profile_text(new_text)
+        )
         self.save_host_profile_to_repo(profile, features, allow_from)
+        if changes:
+            log("host profile changes: " + "; ".join(changes))
         if (
             system.is_tty()
             and not yes
             and system.prompt_yes_no("Commit now (machine commit)?", False)
         ):
-            system.run(
-                [
-                    "git",
-                    "-C",
-                    str(self.repo),
-                    "add",
-                    str(path.relative_to(self.repo)),
-                ]
-            )
+            rel = str(path.relative_to(self.repo))
+            system.run(["git", "-C", str(self.repo), "add", rel])
             system.run(
                 [
                     "git",
@@ -254,6 +233,8 @@ class ProfileMixin:
                 ],
                 check=False,
             )
+        else:
+            log(f"commit and push {path.relative_to(self.repo)} to share the change")
 
     def prompt_profile(self, current: str) -> str:
         default = current or "home-laptop"
@@ -344,3 +325,18 @@ class ProfileMixin:
             return 0
         die(f"unknown profile action: {args.action}")
         return 1
+
+
+def profile_changes(old: dict, new: dict) -> list[str]:
+    """Readable differences between two parsed profiles (profile, features, ssh)."""
+    changes = []
+    if old.get("profile") != new.get("profile") and new.get("profile"):
+        changes.append(f"profile {old.get('profile') or '(none)'} -> {new['profile']}")
+    for key, label in (("features", ""), ("ssh_allow_from", "ssh_allow_from ")):
+        before, after = list(old.get(key) or []), list(new.get(key) or [])
+        added = [x for x in after if x not in before]
+        removed = [x for x in before if x not in after]
+        if added or removed:
+            parts = [f"+ {x}" for x in added] + [f"- {x}" for x in removed]
+            changes.append(label + ", ".join(parts))
+    return changes

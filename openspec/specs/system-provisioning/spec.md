@@ -13,7 +13,7 @@ Packages and system configuration SHALL be applied by Ansible through `machine a
 - **THEN** the packages and configuration of that feature are applied
 
 ### Requirement: Package table and local roles
-Apt packages per feature SHALL be defined in one table (`packages_by_feature` in `group_vars/all/packages.yml`), so that a new apt-only feature needs a single entry next to its row in the feature table (`group_vars/all/features.yml`). Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `thinkpad_tuning` and `touch_device`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
+Apt packages per feature SHALL be defined in one table (`packages_by_feature` in `group_vars/all/packages.yml`), so that a new apt-only feature needs a single entry next to its row in the feature table (`group_vars/all/features.yml`). Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `touch_device`, `lid_switch`, `power_profile_switch`, `battery_charge_limit` and `zram_swap`; model tuning SHALL be a local role per hardware model, such as `thinkpad_l13_yoga_gen2`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
 
 #### Scenario: Adding an apt-only feature
 - **WHEN** a feature needs only apt packages

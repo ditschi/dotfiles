@@ -36,7 +36,7 @@
 ## 7. Checks
 
 - [x] 7.1 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and `openspec validate split-laptop-tuning --strict`. Verify all pass.
-- [ ] 7.2 Run `machine testenv -- 'cd ~/dotfiles && machine apply'`, then `machine apply` on the L13 Yoga. Verify: closing the lid does nothing on battery and on the charger; `battery-charge` shows 75–80 %; `powerprofilesctl get` follows plug/unplug; `swapon --show` lists zram; `cat /sys/power/mem_sleep` shows `[deep]`; the old `thinkpad-*` files and units are gone.
+- [x] 7.2 Run `machine testenv -- 'cd ~/dotfiles && machine apply'`, then `machine apply` on the L13 Yoga. Verify: closing the lid does nothing on battery and on the charger; `battery-charge` shows 75–80 %; `powerprofilesctl get` follows plug/unplug; `swapon --show` lists zram; `cat /sys/power/mem_sleep` shows `[deep]`; the old `thinkpad-*` files and units are gone.
 
 ## Workflow follow-up
 

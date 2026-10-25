@@ -6,7 +6,7 @@ Keep a small local log of what `machine` did automatically (auto-update, manual 
 ## Requirements
 
 ### Requirement: Local event log
-The `machine` CLI SHALL append one JSON line per notable event to `events.jsonl` in the machine state directory, only with timestamp, event, outcome, reason code, duration, short revision and profile. The file SHALL stay on the host and writing SHALL be best effort.
+The `machine` CLI SHALL append one JSON line per notable event to `events.jsonl` in the machine state directory, only with timestamp, event, outcome, reason code, duration, short revision, context and device. The file SHALL stay on the host and writing SHALL be best effort.
 
 #### Scenario: Automatic update is reverted
 - **WHEN** the automatic update reverts after a failed zsh health check

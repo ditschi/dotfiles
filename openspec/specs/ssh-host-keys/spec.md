@@ -6,7 +6,7 @@ Defines how every host gets one SSH key that is backed up whole in Bitwarden, re
 ## Requirements
 
 ### Requirement: Whole key backed up as a Bitwarden SSH key item
-The host's key SHALL be stored as a Bitwarden item of type SSH key named `ssh/<class>/hosts/<hostname>`, with private key, public key and fingerprint. There SHALL be no option to store only the public key. The class SHALL be `home` or `work` from the profile. Only items of type SSH key SHALL be read; secure notes with the same name SHALL be ignored.
+The host's key SHALL be stored as a Bitwarden item of type SSH key named `ssh/<class>/hosts/<hostname>`, with private key, public key and fingerprint. There SHALL be no option to store only the public key. The class SHALL be `home` for the context `private` and `work` for the context `work`. Only items of type SSH key SHALL be read; secure notes with the same name SHALL be ignored.
 
 #### Scenario: Key uploaded
 - **WHEN** setup uploads the key of a home host
@@ -45,7 +45,6 @@ The manual `machine update` SHALL compare the host's key with its Bitwarden item
 #### Scenario: No session
 - **WHEN** `machine update` runs and no valid session is available without a prompt
 - **THEN** no key check runs, nothing prompts, and a warning says that the SSH key was not checked and to log in with `machine env pull` in a terminal
-
 
 ### Requirement: Background update without Bitwarden
 The background update SHALL NOT use Bitwarden; only the manual `machine update` checks the SSH key.

@@ -17,7 +17,7 @@ Every host, whatever its profile, SHALL have zellij installed as a user-space to
 - **THEN** the pinned arm64 build of zellij is installed
 
 #### Scenario: Container profile
-- **WHEN** a host with the `container` profile is set up
+- **WHEN** a host with the device `container` is set up
 - **THEN** zellij is installed like the other core shell tools
 
 ### Requirement: zellij uses its default key bindings

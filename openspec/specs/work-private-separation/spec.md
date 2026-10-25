@@ -6,25 +6,25 @@ Defines how work-specific behaviour, secrets, Git identity and SSH keys are kept
 ## Requirements
 
 ### Requirement: Work detection in the shell
-The shell SHALL set `WORK_SETUP=true` when the profile is `work-machine`, or when the user name is a company user ID and the profile is not `container`.
+The shell SHALL set `WORK_SETUP=true` when the context is `work`, or when the user name is a company user ID and the device is not `container`.
 
 #### Scenario: Work host
-- **WHEN** a shell starts on a `work-machine` host
+- **WHEN** a shell starts on a host with the context `work`
 - **THEN** `WORK_SETUP` is `true`
 
 #### Scenario: Private host with a company user ID
-- **WHEN** a shell starts for a company user ID on a host with another profile that is not `container`
+- **WHEN** a shell starts for a company user ID on a private host that is not a container
 - **THEN** `WORK_SETUP` is `true`
 
 #### Scenario: Container with a company user ID
-- **WHEN** a shell starts for a company user ID in a container with the `container` profile
+- **WHEN** a shell starts for a company user ID in a container without a context override
 - **THEN** `WORK_SETUP` is not set
 
 ### Requirement: Work modules only for work
-The work modules (`01_work*.zsh`) SHALL belong to a group that only the profile `work-machine` selects, and they SHALL return early unless `WORK_SETUP=true`.
+The work modules (`01_work*.zsh`) SHALL belong to a group that only the context `work` selects, and they SHALL return early unless `WORK_SETUP=true`.
 
 #### Scenario: Private profile
-- **WHEN** the dotfile groups are applied for the profile `home-laptop`
+- **WHEN** the dotfile groups are applied for a host with the context `private`
 - **THEN** no work module is linked
 
 #### Scenario: Work module without work setup
@@ -32,11 +32,15 @@ The work modules (`01_work*.zsh`) SHALL belong to a group that only the profile 
 - **THEN** it returns without effect
 
 ### Requirement: Work and private stay separate
-The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, from the profile), the Bitwarden environment groups (`work` versus `private`, `server` and `iot`) and the SSH key class (`work` versus `home`).
+The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, from the context), the Bitwarden environment group (`work` or `private`, one per context, none in a container without context), the SSH key class (`work` or `home`), and the features of the private infrastructure (`monitoring`, `sshd-home`, `syncthing`, `tailscale`, `thunderbird`), which are excluded for work.
 
 #### Scenario: Private host
 - **WHEN** a private host loads secrets
-- **THEN** only its own environment groups are queried, never the work group
+- **THEN** only `env/groups/private` and its host item are queried, never the work group
+
+#### Scenario: Work host
+- **WHEN** a work host is set up
+- **THEN** none of the private infrastructure features is offered or applied
 
 ### Requirement: Shareable repository
 The repository SHALL NOT contain secrets or sensitive work details; real work identity, internal endpoints and network details SHALL live in local or private configuration.

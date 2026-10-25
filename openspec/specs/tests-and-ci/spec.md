@@ -6,7 +6,7 @@ Defines the local test commands, the CI jobs and what is deliberately left out o
 ## Requirements
 
 ### Requirement: Local test commands
-The repository SHALL offer `uvx nox` (compile, unit tests, Ansible syntax and lint, Docker smoke), `pytest tests/unit` (CLI logic, git config, host profiles, packages, update and env), Docker integration tests per profile, and APT and Ansible idempotence tests (`-m apt`, `-m apt_gnome`).
+The repository SHALL offer `uvx nox` (compile, unit tests, Ansible syntax and lint, Docker smoke), `pytest tests/unit` (CLI logic, git config, host configs, packages, update and env), Docker integration tests per context and device, and APT and Ansible idempotence tests (`-m apt`, `-m apt_gnome`).
 
 #### Scenario: Running the unit tests
 - **WHEN** a user runs `pytest tests/unit`

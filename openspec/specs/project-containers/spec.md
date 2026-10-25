@@ -9,7 +9,7 @@ Defines the `sde` and `sdx` launchers for project containers.
 The shell wrappers `sde` and `sdx` SHALL exist only on work setups (`01_work.zsh`), and they SHALL call the shared launcher `~/.local/bin/sde`, which uses Docker Compose with the service `dev-env` by default. They SHALL NOT be provided on private machines.
 
 #### Scenario: Private profile
-- **WHEN** a shell starts on a private profile
+- **WHEN** a shell starts on a host with the context `private`
 - **THEN** the `sde` and `sdx` wrappers are not defined
 
 ### Requirement: Project script takes precedence
@@ -45,9 +45,9 @@ The launcher SHALL allow reusing or rebuilding the image (`--rebuild`). An inter
 - **WHEN** a user runs `sde -- <command>`
 - **THEN** the command runs in a fresh container without a TTY
 
-### Requirement: Container profile inside containers
-The dotfiles profile used inside these containers SHALL be `container`, which installs no systemd units and no prompt configs.
+### Requirement: Container device inside containers
+The dotfiles inside these containers SHALL be set up with the device `container` and no context, which installs no systemd units and no prompt configs.
 
 #### Scenario: Extended setup in a container
 - **WHEN** the extended setup runs inside a project container
-- **THEN** the `container` profile is used
+- **THEN** `machine` runs with the device `container` and without a context

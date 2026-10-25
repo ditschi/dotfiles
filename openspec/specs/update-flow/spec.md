@@ -45,7 +45,7 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **THEN** the segment is re-evaluated after each command without reloading the shell, as long as the prompt stays fast
 
 ### Requirement: Explicit update
-`machine update` SHALL fast-forward the checkout, sync the host profile and apply the setup, applying the dotfile groups and the user-space tools before Ansible. System changes and host-profile changes SHALL stay explicit.
+`machine update` SHALL fast-forward the checkout, sync the host config and apply the setup, applying the dotfile groups and the user-space tools before Ansible. System changes and host-config changes SHALL stay explicit.
 
 #### Scenario: Clean fast-forward
 - **WHEN** a user runs `machine update` on a clean checkout that is behind its upstream
@@ -56,11 +56,11 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **THEN** the changes are pulled and applied and the state tells the user to reload the shell
 
 #### Scenario: System change pending
-- **WHEN** the incoming changes include a system or host-profile change
-- **THEN** the background job fast-forwards to the upstream tip, applies the dotfile groups and the user-space tools, does not run Ansible or apply the host profile, and the state shows that a system update is available when the changes apply to this host
+- **WHEN** the incoming changes include a system or host-config change
+- **THEN** the background job fast-forwards to the upstream tip, applies the dotfile groups and the user-space tools, does not run Ansible or apply the host config, and the state shows that a system update is available when the changes apply to this host
 
 #### Scenario: Home changes before a system change
-- **WHEN** the incoming commits are home-only up to a commit that touches `ansible/**`, packages or the host profile
+- **WHEN** the incoming commits are home-only up to a commit that touches `ansible/**`, packages or the host config
 - **THEN** the background job treats all incoming changes together as in "System change pending"; it does not stop before that commit
 
 #### Scenario: Blocked automatic update
@@ -68,7 +68,7 @@ Interactive zsh and bash SHALL show the update state as a persistent prompt segm
 - **THEN** nothing is applied and the state is needs-attention with the reason
 
 #### Scenario: System changes are not applied implicitly
-- **WHEN** system or host-profile changes are pending
+- **WHEN** system or host-config changes are pending
 - **THEN** they are not applied without the user running the command
 
 #### Scenario: Background job limits
@@ -180,20 +180,20 @@ After an automatic update the background job SHALL verify that the shell still w
 - **WHEN** a manual `machine update` succeeds after a reverted automatic update
 - **THEN** the failed revision is forgotten and the background job may update again
 
-### Requirement: Failed apply restores the host profile
-When a local `machine apply` or the apply step of `machine update` fails, including a failing post-apply health check, the previous host profile SHALL be restored. If the profile had changed, the setup SHALL run once more with the restored profile. The post-apply health check SHALL be able to fail and SHALL use only checks that work without root privileges and without cached sudo credentials. Remote applies (`--limit`) SHALL NOT revert.
+### Requirement: Failed apply restores the host config
+When a local `machine apply` or the apply step of `machine update` fails, including a failing post-apply health check, the previously applied host config SHALL be restored. If the host config had changed, the setup SHALL run once more with the restored one. The post-apply health check SHALL be able to fail and SHALL use only checks that work without root privileges and without cached sudo credentials. Remote applies (`--limit`) SHALL NOT revert.
 
 #### Scenario: Ansible fails after a profile change during update
-- **WHEN** `machine update` syncs a changed host profile and the Ansible run fails
-- **THEN** the previous host profile is restored and the setup runs again with it
+- **WHEN** `machine update` syncs a changed host config and the Ansible run fails
+- **THEN** the previously applied host config is restored and the setup runs again with it
 
 #### Scenario: Health check fails
 - **WHEN** the post-apply health check reports a failure
-- **THEN** the previous host profile is restored as for a failed Ansible run
+- **THEN** the previously applied host config is restored as for a failed Ansible run
 
 #### Scenario: Unchanged profile
-- **WHEN** the apply fails and the host profile did not change
-- **THEN** the profile is kept and the setup is not retried
+- **WHEN** the apply fails and the host config did not change
+- **THEN** the applied host config is kept and the setup is not retried
 
 #### Scenario: Remote apply
 - **WHEN** an apply with `--limit` fails
@@ -203,7 +203,7 @@ When a local `machine apply` or the apply step of `machine update` fails, includ
 The update SHALL report a pending system update only when the files changed since the last successful Ansible run apply to this host, decided without root.
 
 #### Scenario: Always-relevant paths
-- **WHEN** playbooks, `ansible/tasks/`, `ansible/group_vars/` or the host profile changed
+- **WHEN** playbooks, `ansible/tasks/`, `ansible/group_vars/` or the host config changed
 - **THEN** the change applies
 
 #### Scenario: Ignored paths
@@ -223,7 +223,7 @@ The update SHALL report a pending system update only when the files changed sinc
 - **THEN** the change counts as applicable
 
 #### Scenario: Host without root
-- **WHEN** a host cannot become root and has never run Ansible
+- **WHEN** a host config sets `ansible: false`, or the host has never run Ansible
 - **THEN** no system update is reported for it
 
 ### Requirement: Attention entry point

@@ -21,7 +21,7 @@ Defines the layers of Git configuration, how the identity is chosen and which se
 - **THEN** the output is shown through `less` (or printed plainly without `less`) and no error appears
 
 ### Requirement: Host-local Git config
-`~/.gitconfig.local` SHALL be host-local and not versioned. `machine setup` SHALL create it once from the profile (default identity from the profile, and `safe.directory` on work and container profiles) when it does not exist, and nothing SHALL overwrite it afterwards. Git SHALL treat a missing file as empty, so a host without the file works.
+`~/.gitconfig.local` SHALL be host-local and not versioned. `machine setup` SHALL create it once from the context and device (default identity from the context, and `safe.directory` on work hosts and containers) when it does not exist, and nothing SHALL overwrite it afterwards. Git SHALL treat a missing file as empty, so a host without the file works.
 
 #### Scenario: Update on an existing host
 - **WHEN** `machine setup` or `machine update` runs and `~/.gitconfig.local` exists
@@ -33,7 +33,7 @@ Defines the layers of Git configuration, how the identity is chosen and which se
 
 #### Scenario: First setup
 - **WHEN** `machine setup` runs on a host without `~/.gitconfig.local`
-- **THEN** the file is created with the identity of the profile
+- **THEN** the file is created with the identity of the context
 
 #### Scenario: File missing later
 - **WHEN** the file is deleted and Git runs before the next setup
@@ -85,18 +85,18 @@ Host-only keys (identity, signing, `safe.*`, `credential.*`, `http(s).*`, `core.
 - **THEN** CI fails
 
 ### Requirement: GitHub token variable per host type
-For github.com, the credential helper SHALL read `GITHUB_PRIVATE_TOKEN` on `work-machine` hosts and `GITHUB_TOKEN` on all other profiles. The choice SHALL come from a file that `machine` writes on every dotfile apply and that `private.gitconfig` includes; a missing file SHALL leave github.com without a token helper and cause no error.
+For github.com, the credential helper SHALL read `GITHUB_PRIVATE_TOKEN` on hosts with the context `work` and `GITHUB_TOKEN` on all other hosts. The choice SHALL come from a file that `machine` writes on every dotfile apply and that `private.gitconfig` includes; a missing file SHALL leave github.com without a token helper and cause no error.
 
 #### Scenario: Private laptop
-- **WHEN** Git needs a github.com credential on a `home-laptop` host
+- **WHEN** Git needs a github.com credential on a private host
 - **THEN** `git-credential-env` serves `GITHUB_TOKEN`
 
 #### Scenario: Work machine
-- **WHEN** Git needs a credential for a private github.com repository on a `work-machine` host
+- **WHEN** Git needs a credential for a private github.com repository on a work host
 - **THEN** `git-credential-env` serves `GITHUB_PRIVATE_TOKEN` and never the work `GITHUB_TOKEN`
 
 ### Requirement: SSH remote for the checkout on private hosts
-`machine setup` SHALL change the `origin` remote of the dotfiles checkout from an `https://github.com/` URL to the matching `git@github.com:` URL when the profile is neither `work-machine` nor `container` and `ssh -T git@github.com` authenticates. Otherwise the remote SHALL stay unchanged.
+`machine setup` SHALL change the `origin` remote of the dotfiles checkout from an `https://github.com/` URL to the matching `git@github.com:` URL when the context is `private`, the device is not `container`, and `ssh -T git@github.com` authenticates. Otherwise the remote SHALL stay unchanged.
 
 #### Scenario: SSH key registered with GitHub
 - **WHEN** `machine setup` runs on a private host whose checkout uses `https://github.com/ditschi/dotfiles.git` and SSH to GitHub authenticates
@@ -107,5 +107,5 @@ For github.com, the credential helper SHALL read `GITHUB_PRIVATE_TOKEN` on `work
 - **THEN** `origin` stays on HTTPS
 
 #### Scenario: Work machine
-- **WHEN** `machine setup` runs on a `work-machine` host
+- **WHEN** `machine setup` runs on a work host
 - **THEN** `origin` is not changed

@@ -5,62 +5,80 @@ Defines machine profiles and how a host gets its profile.
 
 ## Requirements
 
-### Requirement: One profile per host
-Every host SHALL have exactly one profile out of `work-machine`, `home-laptop`, `home-server`, `rpi`, `rpi-zero` and `container`. Feature defaults per profile SHALL live in `ansible/profiles/<profile>.yml`, and the chosen profile and features of a host SHALL be versioned in `machine/hosts/<hostname>.yml`, which SHALL be the only source of the host's profile. `~/.config/machine/profile.yml` SHALL be a copy that `machine` writes from it; it is the applied state and the profile of hosts without a repository file.
+### Requirement: Context and device per host
+Every host SHALL have a context (`private` or `work`) and a device (`desktop`, `server` or `container`); together with its features they form the host config. A container SHALL have no context unless an override sets one. The host config SHALL be versioned in `machine/hosts/<hostname>.yml`, the only source of it. `machine` SHALL keep the last applied host config in its state directory (`~/.local/share/machine/applied-host.yml`): it is what a failed apply restores, what the shell reads at start, and the host config of hosts without a repository file.
 
 #### Scenario: Looking up a host
 - **WHEN** a host is set up
-- **THEN** its profile and features are read from its `machine/hosts/<hostname>.yml`, with unset features taken from the profile defaults
+- **THEN** its context, device and features are read from its `machine/hosts/<hostname>.yml`, with unset features taken from the feature table defaults
 
 #### Scenario: Setup changes the selection
-- **WHEN** `machine setup` runs, also with `--yes`, and the chosen profile or features differ from `machine/hosts/<hostname>.yml`
+- **WHEN** `machine setup` runs, also with `--yes`, and the chosen context, device or features differ from `machine/hosts/<hostname>.yml`
 - **THEN** the repository file is updated without a question and setup offers to commit it
 
 #### Scenario: Container
-- **WHEN** `machine setup` runs with the `container` profile
-- **THEN** no repository file is written and the local copy holds the profile
+- **WHEN** `machine setup` runs with the device `container`
+- **THEN** no repository file is written and the applied host config holds the selection
 
-### Requirement: Default profile on setup
-When setup has to choose a profile, it SHALL use the first match of: `container` when running in Docker (`/.dockerenv` exists or `MACHINE_IN_DOCKER=1`), unless `MACHINE_PROFILE_OVERRIDE` names a profile, which is then used; the saved local or host profile; an inherited `MACHINE_PROFILE`; `work-machine` when the user name matches the company user ID format (`^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`); otherwise `home-laptop`.
+### Requirement: Default context and device on setup
+When setup has to choose, the device SHALL be the first match of: `container` in Docker (`/.dockerenv` or `MACHINE_IN_DOCKER=1`) unless `MACHINE_DEVICE_OVERRIDE` names one; the saved value; an inherited `MACHINE_DEVICE`; `desktop` when the system boots into a graphical target; otherwise `server`. The context SHALL be the first match of: none in Docker unless `MACHINE_CONTEXT_OVERRIDE` names one; the saved value; an inherited `MACHINE_CONTEXT`; `work` for a company user ID; otherwise `private`.
 
 #### Scenario: Container with a saved host profile
-- **WHEN** the host's saved profile is visible in a container because the home directory is shared
-- **THEN** the profile is `container`
+- **WHEN** the host's applied host config is visible in a container because the home directory is shared
+- **THEN** the device is `container` and there is no context
 
 #### Scenario: Container with an override
-- **WHEN** `MACHINE_PROFILE_OVERRIDE=work-machine` is set in a container
-- **THEN** the profile is `work-machine`
+- **WHEN** `MACHINE_CONTEXT_OVERRIDE=work` and `MACHINE_DEVICE_OVERRIDE=desktop` are set in a container
+- **THEN** the context is `work` and the device is `desktop`
 
 #### Scenario: Company user ID on a fresh host
-- **WHEN** no profile is saved, the host is not in Docker, no `MACHINE_PROFILE` is inherited, and the user name matches the company format
-- **THEN** the default profile is `work-machine`
+- **WHEN** nothing is saved or inherited, the host is not in Docker and the user name matches `^[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}$`
+- **THEN** the default context is `work`
 
 #### Scenario: Plain user name on a fresh host
 - **WHEN** none of the earlier checks match and the user name does not match the company format
-- **THEN** the default profile is `home-laptop`
+- **THEN** the default context is `private`
 
-### Requirement: Profile exported to the shell
-In the shell, `machine-profile.sh` SHALL export `MACHINE_PROFILE` using the same Docker rule and override as the `machine` CLI; it SHALL be shared by zsh and bash.
+#### Scenario: Fresh host without a graphical target
+- **WHEN** nothing is saved or inherited and the system boots into a non-graphical target
+- **THEN** the default device is `server`
+
+### Requirement: Context and device exported to the shell
+In the shell, `machine-profile.sh` SHALL export `MACHINE_CONTEXT` and `MACHINE_DEVICE` using the same Docker rule and overrides as the `machine` CLI; it SHALL be shared by zsh and bash. `MACHINE_CONTEXT` SHALL be unset when the host has no context.
 
 #### Scenario: Shell start
-- **WHEN** an interactive zsh or bash starts
-- **THEN** `MACHINE_PROFILE` is set for that shell
+- **WHEN** an interactive zsh or bash starts on a private laptop
+- **THEN** `MACHINE_CONTEXT` is `private` and `MACHINE_DEVICE` is `desktop`
 
 #### Scenario: Shell in a container with a shared home
-- **WHEN** a shell starts in a container whose home contains a host's saved profile
-- **THEN** `MACHINE_PROFILE` is `container`
+- **WHEN** a shell starts in a container whose home contains a host's applied host config
+- **THEN** `MACHINE_DEVICE` is `container` and `MACHINE_CONTEXT` is unset
 
-### Requirement: Profile changes from the repository are applied with a notice
-`machine update` and `machine apply` SHALL copy `machine/hosts/<hostname>.yml` over the local copy without asking, and SHALL print the changed profile, the added and removed features and the changed `ssh_allow_from` entries when the copy changes. `machine update --check` SHALL list an incoming change of the host's file before it is applied.
+### Requirement: Host-config changes from the repository are applied with a notice
+`machine update` and `machine apply` SHALL take `machine/hosts/<hostname>.yml` over the applied host config without asking, and SHALL print the changed context or device, the added and removed features and the changed `ssh_allow_from` entries when it changes. `machine update --check` SHALL list an incoming change of the host's file before it is applied.
 
 #### Scenario: Feature added on another host
 - **WHEN** another host commits `thunderbird` to this host's file and this host runs `machine update`
 - **THEN** the update prints `+ thunderbird`, applies the feature and asks nothing
 
 #### Scenario: Local copy edited by hand
-- **WHEN** the local copy differs from the repository file and `machine update` runs
+- **WHEN** the applied host config was edited by hand and `machine update` runs
 - **THEN** the repository file wins and the printed changes show what was undone
 
 #### Scenario: Check before the update
 - **WHEN** an incoming commit changes this host's file and the user runs `machine update --check`
-- **THEN** the planned profile changes are listed
+- **THEN** the planned host-config changes are listed
+
+### Requirement: Old local profile is taken over
+When `~/.config/machine/profile.yml` exists and no applied host config does, `machine` SHALL take it over once into the state directory and remove the old file. A former `profile:` key SHALL be mapped: `work-machine` to work and desktop; `home-laptop` to private and desktop; `home-server`, `rpi` and `rpi-zero` to private and server; `container` to the container device.
+
+#### Scenario: Host not yet updated
+- **WHEN** a host still has `~/.config/machine/profile.yml` with `profile: home-server` and `machine update` runs
+- **THEN** the host is treated as private and server, the applied host config is written in the state directory and the old file is removed
+
+### Requirement: Ansible can be switched off per host
+A host config with `ansible: false` SHALL make `machine setup`, `apply` and `update` skip Ansible and report that it was skipped; dotfiles, user-space tools and secrets SHALL still be applied. Without the setting, Ansible SHALL run with root.
+
+#### Scenario: Managed host without root
+- **WHEN** a host config has `ansible: false` and `machine update` runs
+- **THEN** the dotfile groups and user-space tools are applied, Ansible does not run, and no system update is reported as pending

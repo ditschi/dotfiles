@@ -6,10 +6,10 @@ Defines the `thunderbird` feature: Thunderbird together with the `tb` command li
 ## Requirements
 
 ### Requirement: Thunderbird feature
-The feature `thunderbird` SHALL install Thunderbird and SHALL be on by default only for the `home-laptop` profile.
+The feature `thunderbird` SHALL install Thunderbird and SHALL be preselected only on private desktops; it is excluded for work, on servers and in containers.
 
 #### Scenario: New private laptop
-- **WHEN** a host is set up with the `home-laptop` profile defaults
+- **WHEN** a private desktop is set up with the feature defaults
 - **THEN** the feature `thunderbird` is selected and `machine apply` installs Thunderbird
 
 #### Scenario: Other profiles

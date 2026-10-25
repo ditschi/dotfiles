@@ -33,8 +33,8 @@
 
 ## 6. Integration checks
 
-- [ ] 6.1 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and `openspec validate profile-axes --strict`. Verify all pass.
-- [ ] 6.2 Run `machine testenv -- 'machine update && machine apply'` and then `machine update` on the L13 Yoga. Verify the notice shows context `private` and device `desktop`, `~/.config/machine/profile.yml` is gone and `applied-host.yml` exists, the feature menu hides `kerberos`/`azure-cli`, and the apply succeeds.
+- [x] 6.1 Run `pre-commit run --all-files`, `pytest tests/unit -q`, `ansible-lint ansible/*.yml` and `openspec validate profile-axes --strict`. Verify all pass.
+- [x] 6.2 Run `machine testenv -- 'machine update && machine apply'` and then `machine update` on the L13 Yoga. Verify the notice shows context `private` and device `desktop`, `~/.config/machine/profile.yml` is gone and `applied-host.yml` exists, the feature menu hides `kerberos`/`azure-cli`, and the apply succeeds.
 
 ## Workflow follow-up
 

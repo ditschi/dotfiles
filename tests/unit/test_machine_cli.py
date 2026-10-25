@@ -31,6 +31,17 @@ def test_help_lists_setup_update_and_env():
     assert "ssh" in result.stdout
 
 
+@pytest.mark.parametrize("args", [["-h"], ["update", "-h"]])
+def test_short_help_option(args):
+    result = subprocess.run(
+        ["python3", str(MACHINE), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.startswith("Usage: machine")
+
+
 def test_symlinked_entry_point_finds_the_checkout(tmp_path):
     link = tmp_path / "bin" / "machine"
     link.parent.mkdir()

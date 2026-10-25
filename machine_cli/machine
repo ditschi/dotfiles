@@ -81,6 +81,7 @@ add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name
     name="machine",
     help="Dotfiles and host setup (without a command: open items, else this help)",
     invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.option(
     "--debug",

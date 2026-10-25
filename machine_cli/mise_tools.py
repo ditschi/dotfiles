@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
+import urllib.request
 from pathlib import Path
 
 from . import system, terminal_fonts
-from .core import die, log, parse_profile_file
+from .core import die, log, parse_profile_file, warn
 
 AZURE_FEATURE = "azure-cli"
 AZURE_PACKAGE = "azure-cli"
 FONT_FEATURE = "fonts"
 FONT_TOOL = "github:ryanoasis/nerd-fonts"
 FONT_LINK = "FiraCodeNerdFont"
+# Bridge extension of thunderbird-cli (feature thunderbird). Downloaded, not installed:
+# it connects to any bridge on 127.0.0.1:7701, also one started by another local user,
+# so the owner installs it by hand in their own Thunderbird profile only.
+THUNDERBIRD_FEATURE = "thunderbird"
+TB_EXTENSION_URL = (
+    "https://github.com/vitalio-sh/thunderbird-cli/releases/download/v1.1.0/"
+    "thunderbird_ai_bridge-2.1.0-tb.xpi"
+)
+TB_EXTENSION_SHA256 = "999a3ef550153d49946007375109379d3c69d01701e5ee2f5df2a3ab43f3bdc9"  # pragma: allowlist secret
 
 
 class MiseToolsMixin:
@@ -31,8 +42,31 @@ class MiseToolsMixin:
         if AZURE_FEATURE in features:
             self.ensure_azure_cli(env)
         self.link_fonts(env, FONT_FEATURE in features)
+        if THUNDERBIRD_FEATURE in features:
+            self.download_thunderbird_extension()
         if FONT_FEATURE in features:
             self.set_terminal_fonts()
+
+    def download_thunderbird_extension(self) -> None:
+        """Put the pinned bridge extension into downloads/ (gitignored) for a manual install."""
+        target = Path(self.repo) / "downloads" / TB_EXTENSION_URL.rsplit("/", 1)[1]
+        if target.is_file() and _sha256(target.read_bytes()) == TB_EXTENSION_SHA256:
+            return
+        try:
+            with urllib.request.urlopen(TB_EXTENSION_URL, timeout=60) as response:
+                data = response.read()
+        except OSError as exc:
+            warn(f"could not download the Thunderbird bridge extension: {exc}")
+            return
+        if _sha256(data) != TB_EXTENSION_SHA256:
+            warn("Thunderbird bridge extension: checksum mismatch, not saved")
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        log(
+            f"downloaded {target.name} to {target.parent}; install it once in Thunderbird: "
+            "Add-ons and Themes -> gear -> Install Add-on From File"
+        )
 
     def link_fonts(self, env: dict, wanted: bool) -> None:
         """Link the installed Nerd Font into ~/.local/share/fonts (or drop the link)."""
@@ -95,3 +129,7 @@ class MiseToolsMixin:
         except (SystemExit, OSError):
             return False
         return True
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()

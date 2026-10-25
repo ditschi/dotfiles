@@ -13,19 +13,8 @@ The feature `thunderbird` SHALL install Thunderbird and SHALL be on by default o
 - **WHEN** a host with another profile uses its defaults
 - **THEN** the feature is not selected
 
-### Requirement: Bridge extension through a system policy
-With the feature, Ansible SHALL add the signed extension `thunderbird-ai@extension` from a pinned release URL to `ExtensionSettings` in `/etc/thunderbird/policies/policies.json`, so that Thunderbird installs it on its next start without manual steps. Other content of that file SHALL be kept.
-
-#### Scenario: Fresh host
-- **WHEN** `machine apply` runs on a host with the feature and no policy file
-- **THEN** the policy file exists with the extension entry, and the next Thunderbird start installs the extension
-
-#### Scenario: Existing policies
-- **WHEN** the policy file already contains other policies
-- **THEN** they are still present after the apply
-
-### Requirement: CLI and bridge only with the extension
-`thunderbird-cli` and `thunderbird-cli-bridge` SHALL be user tools of a dotfile group `thunderbird` that only the `thunderbird` feature selects. They SHALL NOT be installed on a host without that feature.
+### Requirement: CLI and bridge from mise
+`thunderbird-cli` and `thunderbird-cli-bridge` SHALL be user tools of a dotfile group `thunderbird` that only the `thunderbird` feature selects.
 
 #### Scenario: Host with the feature
 - **WHEN** `machine setup` runs with the feature
@@ -34,3 +23,18 @@ With the feature, Ansible SHALL add the signed extension `thunderbird-ai@extensi
 #### Scenario: Host without the feature
 - **WHEN** the feature is not selected
 - **THEN** neither tool is installed
+
+### Requirement: Extension only by hand
+The bridge extension SHALL NOT be installed automatically, neither by a system policy nor into a Thunderbird profile. With the feature, the tool install SHALL download the pinned extension XPI to `downloads/` in the checkout, which is gitignored, keep it only when its SHA-256 matches the pinned value, and tell the user how to install it from file. A failed download SHALL only warn.
+
+#### Scenario: Tool install with the feature
+- **WHEN** `machine setup` or `machine update` installs the tools on a host with the feature
+- **THEN** the verified XPI is in `downloads/` and `git status` of the checkout stays clean
+
+#### Scenario: Wrong checksum
+- **WHEN** the downloaded file does not match the pinned SHA-256
+- **THEN** it is not saved and a warning is printed
+
+#### Scenario: Second user on the host
+- **WHEN** another user of the same host opens Thunderbird
+- **THEN** that Thunderbird has no bridge extension unless that user installed it

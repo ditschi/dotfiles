@@ -13,3 +13,5 @@ ansible/inventory/hosts.local.yml
 ansible/group_vars/**/vault.yml
 .coverage
 .nox/
+# Files `machine` downloads for manual steps (e.g. the thunderbird-cli extension)
+/downloads/

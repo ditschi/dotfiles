@@ -109,3 +109,69 @@ def test_dotfile_apply_never_prompts(machine, monkeypatch):
     host.run_dotfiles_apply()
 
     assert ["mise", "dot", "apply", "--prune", "--yes"] in commands
+
+
+class _FakeResponse:
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self.data
+
+
+def _xpi_target(host):
+    # DOTFILES_REPO in the fixture is no checkout, so pin the repo explicitly.
+    name = mise_tools.TB_EXTENSION_URL.rsplit("/", 1)[1]
+    return host.repo / "downloads" / name
+
+
+def test_thunderbird_extension_is_downloaded_and_verified(machine, monkeypatch):
+    host, _ = machine
+    host.repo = host.home
+    _profile(host, ["thunderbird"])
+    data = b"xpi"
+    monkeypatch.setattr(mise_tools, "TB_EXTENSION_SHA256", mise_tools._sha256(data))
+    calls = []
+    monkeypatch.setattr(
+        mise_tools.urllib.request,
+        "urlopen",
+        lambda url, timeout: calls.append(url) or _FakeResponse(data),
+    )
+
+    host.run_tools_install()
+    host.run_tools_install()  # present and valid: no second download
+
+    assert _xpi_target(host).read_bytes() == data
+    assert calls == [mise_tools.TB_EXTENSION_URL]
+
+
+def test_thunderbird_extension_with_wrong_checksum_is_not_saved(machine, monkeypatch):
+    host, _ = machine
+    host.repo = host.home
+    _profile(host, ["thunderbird"])
+    monkeypatch.setattr(
+        mise_tools.urllib.request, "urlopen", lambda url, timeout: _FakeResponse(b"bad")
+    )
+
+    host.run_tools_install()
+
+    assert not _xpi_target(host).exists()
+
+
+def test_no_extension_download_without_the_feature(machine, monkeypatch):
+    host, _ = machine
+    host.repo = host.home
+    _profile(host, [])
+    monkeypatch.setattr(
+        mise_tools.urllib.request,
+        "urlopen",
+        lambda *a, **k: pytest.fail("must not download"),
+    )
+
+    host.run_tools_install()

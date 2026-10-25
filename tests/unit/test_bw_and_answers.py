@@ -459,3 +459,28 @@ def test_encrypted_key_without_public_file_is_kept(tmp_path, monkeypatch):
     assert machine.ensure_host_ssh_key() is None
     assert len(calls) == 1 and "-y" in calls[0] and "-P" in calls[0]
     assert key.read_bytes() == original
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_unlock_reuses_a_saved_session_unless_expired(tmp_path, monkeypatch, valid):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    (tmp_path / ".env.local").write_text("export BW_SESSION=saved\n")
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        if args == ["bw", "status"]:
+            unlocked = valid or os.environ.get("BW_SESSION") == "fresh"
+            output = json.dumps({"status": "unlocked" if unlocked else "locked"})
+        elif args == ["bw", "unlock", "--raw"]:
+            output = "fresh"
+        else:
+            output = ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert machine.unlock_bitwarden()
+    assert (["bw", "unlock", "--raw"] in commands) == (not valid)
+    assert os.environ["BW_SESSION"] == ("saved" if valid else "fresh")

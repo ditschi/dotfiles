@@ -22,9 +22,23 @@ DEFAULT_BW_EMAIL = "chris@ditschers.de"
 
 
 class BwClientMixin:
-    def unlock_bitwarden(self, *, allow_login: bool = False) -> bool:
+    def unlock_bitwarden(
+        self, *, allow_login: bool = False, _fresh: bool = False
+    ) -> bool:
         if not system.have("bw"):
             return False
+        # Reuse a saved session (~/.env.local; the environment wins) so repeated
+        # setup/update runs do not ask for the master password again; drop it only
+        # when bw no longer accepts it.
+        if not _fresh:
+            self.load_local_bitwarden_settings()
+        if (
+            not _fresh
+            and os.environ.get("BW_SESSION")
+            and not self.bitwarden_session_valid()
+        ):
+            log("saved BW_SESSION is expired or invalid; unlocking again")
+            os.environ.pop("BW_SESSION")
         if not os.environ.get("BW_SESSION"):
             if not system.is_tty():
                 return False
@@ -45,7 +59,7 @@ class BwClientMixin:
                 session = (result.stdout or "").strip()
                 if session:
                     os.environ["BW_SESSION"] = session
-                    return self.unlock_bitwarden()
+                    return self.unlock_bitwarden(_fresh=True)
             log("unlocking Bitwarden")
             result = system.run(
                 ["bw", "unlock", "--raw"], interactive_stdout=True, check=False

@@ -34,7 +34,7 @@ def fake_bw(tmp_path: Path):
         textwrap.dedent(
             f"""\
             #!/usr/bin/env python3
-            import json, sys
+            import json, os, sys
             from pathlib import Path
             STORE = Path({str(store)!r})
             data = json.loads(STORE.read_text() or "{{}}")
@@ -42,7 +42,9 @@ def fake_bw(tmp_path: Path):
             if not args:
                 raise SystemExit(1)
             if args[0] == "status":
-                print(json.dumps({{"status": "unlocked" if data.get("_session") else "unauthenticated"}}))
+                # like bw: an exported BW_SESSION also counts as unlocked
+                unlocked = data.get("_session") or os.environ.get("BW_SESSION")
+                print(json.dumps({{"status": "unlocked" if unlocked else "unauthenticated"}}))
                 raise SystemExit(0)
             if args[0] == "unlock" and "--raw" in args:
                 data["_session"] = "fake-session"

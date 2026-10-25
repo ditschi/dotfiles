@@ -10,7 +10,7 @@
 
 - [ ] 2.1 With `ssh-host-key`, setup restores, else uploads the selected local key, else generates ed25519 without passphrase and uploads; keep the current selection order and leave existing keys unchanged. Verify unit tests for the three paths and for unattended setup without Bitwarden.
 - [ ] 2.2 When the local key differs from the item, show both fingerprints and ask whether to update the item (default no); without a terminal change nothing and report it. Verify unit tests for yes, no and no terminal.
-- [ ] 2.3 Migrate a secure-note item to an SSH key item with the same key and tell the user the old note can be deleted. Verify a unit test.
+- [ ] 2.3 Migrate a secure-note item to an SSH key item with the same key; after reading the new item back with the same fingerprint, delete the old note with `bw delete item` (trash, not `--permanent`); keep the note when the new item cannot be confirmed. Verify unit tests for success and for a failed create.
 
 - [ ] 2.4 In `machine update`, compare key and item only with a valid session that needs no prompt; report a missing or different item as an attention item that `machine` resolves (upload or update); skip silently without a session. Verify unit tests for missing item, different key and no session (no prompt, no output).
 

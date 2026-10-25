@@ -70,8 +70,12 @@ For the `home` class, setup and publish SHALL write the public key to `machine/s
 - **THEN** no file is written to `machine/ssh_keys/`
 
 ### Requirement: Migration of secure-note items
-An existing item of type secure note with the fields `public_key` and `private_key` SHALL still be readable for restore. Publish and setup SHALL replace it with an SSH key item holding the same key and SHALL leave the old note in place for the user to delete.
+An existing item of type secure note with the fields `public_key` and `private_key` SHALL still be readable for restore. Publish and setup SHALL replace it with an SSH key item holding the same key and, once that item is created and read back with the same fingerprint, SHALL delete the old note (into the Bitwarden trash, not permanently).
 
 #### Scenario: Old note present
 - **WHEN** the host's item is a secure note with both fields
-- **THEN** an SSH key item with the same key is created and the user is told that the old note can be deleted
+- **THEN** an SSH key item with the same key is created, read back, and the old note is moved to the Bitwarden trash
+
+#### Scenario: New item cannot be confirmed
+- **WHEN** creating the SSH key item fails or reading it back shows another fingerprint
+- **THEN** the old note is kept and the problem is reported

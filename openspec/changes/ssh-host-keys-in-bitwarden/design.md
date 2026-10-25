@@ -16,14 +16,10 @@ Bitwarden CLI 2026.8 creates SSH key items (`type: 5`, `sshKey: {privateKey, pub
 - **Ask before replacing a different key in Bitwarden (owner decision).** When the local key and the item differ, setup and publish show both fingerprints and ask, default no; unattended runs change nothing.
 - **Update checks silently, reports through attention (owner decision).** `machine update` compares key and item only with a Bitwarden session that needs no prompt; a missing or different item becomes an attention item, resolved interactively via `machine`. The update itself never asks, generates, restores or uploads, so unattended runs stay quiet. Without a session nothing happens and nothing is printed.
 - **Work keys stay out of the repository.** The repository is public and work hosts do not use `sshd-home`; the `work` class stays in Bitwarden only (`work-private-separation`).
-- **No deletion in the vault.** Migration creates the new item and leaves the old secure note; the user deletes it.
+- **Old note deleted after the migration (owner decision).** Once the SSH key item exists and reads back with the same fingerprint, the old secure note is deleted with `bw delete item` (without `--permanent`), so it goes to the Bitwarden trash and stays recoverable there for a while; no two items share the name afterwards. If the new item cannot be confirmed, the note stays.
 
 ## Risks / Trade-offs
 
 - [Unencrypted key on disk] → mitigated by disk encryption; existing keys with a passphrase keep it.
-- [Item name reused by a new type] → before creating the SSH key item, the old note is renamed or the new item gets the same name and the old one is recognised by type; the implementation picks one and the restore reads both.
+- [Both items exist for a moment during the migration] → lookups pick the SSH key item by type when two items share the name; the note is deleted right after the new item is confirmed.
 - [New key not registered at GitHub] → registering a generated key with GitHub (for example with `gh ssh-key add`) is out of scope; setup prints the public key and a hint.
-
-## Open Questions
-
-- Should the old secure note be renamed (for example with a suffix `(old)`) when the SSH key item is created, so two items with the same name do not exist side by side?

@@ -82,10 +82,20 @@ dotfiles_lscolors() {
   zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 }
 
+# fzf's zsh integration only adds key bindings and widgets, and it saves and restores all
+# options including `zle`. Without a terminal (for example the zsh health check of the
+# background update, started by a systemd timer) the restore fails with "can't change
+# option: zle", and the check would treat that as a broken shell. So load it only with a
+# terminal: zsh sets $TTY only when it has one (`-o zle` is on in both cases).
+dotfiles_fzf_init() {
+  [[ -n $TTY ]] || return 0
+  dotfiles_cache_eval fzf fzf --zsh
+}
+
 dotfiles_deferred_init() {
   dotfiles_lscolors
   run-compinit
-  dotfiles_cache_eval fzf fzf --zsh
+  dotfiles_fzf_init
   dotfiles_cache_eval zoxide zoxide init zsh
 }
 
@@ -129,7 +139,7 @@ if [[ -s $_dotfiles_plugins_zsh ]]; then
 else
   # Offline first start: built-in completion and the tool init, no plugins.
   autoload -Uz compinit && compinit -d ${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump
-  dotfiles_cache_eval fzf fzf --zsh
+  dotfiles_fzf_init
   dotfiles_cache_eval zoxide zoxide init zsh
 fi
 unset _dotfiles_plugins_src _dotfiles_plugins_zsh

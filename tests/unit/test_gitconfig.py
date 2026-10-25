@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
+import sys
+
 from package_sets import REPO
+
+sys.path.insert(0, str(REPO))
+
+from machine_cli.dotfiles import render_github_token_config  # noqa: E402
 
 SHARED = REPO / "home/core/.gitconfig"
 HELPER = REPO / "home/core/.local/bin/git-credential-env"
@@ -256,6 +262,10 @@ def git_home(tmp_path: Path):
     (home / ".config/git").mkdir(parents=True)
     for snippet in (REPO / "home/core/.config/git").iterdir():
         (home / ".config/git" / snippet.name).symlink_to(snippet)
+    # Written by `machine` per host type; these tests use the work-machine variable.
+    (home / ".config/git/github-token.gitconfig").write_text(
+        render_github_token_config("work-machine")
+    )
     (home / ".local/bin").mkdir(parents=True)
     (home / ".local/bin/git-credential-env").symlink_to(HELPER)
     env = {
@@ -513,3 +523,16 @@ def test_branch_change_issue_id(git_home):
     _run(env, repo, "checkout", "-q", "-b", "feat/ABC-1-thing")
     _run(env, repo, "branch-change-issue-id", "XYZ-42")
     assert _run(env, repo, "branch", "--show-current").strip() == "feat/XYZ-42-thing"
+
+
+def test_private_host_serves_github_token(git_home):
+    home, repo, env = git_home
+    (home / ".config/git/github-token.gitconfig").write_text(
+        render_github_token_config("home-laptop")
+    )
+    _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")
+    filled = _fill(
+        {**env, "GITHUB_TOKEN": "private-token", "GITHUB_PRIVATE_TOKEN": "unused"}, repo
+    )
+    assert filled.returncode == 0, filled.stderr
+    assert "password=private-token\n" in filled.stdout

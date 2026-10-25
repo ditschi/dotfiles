@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import filecmp
 import os
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -67,6 +68,35 @@ def render_gitconfig_local(profile: str) -> str:
     if profile == "container":
         text += "\n[safe]\n    directory = /workspace\n"
     return text
+
+
+GITHUB_TOKEN_CONFIG = ".config/git/github-token.gitconfig"
+
+
+def github_token_variable(profile: str) -> str:
+    """On work machines GITHUB_TOKEN is the work token, so private GitHub uses its own."""
+    return "GITHUB_PRIVATE_TOKEN" if profile in GROUP_WORK_PROFILES else "GITHUB_TOKEN"
+
+
+def render_github_token_config(profile: str) -> str:
+    return (
+        "# Written by `machine` from the host profile on every dotfile apply; do not edit.\n"
+        "# Included by ~/.config/git/private.gitconfig after its credential reset.\n"
+        '[credential "https://github.com"]\n'
+        "    helper = !$HOME/.local/bin/git-credential-env "
+        f"{github_token_variable(profile)}\n"
+    )
+
+
+SSH_REMOTE_EXCLUDED = ("work-machine", "container")
+
+
+def github_ssh_url(url: str) -> str:
+    """`https://github.com/<owner>/<repo>[.git]` as SSH URL, else an empty string."""
+    match = re.fullmatch(
+        r"https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?", url.strip()
+    )
+    return f"git@github.com:{match.group(1)}/{match.group(2)}.git" if match else ""
 
 
 SWEEP_SKIP_DIRS = {
@@ -194,6 +224,7 @@ class DotfilesMixin:
             die(f"missing {self.mise_local_config} (run: machine setup)")
         profile = str(parse_profile_file(self.profile_path)["profile"] or "home-laptop")
         self.ensure_gitconfig_local(profile)
+        self.write_github_token_config(profile)
         features = parse_profile_file(self.profile_path)["features"]
         for target, what in clear_conflicting_targets(
             Path(self.repo), self.home, dotfile_groups(profile, features)
@@ -208,6 +239,48 @@ class DotfilesMixin:
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")
         self.ensure_machine_link()
+
+    def write_github_token_config(self, profile: str) -> None:
+        path = self.home / GITHUB_TOKEN_CONFIG
+        text = render_github_token_config(profile)
+        if path.is_file() and path.read_text(encoding="utf-8") == text:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        log(f"GitHub token for github.com: {github_token_variable(profile)} ({path})")
+
+    def switch_origin_to_ssh(self, profile: str) -> None:
+        """Private hosts push with their SSH key: move an https github.com origin to SSH,
+        but only when SSH to GitHub authenticates. Work machines keep HTTPS."""
+        if profile in SSH_REMOTE_EXCLUDED:
+            return
+        current = system.run(
+            ["git", "-C", str(self.repo), "remote", "get-url", "origin"],
+            check=False,
+            capture=True,
+        )
+        ssh_url = (
+            github_ssh_url(current.stdout or "") if current.returncode == 0 else ""
+        )
+        if not ssh_url or not system.have("ssh"):
+            return
+        probe = system.run(
+            [
+                "ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                "-o", "StrictHostKeyChecking=accept-new", "git@github.com",
+            ],
+            check=False,
+            capture=True,
+        )  # fmt: skip
+        if "successfully authenticated" not in (probe.stderr or "") + (
+            probe.stdout or ""
+        ):
+            log("SSH to GitHub does not authenticate; origin stays on HTTPS")
+            return
+        system.run(
+            ["git", "-C", str(self.repo), "remote", "set-url", "origin", ssh_url]
+        )
+        log(f"origin now uses SSH: {ssh_url}")
 
     def ensure_machine_link(self) -> None:
         """~/.local/bin/machine -> the CLI of this checkout (like bootstrap).

@@ -64,6 +64,8 @@ class CommandsMixin:
 
         self.write_profile(profile, features, allow_from)
         self.write_dotfile_groups(profile)
+        if not system.in_docker():
+            self.switch_origin_to_ssh(profile)
         log(f"wrote {self.profile_path} (profile={profile})")
 
         self.maybe_persist_host_profile(profile, features, allow_from, yes=args.yes)

@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO))
 from machine_cli.dotfiles import (  # noqa: E402
     DotfilesMixin,
     dotfile_groups,
+    render_github_token_config,
     render_local_config,
     sweep_dangling_links,
 )
@@ -170,3 +171,103 @@ def test_machine_link_follows_the_running_checkout(tmp_path):
     host.ensure_machine_link()
 
     assert link.resolve() == cli.resolve()
+
+
+@pytest.mark.parametrize(
+    "profile, variable",
+    [
+        ("work-machine", "GITHUB_PRIVATE_TOKEN"),
+        ("home-laptop", "GITHUB_TOKEN"),
+        ("home-server", "GITHUB_TOKEN"),
+        ("container", "GITHUB_TOKEN"),
+    ],
+)
+def test_github_token_variable_follows_the_profile(tmp_path, profile, variable):
+    host = _Host(tmp_path)
+    host.write_github_token_config(profile)
+    text = (tmp_path / ".config/git/github-token.gitconfig").read_text()
+    assert f"git-credential-env {variable}\n" in text
+    other = (
+        "GITHUB_TOKEN" if variable == "GITHUB_PRIVATE_TOKEN" else "GITHUB_PRIVATE_TOKEN"
+    )
+    assert f"git-credential-env {other}\n" not in text
+
+
+def test_private_gitconfig_includes_the_token_file_after_the_reset(tmp_path):
+    """Git resolves the helper list: reset, then the helper of the included file."""
+    import subprocess
+
+    shared = REPO / "home/core/.config/git/private.gitconfig"
+    home = tmp_path
+    (home / ".config/git").mkdir(parents=True)
+    (home / ".config/git/github-token.gitconfig").write_text(
+        render_github_token_config("home-laptop")
+    )
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    out = subprocess.run(
+        ["git", "config", "--file", str(shared), "--includes", "--get-all",
+         "credential.https://github.com.helper"],
+        env=env, capture_output=True, text=True, check=True,
+    ).stdout.splitlines()  # fmt: skip
+    assert out == ["", "!$HOME/.local/bin/git-credential-env GITHUB_TOKEN"]
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        (
+            "https://github.com/ditschi/dotfiles.git",
+            "git@github.com:ditschi/dotfiles.git",
+        ),
+        (
+            "https://github.com/ditschi/dotfiles\n",
+            "git@github.com:ditschi/dotfiles.git",
+        ),
+        ("git@github.com:ditschi/dotfiles.git", ""),
+        ("https://github.boschdevcloud.com/x/y.git", ""),
+    ],
+)
+def test_github_ssh_url(url, expected):
+    from machine_cli.dotfiles import github_ssh_url
+
+    assert github_ssh_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "profile, ssh_reply, switched",
+    [
+        ("home-laptop", "Hi ditschi! You've successfully authenticated", True),
+        ("home-laptop", "Permission denied (publickey).", False),
+        ("work-machine", "Hi ditschi! You've successfully authenticated", False),
+    ],
+)
+def test_origin_switches_to_ssh_only_when_it_works(
+    tmp_path, monkeypatch, profile, ssh_reply, switched
+):
+    import subprocess
+
+    from machine_cli import dotfiles
+
+    calls = []
+
+    def run(args, **_kw):
+        calls.append(list(args))
+        if args[-2:] == ["get-url", "origin"]:
+            return subprocess.CompletedProcess(
+                args, 0, "https://github.com/ditschi/dotfiles.git\n", ""
+            )
+        if args[0] == "ssh":
+            return subprocess.CompletedProcess(args, 1, "", ssh_reply)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(dotfiles.system, "run", run)
+    monkeypatch.setattr(dotfiles.system, "have", lambda _n: True)
+    host = _Host(tmp_path)
+    host.repo = tmp_path
+
+    host.switch_origin_to_ssh(profile)
+
+    set_url = [c for c in calls if "set-url" in c]
+    assert bool(set_url) == switched
+    if switched:
+        assert set_url[0][-1] == "git@github.com:ditschi/dotfiles.git"

@@ -8,4 +8,9 @@
     username = ditschi
     # empty value drops earlier helpers (store), so tokens never land in ~/.git-credentials
     helper =
-    helper = !$HOME/.local/bin/git-credential-env GITHUB_PRIVATE_TOKEN
+
+# The token helper itself, written by `machine` from the host profile: GITHUB_TOKEN on
+# private hosts, GITHUB_PRIVATE_TOKEN on work machines (where GITHUB_TOKEN is the work
+# token). Must come after the reset above; a missing file means no token helper.
+[include]
+    path = ~/.config/git/github-token.gitconfig

@@ -122,9 +122,11 @@ def choose(title: str, choices: Sequence[str], default: str) -> str:
 def choose_many(
     title: str, choices: Dict[str, str], selected: Sequence[str]
 ) -> List[str]:
-    """Tick any of `choices` ({value: help text}) by number, comma separated.
+    """Toggle entries of `choices` ({value: help text}) by number, comma separated.
 
-    Enter keeps the pre-selection (marked `*`), `-` selects nothing."""
+    The numbers switch entries on or off relative to the pre-selection (marked `*`),
+    so adding one feature does not drop the others; Enter keeps the pre-selection,
+    `-` selects nothing. Arrow keys are not supported."""
     if not is_tty():
         return list(selected)
     names = list(choices)
@@ -133,7 +135,7 @@ def choose_many(
         click.echo(f" {mark}{index}) {name:20} {choices[name]}")
     while True:
         answer = click.prompt(
-            f"{title} (numbers, Enter keeps *, - for none)",
+            f"{title} (numbers toggle, e.g. 3,7; Enter keeps *; - for none)",
             default="",
             show_default=False,
         ).strip()
@@ -142,6 +144,11 @@ def choose_many(
         if answer == "-":
             return []
         try:
-            return [names[int(part) - 1] for part in answer.split(",") if part.strip()]
+            toggled = {
+                names[int(part) - 1] for part in answer.split(",") if part.strip()
+            }
+            if any(int(part) < 1 for part in answer.split(",") if part.strip()):
+                raise IndexError
+            return [n for n in names if (n in selected) != (n in toggled)]
         except (ValueError, IndexError):
             click.echo(f"enter numbers between 1 and {len(names)}")

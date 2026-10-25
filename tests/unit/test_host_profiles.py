@@ -391,10 +391,14 @@ def test_pickers_take_numbers_and_defaults(monkeypatch):
     assert system.choose("t", ["a", "b"], "a") == "b"
     assert system.choose("t", ["a", "rpi"], "a") == "rpi"
     choices = {"x": "", "y": "", "z": ""}
-    assert system.choose_many("t", choices, ["y"]) == ["x", "z"]
+    assert system.choose_many("t", choices, ["y"]) == ["x", "y", "z"]  # toggles x, z
     assert system.choose_many("t", choices, ["y"]) == ["y"]
     assert system.choose_many("t", choices, ["y"]) == []
     assert system.choose_many("t", choices, []) == ["y"]  # "9" retried, then "2"
+
+    answers = iter(["2", "0", "1"])
+    assert system.choose_many("t", choices, ["x", "y"]) == ["x"]  # untick y only
+    assert system.choose_many("t", choices, ["x"]) == []  # "0" retried, untick x
 
     monkeypatch.setattr(system, "is_tty", lambda: False)
     assert system.choose("t", ["a", "b"], "a") == "a"

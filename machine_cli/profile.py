@@ -265,9 +265,7 @@ class ProfileMixin:
 
     def prompt_features(self, defaults: Sequence[str]) -> List[str]:
         if system.is_tty():
-            return system.choose_many(
-                "Features (space to toggle)", FEATURE_HELP, defaults
-            )
+            return system.choose_many("Features", FEATURE_HELP, defaults)
         print("Features (space-separated). Empty keeps defaults.", file=sys.stderr)
         for name in FEATURES:
             mark = "*" if name in defaults else " "

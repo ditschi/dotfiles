@@ -1,9 +1,12 @@
-# Shared prompt for zsh and bash. The prompt character comes from the shell module, so its
-# colour shows the shell (zsh green, bash purple); 🐳 marks a container. A failed command
-# shows in the status segment.
+# Shared prompt for zsh and bash. The colour of the prompt character shows the shell and the
+# last exit status: zsh green / red, bash blue / orange. Starship has no module for both, so
+# the shells export one of the DOTFILES_PROMPT_* variables before each prompt (from
+# STARSHIP_CMD_STATUS) and one env_var module per state draws the character. Other shells
+# fall back to the shell module. 🐳 marks a container; a failed command also shows in the
+# status segment.
 format = """
-$directory$git_branch$git_status$fill$env_var$status$python$cmd_duration$time
-$container$shell
+$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}$status$python$cmd_duration$time
+$container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
 """
 
 add_newline = false
@@ -51,12 +54,29 @@ format = "[$time]($style) "
 format = "[$symbol]($style)"
 symbol = "🐳 "
 
+[env_var.prompt_zsh]
+variable = "DOTFILES_PROMPT_ZSH"
+format = "[❯](bold green) "
+
+[env_var.prompt_zsh_err]
+variable = "DOTFILES_PROMPT_ZSH_ERR"
+format = "[❯](bold red) "
+
+[env_var.prompt_bash]
+variable = "DOTFILES_PROMPT_BASH"
+format = "[❯](bold blue) "
+
+[env_var.prompt_bash_err]
+variable = "DOTFILES_PROMPT_BASH_ERR"
+format = "[❯](bold 208) "
+
+# Only for shells without the hook; zsh and bash draw the character via env_var above.
 [shell]
 disabled = false
-format = "$indicator "
-zsh_indicator = "[❯](bold green)"
-bash_indicator = "[❯](bold purple)"
-unknown_indicator = "[❯](bold yellow)"
+format = "$indicator"
+zsh_indicator = ""
+bash_indicator = ""
+unknown_indicator = "[❯](bold yellow) "
 
 [character]
 disabled = true

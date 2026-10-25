@@ -1,0 +1,23 @@
+---
+- name: Check for the former power profile unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/thinkpad-power-profile.service
+  register: power_profile_switch_old_unit
+
+- name: Disable the former power profile unit
+  ansible.builtin.systemd:
+    name: thinkpad-power-profile.service
+    enabled: false
+  when:
+    - power_profile_switch_old_unit.stat.exists
+    - machine_manage_services | bool
+  failed_when: false
+
+- name: Remove the former power profile files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/thinkpad-power-profile.service
+    - /etc/udev/rules.d/85-thinkpad-power-profile.rules
+    - "{{ machine_lib_dir }}/thinkpad-power-profile"

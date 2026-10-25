@@ -135,3 +135,22 @@ def test_llm_tools_are_not_in_core():
     text = "".join(path.read_text() for path in core.glob("*.toml"))
     for tool in ("claude-code", "@github/copilot", "opencode", "openspec"):
         assert tool not in text
+
+
+def test_laptop_and_swap_features():
+    for context in features.CONTEXTS:
+        defaults = features.defaults(context, "desktop")
+        for name in (
+            "lid-switch",
+            "power-profile-switch",
+            "battery-charge-limit",
+            "zram-swap",
+        ):
+            assert name in defaults
+        server = features.allowed(context, "server")
+        assert "zram-swap" in features.defaults(context, "server")
+        for name in ("lid-switch", "power-profile-switch", "battery-charge-limit"):
+            assert name not in server
+    container = features.allowed("", "container")
+    assert "zram-swap" not in container and "lid-switch" not in container
+    assert "thinkpad-tuning" not in features.load_table()

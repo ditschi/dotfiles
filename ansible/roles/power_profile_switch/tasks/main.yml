@@ -1,0 +1,48 @@
+---
+- name: Remove the former thinkpad-tuning power profile switch
+  ansible.builtin.include_tasks: remove_old.yml
+
+- name: Ensure target directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ machine_lib_dir }}"
+    - /etc/udev/rules.d
+    - /etc/systemd/system
+
+- name: Write power profile settings
+  ansible.builtin.template:
+    src: power-profile-switch.env.j2
+    dest: /etc/default/power-profile-switch
+    mode: "0644"
+  notify: Apply power profile
+
+- name: Install power profile switcher
+  ansible.builtin.copy:
+    src: power-profile-switch
+    dest: "{{ machine_lib_dir }}/power-profile-switch"
+    mode: "0755"
+  notify: Apply power profile
+
+- name: Install power profile unit
+  ansible.builtin.copy:
+    src: power-profile-switch.service
+    dest: /etc/systemd/system/power-profile-switch.service
+    mode: "0644"
+  notify: Apply power profile
+
+- name: Install power profile udev rule
+  ansible.builtin.copy:
+    src: 85-power-profile-switch.rules
+    dest: /etc/udev/rules.d/85-power-profile-switch.rules
+    mode: "0644"
+  notify: Reload udev rules
+
+- name: Enable the power profile unit
+  ansible.builtin.systemd:
+    name: power-profile-switch.service
+    enabled: true
+    daemon_reload: true
+  when: machine_manage_services | bool

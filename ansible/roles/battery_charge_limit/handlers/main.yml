@@ -1,0 +1,7 @@
+---
+- name: Apply charge thresholds
+  ansible.builtin.systemd:
+    name: battery-charge-limit.service
+    state: restarted
+    daemon_reload: true
+  when: machine_manage_services | bool

@@ -1,0 +1,14 @@
+---
+- name: Configure zram swap
+  ansible.builtin.template:
+    src: zram-generator.conf.j2
+    dest: /etc/systemd/zram-generator.conf
+    mode: "0644"
+  notify: Start zram swap
+
+- name: Tune swap behaviour for zram
+  ansible.builtin.copy:
+    src: 99-zram.conf
+    dest: /etc/sysctl.d/99-zram.conf
+    mode: "0644"
+  notify: Apply zram sysctl

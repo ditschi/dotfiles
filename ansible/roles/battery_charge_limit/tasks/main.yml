@@ -1,0 +1,31 @@
+---
+- name: Remove the former thinkpad-tuning charge thresholds
+  ansible.builtin.include_tasks: remove_old.yml
+
+- name: Write charge threshold settings
+  ansible.builtin.template:
+    src: battery-charge-limit.env.j2
+    dest: /etc/default/battery-charge-limit
+    mode: "0644"
+  notify: Apply charge thresholds
+
+- name: Install battery-charge
+  ansible.builtin.copy:
+    src: battery-charge
+    dest: /usr/local/bin/battery-charge
+    mode: "0755"
+  notify: Apply charge thresholds
+
+- name: Install charge threshold unit
+  ansible.builtin.copy:
+    src: battery-charge-limit.service
+    dest: /etc/systemd/system/battery-charge-limit.service
+    mode: "0644"
+  notify: Apply charge thresholds
+
+- name: Enable the charge threshold unit
+  ansible.builtin.systemd:
+    name: battery-charge-limit.service
+    enabled: true
+    daemon_reload: true
+  when: machine_manage_services | bool

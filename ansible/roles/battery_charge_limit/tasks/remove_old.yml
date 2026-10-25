@@ -1,0 +1,23 @@
+---
+- name: Check for the former charge threshold unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/thinkpad-charge-thresholds.service
+  register: battery_charge_limit_old_unit
+
+- name: Disable the former charge threshold unit
+  ansible.builtin.systemd:
+    name: thinkpad-charge-thresholds.service
+    enabled: false
+  when:
+    - battery_charge_limit_old_unit.stat.exists
+    - machine_manage_services | bool
+  failed_when: false
+
+- name: Remove the former charge threshold files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/thinkpad-charge-thresholds.service
+    - /usr/local/bin/thinkpad-charge
+    - /etc/default/thinkpad-tuning

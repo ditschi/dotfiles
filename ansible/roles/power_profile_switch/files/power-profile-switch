@@ -1,0 +1,27 @@
+#!/bin/bash
+# Pick the power-profiles-daemon profile for the current power source.
+# A profile the host does not offer is reported and skipped, never an error.
+set -euo pipefail
+
+PROFILE_AC=performance
+PROFILE_BATTERY=balanced
+# shellcheck disable=SC1091
+[ -r /etc/default/power-profile-switch ] && . /etc/default/power-profile-switch
+SUPPLY_DIR="${POWER_SUPPLY_DIR:-/sys/class/power_supply}"
+
+profile=$PROFILE_BATTERY
+for supply in "$SUPPLY_DIR"/*; do
+    if [ "$(cat "$supply/type" 2>/dev/null)" = Mains ] && [ "$(cat "$supply/online" 2>/dev/null)" = 1 ]; then
+        profile=$PROFILE_AC
+    fi
+done
+
+if ! command -v powerprofilesctl >/dev/null; then
+    echo "power-profile-switch: powerprofilesctl not found; profile unchanged"
+    exit 0
+fi
+if ! powerprofilesctl list | grep -Eq "^[* ]*${profile}:"; then
+    echo "power-profile-switch: profile $profile is not offered; profile unchanged"
+    exit 0
+fi
+exec powerprofilesctl set "$profile"

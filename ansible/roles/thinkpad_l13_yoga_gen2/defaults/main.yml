@@ -1,0 +1,3 @@
+---
+# Kernel suspend mode; "deep" (S3) needs BIOS Config → Power → Sleep State = Linux S3.
+thinkpad_l13_yoga_gen2_mem_sleep: deep

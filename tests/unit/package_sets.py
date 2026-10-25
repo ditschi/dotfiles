@@ -68,6 +68,10 @@ def resolve_packages(host: dict, variables: dict | None = None) -> List[str]:
         packages.extend(variables["packages_host"])
     if host["context"] == "work":
         packages.extend(variables["packages_work"])
+    if not host["hw_laptop"]:
+        features_set -= {"lid-switch", "power-profile-switch", "battery-charge-limit"}
+    if host["hw_pi"]:
+        features_set -= {"zram-swap"}
     for feature, feature_packages in variables["packages_by_feature"].items():
         if feature in features_set:
             packages.extend(feature_packages)

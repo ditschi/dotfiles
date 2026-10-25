@@ -1,8 +1,18 @@
 # ThinkPad L13 Yoga Gen 2 on Ubuntu
 
-Notes for model 20VK (i5-1135G7, Tiger Lake), plus what the features `thinkpad-tuning`
-(role `ansible/roles/thinkpad_tuning`) and `touch-device` (role `ansible/roles/touch_device`)
-set up. Apply with `machine apply`.
+Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `machine apply`.
+
+| What | How it is selected | Role |
+| --- | --- | --- |
+| S3 suspend, on-screen keyboard in tablet mode | detected model (DMI `ThinkPad L13 Yoga Gen 2`), no feature | `thinkpad_l13_yoga_gen2` |
+| Lid does nothing | feature `lid-switch` (laptops) | `lid_switch` |
+| Power profile per power source | feature `power-profile-switch` (laptops) | `power_profile_switch` |
+| Battery charge thresholds | feature `battery-charge-limit` (laptops) | `battery_charge_limit` |
+| zram swap | feature `zram-swap` | `zram_swap` |
+| Touch extensions | feature `touch-device` | `touch_device` |
+
+The laptop features are preselected on every desktop and applied only when Ansible detects a
+laptop; any other laptop gets them too. Only the first row is specific to this model.
 
 ## Suspend: use S3, not Modern Standby
 
@@ -15,7 +25,7 @@ always to the power button or lid.
 
 Fix (manual, once): F1 at boot → Config → Power → **Sleep State = Linux S3**.
 
-The role adds `mem_sleep_default=deep` through `/etc/default/grub.d/thinkpad-tuning.cfg` and
+The model role adds `mem_sleep_default=deep` through `/etc/default/grub.d/thinkpad-l13-yoga-gen2.cfg` and
 warns during apply when the firmware does not offer `deep`.
 
 Check:
@@ -33,27 +43,40 @@ If these show up after resume from S3 (not seen so far on this machine):
 | Touchpad buttons dead | `options psmouse elantech_smbus=0` in `/etc/modprobe.d/psmouse.conf`, then `update-initramfs -u` |
 | NVMe I/O errors, root read-only | kernel parameter `nvme_core.default_ps_max_latency_us=0` (reported with the factory Kioxia SSD) |
 
-## Battery charge thresholds
+## Lid
 
-Default: charging starts below 75 % and stops at 80 % (`thinkpad_tuning_charge_start`,
-`thinkpad_tuning_charge_stop`). This suits a laptop that is mostly on the charger and
-sometimes away for a day.
+Closing the lid does nothing, on battery, on the charger and when docked
+(`/etc/systemd/logind.conf.d/50-lid-switch.conf`). Suspend stays available through the menu
+and the power button.
 
 ```bash
-thinkpad-charge                # show level and thresholds
-sudo thinkpad-charge full      # charge to 100 % before a trip
-sudo thinkpad-charge normal    # back to 75/80 (also happens at every boot)
+systemd-analyze cat-config systemd/logind.conf | grep -i lid   # HandleLidSwitch*=ignore
+```
+
+## Battery charge thresholds
+
+Default: charging starts below 75 % and stops at 80 % (`battery_charge_limit_start`,
+`battery_charge_limit_stop`). This suits a laptop that is mostly on the charger and
+sometimes away for a day. The command uses the kernel's generic battery interface, so it also
+works on other laptops; a battery that only offers a stop threshold gets just that one.
+
+```bash
+battery-charge                 # show level and thresholds
+sudo battery-charge full       # charge to 100 % before a trip
+sudo battery-charge normal     # back to 75/80 (also happens at every boot)
 ```
 
 ## Power profile
 
 `performance` on the charger, `balanced` on battery, switched by a udev rule on plug and
 unplug and at boot. A profile picked by hand in GNOME stays until the next plug event.
-Variables: `thinkpad_tuning_profile_ac`, `thinkpad_tuning_profile_battery`.
+A profile the host does not offer is skipped. Variables: `power_profile_switch_ac`,
+`power_profile_switch_battery`.
 
 ## zram swap
 
-Compressed swap in RAM (half of RAM, zstd), used before the swap file on disk.
+Compressed swap in RAM (half of RAM, at most 8 GiB, zstd), used before the swap file on
+disk. Variable: `zram_swap_size`. Not applied on Raspberry Pis.
 
 ```bash
 swapon --show

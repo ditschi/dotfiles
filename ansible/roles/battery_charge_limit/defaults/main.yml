@@ -1,0 +1,4 @@
+---
+# Battery charge thresholds (percent). Start charging below start, stop at stop.
+battery_charge_limit_start: 75
+battery_charge_limit_stop: 80

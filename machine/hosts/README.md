@@ -5,7 +5,7 @@
 # Feature defaults and which features a host may have: ansible/group_vars/all/features.yml
 #
 # Fleet (home):
-#   ditschi-ThinkPad-L13-Yoga-Gen-2.yml  — this laptop (private desktop + stylus + thinkpad-tuning + touch-device + sshd-home)
+#   ditschi-ThinkPad-L13-Yoga-Gen-2.yml  — this laptop (private desktop + laptop features + stylus + touch-device + sshd-home)
 #   homeserver.yml                       — M720q / K3s CP (private server + sshd-home)
 #   netmaster.yml                        — Pi edge (private server + sshd-home)
 #   machine/ssh_keys/ditschi-ThinkPad-T470.pub — pubkey recovered from netmaster

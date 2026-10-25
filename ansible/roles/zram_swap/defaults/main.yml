@@ -1,0 +1,3 @@
+---
+# Size expression for zram-generator (MiB): half of RAM, at most 8 GiB.
+zram_swap_size: "min(ram / 2, 8192)"

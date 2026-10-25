@@ -1,0 +1,70 @@
+---
+# --- Suspend mode ---------------------------------------------------------
+
+- name: Check for GRUB drop-in directory
+  ansible.builtin.stat:
+    path: /etc/default/grub.d
+  register: thinkpad_l13_yoga_gen2_grub_d
+
+- name: Remove the former thinkpad-tuning GRUB drop-in
+  ansible.builtin.file:
+    path: /etc/default/grub.d/thinkpad-tuning.cfg
+    state: absent
+  notify: Update grub
+
+- name: Set default suspend mode on the kernel command line
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/thinkpad-l13-yoga-gen2.cfg
+    mode: "0644"
+    content: |
+      # Managed by ansible roles/thinkpad_l13_yoga_gen2
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT mem_sleep_default={{ thinkpad_l13_yoga_gen2_mem_sleep }}"
+  when: thinkpad_l13_yoga_gen2_grub_d.stat.isdir | default(false)
+  notify: Update grub
+
+- name: Read supported suspend modes
+  ansible.builtin.slurp:
+    src: /sys/power/mem_sleep
+  register: thinkpad_l13_yoga_gen2_mem_sleep_modes
+  failed_when: false
+  when: machine_manage_services | bool
+
+- name: Warn when the firmware does not offer the wanted suspend mode
+  ansible.builtin.debug:
+    msg: >-
+      Suspend mode '{{ thinkpad_l13_yoga_gen2_mem_sleep }}' is not offered by the firmware
+      ({{ thinkpad_l13_yoga_gen2_mem_sleep_modes.content | b64decode | trim }}).
+      Set BIOS Config → Power → Sleep State to "Linux S3".
+  when:
+    - thinkpad_l13_yoga_gen2_mem_sleep_modes.content is defined
+    - thinkpad_l13_yoga_gen2_mem_sleep not in (thinkpad_l13_yoga_gen2_mem_sleep_modes.content | b64decode)
+
+# --- Tablet mode on-screen keyboard --------------------------------------
+
+- name: Ensure target directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ machine_lib_dir }}"
+    - /etc/systemd/user
+
+- name: Install tablet on-screen keyboard watcher
+  ansible.builtin.copy:
+    src: tablet_osk.py
+    dest: "{{ machine_lib_dir }}/tablet_osk.py"
+    mode: "0755"
+
+- name: Install tablet on-screen keyboard user unit
+  ansible.builtin.copy:
+    src: tablet-osk.service
+    dest: /etc/systemd/user/tablet-osk.service
+    mode: "0644"
+
+- name: Enable tablet on-screen keyboard for all users
+  ansible.builtin.systemd:
+    name: tablet-osk.service
+    scope: global
+    enabled: true
+  when: machine_manage_services | bool

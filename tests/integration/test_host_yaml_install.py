@@ -18,7 +18,7 @@ from conftest import (
 
 
 # Hardware the CI hosts stand for; Docker shows none of it to Ansible.
-HARDWARE = {"ci-rpi-zero": "pi,pi-zero", "ci-home-laptop": "laptop"}
+HARDWARE = {"ci-rpi-zero": "pi,pi-zero", "ci-home-laptop": "laptop,l13-yoga-gen2"}
 APPLIED = "/home/{user}/.local/share/machine/applied-host.yml"
 
 
@@ -160,7 +160,12 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     # Role installs files; systemd enable is skipped in containers
     assert host.file("/usr/local/lib/machine/stylus_touch_guard.py").exists
     assert host.file("/etc/systemd/system/stylus-touch-guard.service").exists
-    assert host.file("/usr/local/bin/thinkpad-charge").exists
+    # Laptop features (MACHINE_HARDWARE=laptop) and the L13 Yoga model role
+    assert host.file("/usr/local/bin/battery-charge").exists
+    assert host.file("/etc/systemd/system/battery-charge-limit.service").exists
+    assert host.file("/usr/local/lib/machine/power-profile-switch").exists
+    assert host.file("/etc/systemd/logind.conf.d/50-lid-switch.conf").exists
+    assert not host.file("/usr/local/bin/thinkpad-charge").exists
     assert host.file("/etc/systemd/zram-generator.conf").exists
     assert host.file("/etc/systemd/user/tablet-osk.service").exists
     assert host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists

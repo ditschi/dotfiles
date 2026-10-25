@@ -145,6 +145,16 @@ def test_expected_package_invariants(name: str):
         assert "ldap-utils" not in packages
 
 
+def test_laptop_and_pi_packages_follow_the_hardware():
+    laptop = resolve_packages(host_vars("private-laptop"))
+    desktop = resolve_packages(host_vars("private-desktop"))
+    pi = resolve_packages(host_vars("pi", ["zram-swap"]))
+    assert "power-profiles-daemon" in laptop and "systemd-zram-generator" in laptop
+    assert "power-profiles-daemon" not in desktop
+    assert "systemd-zram-generator" in desktop
+    assert "systemd-zram-generator" not in pi
+
+
 def test_excluded_features_bring_no_packages():
     host = host_vars("work-desktop", ["zsh-full", "monitoring", "sshd-home"])
     assert "openssh-server" not in resolve_packages(host)

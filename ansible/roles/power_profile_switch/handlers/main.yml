@@ -1,0 +1,12 @@
+---
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true
+  when: machine_manage_services | bool
+
+- name: Apply power profile
+  ansible.builtin.systemd:
+    name: power-profile-switch.service
+    state: restarted
+    daemon_reload: true
+  when: machine_manage_services | bool

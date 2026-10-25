@@ -92,15 +92,25 @@ feature_table:
     desktop: optional
     server: excluded
     container: excluded
-  thinkpad-tuning:
-    help: ThinkPad battery thresholds, power profile, S3, zram, tablet OSK
-    desktop: optional
-    server: excluded
-    container: excluded
   touch-device:
     help: GNOME touch extensions (TouchUp, Screen Rotate)
     desktop: optional
     server: excluded
+    container: excluded
+  lid-switch:
+    help: Closing the lid does nothing (laptops only)
+    server: excluded
+    container: excluded
+  power-profile-switch:
+    help: Power profile per power source (laptops only)
+    server: excluded
+    container: excluded
+  battery-charge-limit:
+    help: Battery charge thresholds 75/80 % (laptops only)
+    server: excluded
+    container: excluded
+  zram-swap:
+    help: Compressed swap in RAM (not on Raspberry Pis)
     container: excluded
   sshd-home:
     help: sshd Port 5115 + authorized_keys from machine/ssh_keys

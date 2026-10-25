@@ -32,6 +32,9 @@ packages_work: &packages_work
 packages_by_feature:
   zsh-full:
     - zsh
+  # VA-API check tool
+  desktop:
+    - vainfo
   gnome:
     - flameshot
     - gnome-shell-extension-manager
@@ -56,11 +59,12 @@ packages_by_feature:
     - evtest
     - python3-evdev
     - python3-psutil
-  # ThinkPad laptops: zram swap, power profiles, VA-API check tool
-  thinkpad-tuning:
+  # Laptops only (tasks/resolve_packages.yml drops it elsewhere)
+  power-profile-switch:
     - power-profiles-daemon
+  # Not on Raspberry Pis (tasks/resolve_packages.yml drops it there)
+  zram-swap:
     - systemd-zram-generator
-    - vainfo
   sshd-home:
     - openssh-server
 

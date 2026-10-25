@@ -124,14 +124,79 @@
     - role: stylus_touch_guard
       when: "'stylus-touch-guard' in machine_features"
 
-- name: ThinkPad tuning (battery, power profile, suspend, zram, tablet mode)
+- name: Lid switch (laptops)
   hosts: "{{ target_hosts | default('all') }}"
   become: true
   gather_facts: true
-  tags: [thinkpad]
+  tags: [laptop]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
   roles:
-    - role: thinkpad_tuning
-      when: "'thinkpad-tuning' in machine_features"
+    - role: lid_switch
+      when:
+        - "'lid-switch' in machine_features"
+        - hw_laptop | bool
+
+- name: Power profile per power source (laptops)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [laptop]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
+  roles:
+    - role: power_profile_switch
+      when:
+        - "'power-profile-switch' in machine_features"
+        - hw_laptop | bool
+
+- name: Battery charge limit (laptops)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [laptop]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
+  roles:
+    - role: battery_charge_limit
+      when:
+        - "'battery-charge-limit' in machine_features"
+        - hw_laptop | bool
+
+- name: zram swap (not on Raspberry Pis)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [zram]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
+  roles:
+    - role: zram_swap
+      when:
+        - "'zram-swap' in machine_features"
+        - not (hw_pi | bool)
+
+- name: ThinkPad L13 Yoga Gen 2 (detected model)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [model]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
+  roles:
+    - role: thinkpad_l13_yoga_gen2
+      when:
+        - hw_model_l13_yoga_gen2 | bool
 
 - name: Touch device (GNOME extensions for the login user)
   hosts: "{{ target_hosts | default('all') }}"

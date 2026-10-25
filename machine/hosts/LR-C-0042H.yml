@@ -11,4 +11,8 @@ features:
   - etckeeper
   - claude-code
   - copilot-cli
+  - lid-switch
+  - power-profile-switch
+  - battery-charge-limit
+  - zram-swap
 ssh_allow_from: []

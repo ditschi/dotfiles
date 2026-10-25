@@ -1,0 +1,6 @@
+---
+# SIGHUP makes logind re-read its configuration; a restart can end the graphical session.
+- name: Reload logind
+  ansible.builtin.command: systemctl kill -s HUP systemd-logind
+  changed_when: true
+  when: machine_manage_services | bool

@@ -1,0 +1,18 @@
+---
+- name: Ensure the logind drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Ignore the lid switch
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/50-lid-switch.conf
+    mode: "0644"
+    content: |
+      # Managed by ansible roles/lid_switch: closing the lid does nothing.
+      [Login]
+      HandleLidSwitch=ignore
+      HandleLidSwitchExternalPower=ignore
+      HandleLidSwitchDocked=ignore
+  notify: Reload logind

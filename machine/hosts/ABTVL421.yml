@@ -13,4 +13,5 @@ features:
   - ssh-host-key
   - claude-code
   - copilot-cli
+  - zram-swap
 ssh_allow_from: []

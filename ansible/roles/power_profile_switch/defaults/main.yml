@@ -1,0 +1,4 @@
+---
+# power-profiles-daemon profile per power source.
+power_profile_switch_ac: performance
+power_profile_switch_battery: balanced

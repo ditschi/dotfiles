@@ -19,6 +19,7 @@ features:
   - touch-device
   - sshd-home
   - etckeeper
+  - thunderbird
 ssh_allow_from:
   - homeserver
   - netmaster

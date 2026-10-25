@@ -14,12 +14,9 @@ Bitwarden CLI 2026.8 creates SSH key items (`type: 5`, `sshKey: {privateKey, pub
 - **Public keys of home hosts in the repository, not in Bitwarden.** The repository is the only source of host profiles, and `ssh_allow_from` lives there; Ansible fills `authorized_keys` from `machine/ssh_keys/` without Bitwarden, also headless and for `--limit` runs. Bitwarden keeps the full key as backup only. Public keys are not secret; host names are already in `machine/hosts/`.
 - **Setup (and bootstrap) provisions the key (owner decision).** A new host gets its key restored from Bitwarden or generated during setup, so bootstrap leaves every host with the feature `ssh-host-key` with a key that is backed up; existing keys that are not in Bitwarden yet are uploaded.
 - **Ask before replacing a different key in Bitwarden (owner decision).** When the local key and the item differ, setup and publish show both fingerprints and ask, default no; unattended runs change nothing.
+- **Update checks silently, reports through attention (owner decision).** `machine update` compares key and item only with a Bitwarden session that needs no prompt; a missing or different item becomes an attention item, resolved interactively via `machine`. The update itself never asks, generates, restores or uploads, so unattended runs stay quiet. Without a session nothing happens and nothing is printed.
 - **Work keys stay out of the repository.** The repository is public and work hosts do not use `sshd-home`; the `work` class stays in Bitwarden only (`work-private-separation`).
 - **No deletion in the vault.** Migration creates the new item and leaves the old secure note; the user deletes it.
-
-## Assumptions (to be confirmed by the owner)
-
-- **Update checks silently, reports through attention.** The owner was unsure whether update should check at all. Proposed: only with a session that needs no prompt; a missing or different item becomes an attention item, resolved interactively via `machine`; the update itself never asks, generates, restores or uploads. Without a session nothing happens and nothing is printed.
 
 ## Risks / Trade-offs
 

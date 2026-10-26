@@ -6,7 +6,7 @@ from pathlib import Path
 
 from package_sets import REPO
 
-COPY = REPO / "home/core/.local/bin/zellij-copy"
+COPY = REPO / "home/core/.local/bin/copy-selection"
 CONFIG = REPO / "home/core/.config/zellij/config.kdl"
 
 
@@ -30,7 +30,7 @@ def _env(bin_dir: Path, **extra: str) -> dict:
 
 
 def test_config_uses_the_copy_script():
-    assert 'copy_command "zellij-copy"' in CONFIG.read_text()
+    assert 'copy_command "copy-selection"' in CONFIG.read_text()
     assert os.access(COPY, os.X_OK)
 
 

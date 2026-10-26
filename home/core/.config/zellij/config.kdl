@@ -2,4 +2,4 @@
 
 // Mouse selection (without Shift) goes to the primary selection for middle-click paste.
 // GNOME Terminal and Ptyxis ignore zellij's default OSC 52 copy.
-copy_command "zellij-copy"
+copy_command "copy-selection"

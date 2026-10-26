@@ -187,6 +187,10 @@ The update SHALL report a pending system update only when the files changed sinc
 
 ## ADDED Requirements
 
+#### Scenario: Feature table gives a feature a new group
+- **WHEN** an incoming change adds a dotfile group to a feature the host has and the host config itself is unchanged
+- **THEN** the host's group list is rewritten, the group's files are linked and its tools are installed
+
 ### Requirement: Conflict choices
 When local changes conflict with the incoming changes, an interactive `machine update` SHALL show a colored diff of the conflicting local changes and the incoming commits that touch them, then offer: resolve manually (default) or put the conflicting local changes into the stash and update. The reason SHALL be the last line of output.
 

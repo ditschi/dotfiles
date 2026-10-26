@@ -89,11 +89,15 @@ opencode SHALL be installed by mise from the `opencode` group, which the feature
 - **THEN** the tool is added to a mise fragment instead and the line is not kept in the repository
 
 ### Requirement: Core tools on every host
-The `core` group SHALL install on every host, containers included: Git and Git LFS, the shell tools (fzf, zoxide, eza, fd, Starship, jq, delta, tealdeer, tmux, zellij), gh, yazi, Node.js and uv. LLM command line tools and OpenSpec SHALL NOT be in `core`.
+The `core` group SHALL install on every host, containers included: Git and Git LFS, the shell tools (fzf, zoxide, eza, fd, Starship, jq, delta, lazygit, tealdeer, tmux, zellij), gh, yazi, Node.js and uv. LLM command line tools and OpenSpec SHALL NOT be in `core`.
 
 #### Scenario: Container
 - **WHEN** a container is set up without any LLM feature
 - **THEN** Starship, yazi and gh are installed and no LLM CLI or OpenSpec is installed
+
+#### Scenario: lazygit available
+- **WHEN** any host is set up
+- **THEN** `lazygit` is on the PATH; `machine` does not start it by itself
 
 ### Requirement: LLM tools per feature
 Claude Code, Copilot CLI and opencode SHALL each be in their own group (`claude`, `copilot`, `opencode`), selected by the features `claude-code`, `copilot-cli` and `opencode`. OpenSpec SHALL be in its own group `openspec`, selected by each of these three features, so that it is declared once and installed whenever any LLM CLI is selected.

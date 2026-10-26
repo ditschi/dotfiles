@@ -22,7 +22,8 @@ feature_table:
     server: excluded
     container: excluded
   gnome:
-    help: GNOME tools (flameshot, guake, …)
+    help: GNOME tools (flameshot, guake, shell extensions, …)
+    groups: [gnome]
     server: excluded
     container: excluded
   cosmic:

@@ -136,6 +136,12 @@ def test_fonts_group_follows_the_feature():
     assert "thunderbird" not in dotfile_groups("work", "desktop", ["thunderbird"])
 
 
+def test_gnome_group_follows_the_gnome_feature():
+    assert "gnome" in dotfile_groups("work", "desktop", ["gnome"])
+    assert "gnome" not in dotfile_groups("work", "desktop", [])
+    assert "gnome" not in dotfile_groups("work", "server", ["gnome"])
+
+
 def _checkout_with_cli(tmp_path):
     repo = tmp_path / "repo"
     cli = repo / "machine_cli" / "machine"

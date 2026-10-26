@@ -177,3 +177,62 @@ def test_no_extension_download_without_the_feature(machine, monkeypatch):
     )
 
     host.run_tools_install()
+
+
+def _gnome(host, monkeypatch, tmp_path):
+    _profile(host, ["gnome"])
+    monkeypatch.setattr(
+        mise_tools.system, "have", lambda name: name in ("mise", "gnome-shell", "dconf")
+    )
+    settings = tmp_path / "home/gnome/.config/machine/dconf"
+    settings.mkdir(parents=True)
+    (settings / "gtile.ini").write_text("[/]\ngrid-sizes='3x3'\n")
+
+
+def test_gnome_extensions_install_missing_ones_and_load_settings_once(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+    present = tmp_path / ".local/share/gnome-shell/extensions/gTile@vibou"
+    present.mkdir(parents=True)
+
+    host.run_tools_install()
+
+    gext = [c for c in commands if c[:4] == ["mise", "exec", "--", "gext"]]
+    installed = [c[-1] for c in gext if "install" in c]
+    assert "ddterm@amezin.github.com" in installed
+    assert "gTile@vibou" not in installed  # already there
+    assert "tiling-assistant@ubuntu.com" not in installed  # system extension
+    assert ["dconf", "load", "/org/gnome/shell/extensions/gtile/"] in commands
+
+    commands.clear()
+    host.run_tools_install()
+    assert not any(c[0] == "dconf" for c in commands)  # settings load only once
+
+
+def test_gnome_extension_failure_does_not_fail_the_run_or_mark_settings(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        code = 1 if "install" in args and args[-1] != "mise" else 0
+        return subprocess.CompletedProcess(args, code, stdout="", stderr="")
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    assert not any(c[0] == "dconf" for c in commands)
+
+
+def test_no_gnome_extensions_without_gnome_shell(machine):
+    host, commands = machine
+    _profile(host, ["gnome"])
+
+    host.run_tools_install()
+
+    assert not any("gext" in c for c in commands)

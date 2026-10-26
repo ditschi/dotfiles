@@ -24,6 +24,19 @@ TB_EXTENSION_URL = (
     "thunderbird_ai_bridge-2.1.0-tb.xpi"
 )
 TB_EXTENSION_SHA256 = "999a3ef550153d49946007375109379d3c69d01701e5ee2f5df2a3ab43f3bdc9"  # pragma: allowlist secret
+GNOME_FEATURE = "gnome"
+GNOME_EXTENSIONS = (
+    "ddterm@amezin.github.com",
+    "gTile@vibou",
+    "clipboard-indicator@tudmotu.com",
+    "quick-settings-audio-panel@rayzeq.github.io",
+    "quicksettings-audio-devices-hider@marcinjahn.com",
+    "monitor@astraext.github.io",  # Astra Monitor
+)
+# Shipped by Ubuntu in /usr/share/gnome-shell/extensions: enabled, never installed.
+GNOME_SYSTEM_EXTENSIONS = ("tiling-assistant@ubuntu.com",)
+GNOME_SETTINGS_DIR = Path("home/gnome/.config/machine/dconf")
+GNOME_SETTINGS_MARKER = Path(".local/state/machine/gnome-extension-settings")
 
 
 class MiseToolsMixin:
@@ -51,6 +64,8 @@ class MiseToolsMixin:
             self.download_thunderbird_extension()
         if FONT_FEATURE in features:
             self.set_terminal_fonts()
+        if GNOME_FEATURE in features:
+            self.ensure_gnome_extensions(env)
 
     def download_thunderbird_extension(self) -> None:
         """Put the pinned bridge extension into downloads/ (gitignored) for a manual install."""
@@ -102,6 +117,59 @@ class MiseToolsMixin:
     def set_terminal_fonts(self) -> None:
         terminal_fonts.set_guake_font()
         terminal_fonts.set_vscode_font(self.home)
+
+    def ensure_gnome_extensions(self, env: dict) -> None:
+        """Install and enable the GNOME Shell extensions without root, then load their settings once."""
+        if not system.have("gnome-shell"):
+            return
+        user_dir = self.home / ".local" / "share" / "gnome-shell" / "extensions"
+        system_dir = Path("/usr/share/gnome-shell/extensions")
+        failed = False
+        for uuid in (*GNOME_EXTENSIONS, *GNOME_SYSTEM_EXTENSIONS):
+            present = (user_dir / uuid).is_dir() or (system_dir / uuid).is_dir()
+            if not present and uuid in GNOME_EXTENSIONS:
+                log(f"installing the GNOME extension {uuid}")
+                done = system.run(
+                    ["mise", "exec", "--", "gext", "-F", "install", uuid],
+                    env=env,
+                    check=False,
+                    capture=True,
+                )
+                if done.returncode != 0:
+                    log(f"could not install {uuid}; skipping it")
+                    failed = True
+                    continue
+            elif not present:
+                log(f"{uuid} is not installed on this system; skipping it")
+                continue
+            system.run(
+                ["mise", "exec", "--", "gext", "-F", "enable", uuid],
+                env=env,
+                check=False,
+                capture=True,
+            )
+        log("log out and in to load new GNOME extensions")
+        if not failed:
+            self.load_gnome_extension_settings()
+
+    def load_gnome_extension_settings(self) -> None:
+        """`dconf load` of the shipped settings, once per host; later GUI changes are kept."""
+        marker = self.home / GNOME_SETTINGS_MARKER
+        if marker.exists() or not system.have("dconf"):
+            return
+        for ini in sorted((Path(self.repo) / GNOME_SETTINGS_DIR).glob("*.ini")):
+            done = system.run(
+                ["dconf", "load", f"/org/gnome/shell/extensions/{ini.stem}/"],
+                input_text=ini.read_text(encoding="utf-8"),
+                check=False,
+                capture=True,
+            )
+            if done.returncode != 0:
+                log(f"could not load the settings of {ini.stem}")
+                return
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+        log("loaded the GNOME extension settings")
 
     def ensure_azure_cli(self, env: dict) -> None:
         """Azure CLI as a uv tool on a uv-managed Python; the system Python stays untouched."""

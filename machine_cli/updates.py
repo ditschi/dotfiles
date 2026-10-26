@@ -8,6 +8,7 @@ import getpass
 import json
 import time
 import types
+from datetime import datetime
 from typing import Callable, Iterable, Iterator
 
 from . import events, local_overrides, system
@@ -225,6 +226,14 @@ class UpdateMixin:
         parts = [part for part in (result.stdout or "").split("\0") if part]
         return list(zip(parts[0::2], parts[1::2]))
 
+    def record_update_check(self) -> None:
+        """The time of the last successful fetch, shown by `machine status`."""
+        stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        try:
+            self.update_last_check.write_text(stamp + "\n", encoding="utf-8")
+        except OSError:
+            pass  # best effort, like the timer script
+
     def record_ansible_applied(self) -> None:
         values = self.read_update_state()
         self.write_update_state(
@@ -294,6 +303,8 @@ class UpdateMixin:
             )
             if result.returncode != 0:
                 warn("git fetch failed; using the last known upstream state")
+            else:
+                self.record_update_check()
         upstream = self.upstream_ref()
         if (
             not system.run(

@@ -39,6 +39,8 @@
 
 - [x] 7.2 Show the number of stash entries put aside by `machine` with the hint to decide in `machine attention`; list them with `-v`. Verify with a test that counts only entries named by `machine`.
 
+- [x] 7.3 Record the time of every successful fetch (manual update, `--check`, background job) in the last-check file, so that `machine status` shows the last real check. Verify with a test: a plan without fetch leaves the file alone, a fetch writes it.
+
 ## 8. lazygit and docs
 
 - [x] 8.1 Add `lazygit = "latest"` to `home/core/.config/mise/conf.d/10-shell.toml`, update `mise.lock`, and add lazygit to the core tool list in the Readme. Verify `mise install` puts `lazygit` on the PATH and `pytest tests/unit -q` passes.

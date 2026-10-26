@@ -1463,3 +1463,14 @@ def test_write_dotfile_groups_reports_a_changed_list(update_env, monkeypatch):
     monkeypatch.setattr(machine, "host_dotfile_groups", lambda: ["core", "gnome"])
     assert machine.write_dotfile_groups() is True
     assert "gnome" in machine.mise_local_config.read_text()
+
+
+def test_fetching_records_the_time_of_the_check(update_env, monkeypatch, tmp_path):
+    machine, *_ = update_env
+    stamp = tmp_path / "last-check"
+    monkeypatch.setattr(machine, "update_last_check", stamp)
+
+    machine.update_plan(fetch=False)
+    assert not stamp.exists()
+    machine.update_plan(fetch=True)
+    assert stamp.read_text().startswith("20")

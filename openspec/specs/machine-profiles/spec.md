@@ -6,7 +6,7 @@ Defines machine profiles and how a host gets its profile.
 ## Requirements
 
 ### Requirement: Context and device per host
-Every host SHALL have a context (`private` or `work`) and a device (`desktop`, `server` or `container`); together with its features they form the host config. A container SHALL have no context unless an override sets one. The host config SHALL be versioned in `machine/hosts/<hostname>.yml`, the only source of it. `machine` SHALL keep the last applied host config in its state directory (`~/.local/share/machine/applied-host.yml`): it is what a failed apply restores, what the shell reads at start, and the host config of hosts without a repository file.
+Every host SHALL have a context (`private` or `work`) and a device (`desktop`, `server` or `container`); together with its features they form the host config. A container SHALL have no context unless an override sets one. The host config SHALL be versioned in `machine/hosts/<hostname>.yml`, the only source of it.
 
 #### Scenario: Looking up a host
 - **WHEN** a host is set up
@@ -15,6 +15,9 @@ Every host SHALL have a context (`private` or `work`) and a device (`desktop`, `
 #### Scenario: Setup changes the selection
 - **WHEN** `machine setup` runs, also with `--yes`, and the chosen context, device or features differ from `machine/hosts/<hostname>.yml`
 - **THEN** the repository file is updated without a question and setup offers to commit it
+
+### Requirement: Applied host config
+`machine` SHALL keep the last applied host config in its state directory (`~/.local/share/machine/applied-host.yml`): it is what a failed apply restores, what the shell reads at start, and the host config of hosts without a repository file.
 
 #### Scenario: Container
 - **WHEN** `machine setup` runs with the device `container`

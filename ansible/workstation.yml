@@ -78,6 +78,9 @@
 
         - name: Look up the Docker package candidate
           ansible.builtin.command: apt-cache policy docker.io
+          # apt-cache translates "Candidate:"; the checks below need the English output.
+          environment:
+            LC_ALL: C
           register: machine_docker_candidate
           changed_when: false
           failed_when: false

@@ -31,7 +31,7 @@ class AutoUpdateMixin:
         if own_profile in paths:
             return True
         return bool(self.read_update_state()["ansible_applied_rev"]) and bool(
-            self.system_paths_relevant(paths)
+            self.system_paths_relevant(paths, f"{commit}^", commit)
         )
 
     def safe_update_target(self, upstream: str) -> Optional[str]:

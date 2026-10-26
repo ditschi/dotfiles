@@ -271,6 +271,32 @@ def test_gnome_extension_failure_does_not_fail_the_run_or_mark_settings(
     assert not any(c[0] == "dconf" for c in commands)
 
 
+def test_gnome_extension_failure_names_the_reason(machine, monkeypatch, tmp_path):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+    messages = []
+    monkeypatch.setattr(mise_tools, "log", messages.append)
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        failed = "install" in args and args[-1] != "mise"
+        return subprocess.CompletedProcess(
+            args,
+            1 if failed else 0,
+            stdout="",
+            stderr="gext: not found\n" if failed else "",
+        )
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    assert any(
+        m.startswith("could not install ") and ": gext: not found;" in m
+        for m in messages
+    )
+
+
 def test_no_gnome_extensions_without_gnome_shell(machine):
     host, commands = machine
     _profile(host, ["gnome"])

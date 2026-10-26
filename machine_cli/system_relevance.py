@@ -11,6 +11,26 @@ import yaml
 from . import features as feature_table
 
 FEATURE_RE = re.compile(r"""^'([\w-]+)' in machine_features$""")
+FEATURE_TABLE_PATH = "ansible/group_vars/all/features.yml"
+# Keys of the feature table that only the machine CLI reads.
+CLI_ONLY_FEATURE_KEYS = ("help", "groups")
+
+
+def ansible_view_of_feature_table(text: str) -> object:
+    """The feature table as Ansible sees it: without the keys only the CLI reads.
+
+    Unreadable text yields itself, so that it never compares equal to a valid table."""
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return text
+    table = data.get("feature_table") if isinstance(data, dict) else None
+    if isinstance(table, dict):
+        for row in table.values():
+            if isinstance(row, dict):
+                for key in CLI_ONLY_FEATURE_KEYS:
+                    row.pop(key, None)
+    return data
 
 
 def _condition_holds(condition: object, features: Sequence[str]) -> bool:

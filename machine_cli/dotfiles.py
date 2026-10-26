@@ -192,13 +192,21 @@ class DotfilesMixin:
             self.current_context(), self.current_device(), data["features"]
         )
 
-    def write_dotfile_groups(self) -> None:
-        """Write the host's group list into the local mise configuration."""
+    def write_dotfile_groups(self) -> bool:
+        """Write the host's group list into the local mise configuration.
+
+        Returns True when the list changed, for example because the feature table
+        gave a feature a new group without any change to the host config."""
         self.ensure_dirs()
         self.mise_local_config.parent.mkdir(parents=True, exist_ok=True)
-        self.mise_local_config.write_text(
-            render_local_config(self.host_dotfile_groups()), encoding="utf-8"
-        )
+        text = render_local_config(self.host_dotfile_groups())
+        if (
+            self.mise_local_config.is_file()
+            and self.mise_local_config.read_text(encoding="utf-8") == text
+        ):
+            return False
+        self.mise_local_config.write_text(text, encoding="utf-8")
+        return True
 
     def dotfiles_env(self) -> dict:
         env = dict(os.environ)
@@ -210,6 +218,8 @@ class DotfilesMixin:
             die("mise is not installed (run: ./bootstrap)")
         if not self.mise_local_config.is_file():
             die(f"missing {self.mise_local_config} (run: machine setup)")
+        if self.applied_host_path.is_file() and self.write_dotfile_groups():
+            log("dotfile groups: " + " ".join(self.host_dotfile_groups()))
         context, device = self.current_context(), self.current_device()
         self.ensure_gitconfig_local(context, device)
         self.write_github_token_config(context)

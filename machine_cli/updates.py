@@ -13,7 +13,11 @@ from typing import Callable, Iterable, Iterator
 from . import events, local_overrides, system
 from .core import die, log, parse_profile_file, parse_profile_text, warn
 from .local_changes import classify_paths
-from .system_relevance import relevant_system_paths
+from .system_relevance import (
+    FEATURE_TABLE_PATH,
+    ansible_view_of_feature_table,
+    relevant_system_paths,
+)
 from .profile import host_config_changes
 
 Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
@@ -227,10 +231,31 @@ class UpdateMixin:
             values["state"], values["reason"], ansible_applied_rev=self.repo_revision()
         )
 
-    def system_paths_relevant(self, paths: Iterable[str]) -> list[str]:
+    def system_paths_relevant(
+        self, paths: Iterable[str], old: str = "", new: str = ""
+    ) -> list[str]:
+        """Changed paths that apply to this host's Ansible run.
+
+        With the revisions `old` and `new`, a feature table whose change touches
+        only keys the CLI reads (help, groups) does not count."""
         if not self.saved_ansible():
             return []
         known = self.applied_host_path.is_file()
+        relevant = self._relevant_system_paths(paths, known)
+        if FEATURE_TABLE_PATH in relevant and old and new:
+            before, after = (
+                self._git("show", f"{rev}:{FEATURE_TABLE_PATH}") for rev in (old, new)
+            )
+            if (
+                before.returncode == 0
+                and after.returncode == 0
+                and ansible_view_of_feature_table(before.stdout)
+                == ansible_view_of_feature_table(after.stdout)
+            ):
+                relevant.remove(FEATURE_TABLE_PATH)
+        return relevant
+
+    def _relevant_system_paths(self, paths: Iterable[str], known: bool) -> list[str]:
         return relevant_system_paths(
             paths,
             ansible_dir=self.ansible_dir,
@@ -250,7 +275,9 @@ class UpdateMixin:
         result = self._git("diff", "--name-only", "--no-renames", applied, ref)
         if result.returncode != 0:
             return ["ansible/"]  # unknown revision: cannot evaluate, so it counts
-        return self.system_paths_relevant((result.stdout or "").splitlines())
+        return self.system_paths_relevant(
+            (result.stdout or "").splitlines(), applied, ref
+        )
 
     def plan_steps(self, incoming: list[tuple[str, str]], ref: str) -> list[str]:
         steps = {step for step in classify_paths(incoming) if step != "system"}
@@ -577,7 +604,11 @@ class UpdateMixin:
 
     def merge_upstream(self, plan: dict) -> None:
         if plan["local_changes"]:
-            log("keeping local changes: " + ", ".join(plan["local_changes"]))
+            count = len(plan["local_changes"])
+            log(
+                f"keeping {count} local change{'s' if count != 1 else ''} "
+                "(machine status -v lists them)"
+            )
         if plan["merged"]:
             log(
                 "merging local changes with incoming ones: " + ", ".join(plan["merged"])

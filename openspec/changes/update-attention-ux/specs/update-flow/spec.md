@@ -139,6 +139,52 @@ After an automatic update the background job SHALL verify that the shell still w
 - **WHEN** an automatic update that kept local changes is reverted
 - **THEN** the local changes are present again after the reset to the previous revision
 
+### Requirement: Relevant system changes only
+The update SHALL report a pending system update only when the files changed since the last successful Ansible run apply to this host, decided without root. A change to the feature table SHALL count only when it changes what Ansible reads.
+
+#### Scenario: Always-relevant paths
+- **WHEN** playbooks, `ansible/tasks/`, `ansible/group_vars/` or the host config changed
+- **THEN** the change applies
+
+#### Scenario: Feature table changed only for the CLI
+- **WHEN** the only change to `ansible/group_vars/all/features.yml` is in keys that only the CLI reads (a feature's help text or dotfile groups)
+- **THEN** no system update is reported and no Ansible run starts
+
+#### Scenario: Feature table changed for Ansible
+- **WHEN** a change to `ansible/group_vars/all/features.yml` changes what Ansible reads, for example where a feature is excluded
+- **THEN** the change applies
+
+#### Scenario: Ignored paths
+- **WHEN** only documentation, `dump_*.yml` or the inventory changed
+- **THEN** no system update is reported
+
+#### Scenario: Role not enabled on this host
+- **WHEN** the incoming change touches only a role that is not enabled for this host
+- **THEN** no system update is reported
+
+#### Scenario: Enabled role changed
+- **WHEN** the incoming change touches a role that is enabled for this host
+- **THEN** the state shows that a system update is available
+
+#### Scenario: Unknown condition
+- **WHEN** the enabling condition of a changed role cannot be evaluated
+- **THEN** the change counts as applicable
+
+#### Scenario: Host without root
+- **WHEN** a host config sets `ansible: false`, or the host has never run Ansible
+- **THEN** no system update is reported for it
+
+### Requirement: Update ends converged
+`machine update` SHALL end with a converge check, also when nothing was incoming: the user-space tools declared in the `mise` configuration are installed (missing ones are added) and the dotfile groups of the host are applied (missing links created, removed ones pruned). The checks SHALL be idempotent and cheap when nothing is missing.
+
+#### Scenario: Nothing incoming but a tool is missing
+- **WHEN** a user runs `machine update`, no commits are incoming and a declared tool is not installed
+- **THEN** the tool is installed
+
+#### Scenario: Link missing
+- **WHEN** a user runs `machine update` and a dotfile link of the host's groups is missing
+- **THEN** the link is created
+
 ## ADDED Requirements
 
 ### Requirement: Conflict choices

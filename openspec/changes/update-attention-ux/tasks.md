@@ -46,10 +46,15 @@
 
 - [x] 8.3 Let `machine_cli/mise_check.py` read the fragments from `git ls-files` (tracked and not ignored), so ignored nested checkouts such as `.claude/worktrees/` do not count. Verify `python3 -m machine_cli.mise_check` passes with the stale worktree present and `tests/unit/test_mise_check.py` passes.
 
-## 9. Validation
+## 9. Fewer Ansible runs, converged groups
 
-- [x] 9.1 Run `pre-commit run --all-files` and `pytest tests/unit -q`; both pass.
-- [ ] 9.2 On the owner's laptop reproduce the original case (local edit in a file changed upstream, clean merge): `machine update` updates without a prompt and keeps the edit; a conflicting edit stops with the diff and the manual default; an unpushed local commit is rebased.
+- [x] 9.1 Count a change to `ansible/group_vars/all/features.yml` as a system change only when the table without `help` and `groups` differs (manual plan and background job). Verify with tests: help/groups change → no system step and no `apply`; `excluded` change → system step; background job applies a CLI-only change.
+- [x] 9.2 Rewrite the dotfile group list in the dotfile apply when it differs; show the first error line of a failed `gext` install; log the number of kept local changes instead of the list. Verify with tests for the group list, the `gext` reason and the log line.
+
+## 10. Validation
+
+- [x] 10.1 Run `pre-commit run --all-files` and `pytest tests/unit -q`; both pass.
+- [ ] 10.2 On the owner's laptop reproduce the original case (local edit in a file changed upstream, clean merge): `machine update` updates without a prompt and keeps the edit; a conflicting edit stops with the diff and the manual default; an unpushed local commit is rebased.
 
 ## Workflow follow-up
 

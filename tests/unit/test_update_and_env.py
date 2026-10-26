@@ -1391,3 +1391,75 @@ def test_update_offers_bootstrap_in_a_terminal(update_env, monkeypatch, answer, 
     _update(machine)
 
     assert (runs == [[str(machine.repo / "bootstrap")]]) is ran
+
+
+FEATURE_TABLE = """\
+feature_table:
+  gnome:
+    help: {help}
+    groups: {groups}
+    server: {server}
+"""
+
+
+def _push_feature_table(other: Path, help="GNOME", groups="[]", server="excluded"):
+    _push_change(
+        other,
+        "ansible/group_vars/all/features.yml",
+        FEATURE_TABLE.format(help=help, groups=groups, server=server),
+    )
+
+
+def test_feature_table_change_for_the_cli_only_needs_no_system_step(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_feature_table(other)
+    assert _update(machine) == 0 and calls[-1] == "apply"
+    machine.record_ansible_applied()
+    calls.clear()
+
+    _push_feature_table(other, help="GNOME and extensions", groups="[gnome]")
+    assert "system" not in machine.update_plan(fetch=True)["steps"]
+    assert _update(machine) == 0
+    assert "apply" not in calls
+
+
+def test_feature_table_change_for_ansible_needs_the_system_step(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_feature_table(other)
+    assert _update(machine) == 0
+    machine.record_ansible_applied()
+
+    _push_feature_table(other, server="optional")
+    assert "system" in machine.update_plan(fetch=True)["steps"]
+
+
+def test_auto_update_applies_a_cli_only_feature_table_change(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_feature_table(other)
+    assert _update(machine) == 0
+    machine.record_ansible_applied()
+
+    _push_feature_table(other, help="new help")
+    assert _auto(machine) == 0
+    assert machine.read_update_state()["state"] == "updated"
+
+
+def test_update_logs_the_number_of_kept_local_changes(update_env, capsys):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    (repo / "wip-a.txt").write_text("a\n")
+    (repo / "wip-b.txt").write_text("b\n")
+
+    assert _update(machine) == 0
+    out = capsys.readouterr().out
+    assert "keeping 2 local changes (machine status -v lists them)" in out
+    assert "wip-a.txt" not in out
+
+
+def test_write_dotfile_groups_reports_a_changed_list(update_env, monkeypatch):
+    machine, *_ = update_env
+    machine.write_dotfile_groups()
+    assert machine.write_dotfile_groups() is False
+    monkeypatch.setattr(machine, "host_dotfile_groups", lambda: ["core", "gnome"])
+    assert machine.write_dotfile_groups() is True
+    assert "gnome" in machine.mise_local_config.read_text()

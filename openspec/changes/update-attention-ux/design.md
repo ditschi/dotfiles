@@ -86,6 +86,14 @@ If the real rebase fails anyway, it is aborted, so the checkout is as before. Th
 
 Alternatives considered: rebasing in the background job too (rejected by the owner: background rewrite of local commits); never rebasing automatically (rejected: the stop is unnecessary when the rebase is clean).
 
+### Feature table: only what Ansible reads counts
+`ansible/group_vars/all/features.yml` is shared by Ansible and the CLI. Ansible reads only the per-context and per-device values (through `machine_features`); `help` and `groups` are read only by the CLI. Every change in `group_vars/` counted as a system change, so a new help text or a new dotfile group asked for the sudo password and ran Ansible with no change (observed on the owner's laptop: `changed=0`). The relevance check now compares the feature table of both revisions without `help` and `groups`; when they are equal the file does not count. The background job compares each commit with its parent the same way.
+
+Alternative considered: ignoring `features.yml` entirely (rejected: a changed `excluded` value does change what Ansible installs).
+
+### The dotfile group list converges on every update
+The group list in `~/.config/mise/config.local.toml` was rewritten only when the host config changed. A feature that gains a group in the feature table (here `gnome` → group `gnome`) therefore never got its files linked, so `gext` was missing and every GNOME extension install failed. The dotfile apply now rewrites the list first when it differs and logs the new list. The failed `gext` call also shows the first line of its error output.
+
 ### Attention item follows the live plan
 The update item re-runs the plan without fetching. With conflicts it shows the diff and the conflict choices (manual by default). Without conflicts it offers "Run the update now?" (default yes), which runs the full update including Ansible when the system step is pending.
 

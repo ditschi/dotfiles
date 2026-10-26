@@ -137,7 +137,9 @@ class MiseToolsMixin:
                     capture=True,
                 )
                 if done.returncode != 0:
-                    log(f"could not install {uuid}; skipping it")
+                    output = (done.stderr or done.stdout or "").strip().splitlines()
+                    why = output[0] if output else f"exit code {done.returncode}"
+                    log(f"could not install {uuid}: {why}; skipping it")
                     failed = True
                     continue
             elif not present:

@@ -7,6 +7,7 @@ A tool is declared once: not in two fragments, and not in an Ansible package lis
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -24,10 +25,35 @@ _SECTION = re.compile(r"^\s*\[(.+?)\]\s*$")
 _KEY = re.compile(r"""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.:/@-]+))\s*=""")
 
 
+def _candidates(repo: Path) -> Iterable[Path]:
+    """Fragments git knows or would add (ignored paths and nested checkouts such as
+    `.claude/worktrees/` are left out); a plain directory walk outside a git checkout.
+    """
+    listed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            "*mise/conf.d/*.toml",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode == 0 and (repo / ".git").exists():
+        return [repo / name for name in listed.stdout.split("\0") if name]
+    return repo.glob("**/mise/conf.d/*.toml")
+
+
 def fragments(repo: Path = REPO) -> List[Path]:
     found = []
-    for path in repo.glob("**/mise/conf.d/*.toml"):
-        if not SKIP_DIRS.intersection(path.relative_to(repo).parts):
+    for path in _candidates(repo):
+        if path.is_file() and not SKIP_DIRS.intersection(path.relative_to(repo).parts):
             found.append(path)
     return sorted(found)
 

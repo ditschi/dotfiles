@@ -165,7 +165,9 @@ def setup(
 )
 @click.option("--system", "apply_system", is_flag=True)
 @click.option(
-    "--force", is_flag=True, help="stash local changes that overlap incoming ones"
+    "--force",
+    is_flag=True,
+    help="put only conflicting local changes into the stash and update (no prompt)",
 )
 @click.option("--check", is_flag=True, help="read-only plan")
 @click.option("--json", "json_", is_flag=True, help="with --check: machine-readable")
@@ -224,9 +226,10 @@ def ssh_cmd(action, yes) -> None:
     _exit(code)
 
 
-@app.command(help="git / dotfiles / host config")
-def status() -> None:
-    _exit(Machine().cmd_status())
+@app.command(help="update state, local changes and host config (-v: in full)")
+@click.option("-v", "--verbose", is_flag=True, help="also list files and show the configs")
+def status(verbose) -> None:
+    _exit(Machine().cmd_status(verbose))
 
 
 @app.command(help="commit tracked changes")

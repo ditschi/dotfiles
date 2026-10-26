@@ -40,7 +40,7 @@ dotfiles_update_startup() {
     _dfu_read
     _DFU_LOADED_REV="$_dfu_rev"
     if [ "$_dfu_state" = attention ]; then
-        echo "Dotfiles update needs attention: ${_dfu_reason:-see machine status} (run: machine status)"
+        echo "Dotfiles update needs attention: ${_dfu_reason:-see machine attention} (run: machine)"
     fi
 }
 

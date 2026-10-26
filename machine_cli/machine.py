@@ -18,6 +18,7 @@ from .commands import CommandsMixin
 from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
 from .attention import AttentionMixin
+from .local_work import LocalWorkMixin
 
 
 class Machine(
@@ -32,6 +33,7 @@ class Machine(
     UpdateMixin,
     AutoUpdateMixin,
     AttentionMixin,
+    LocalWorkMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()
@@ -61,6 +63,8 @@ class Machine(
         self.state_dir = Path(
             os.environ.get("MACHINE_STATE_DIR", self.home / ".local/share/machine")
         )
+        # Output of the last failed zsh health check after an update (manual or automatic).
+        self.update_failure_file = self.state_dir / "update-failure.txt"
         # The last applied host config: what a failed apply restores, what the shell
         # reads at start, and the host config of containers and new hosts.
         self.applied_host_path = Path(

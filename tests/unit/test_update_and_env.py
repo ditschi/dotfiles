@@ -141,28 +141,51 @@ def test_update_writes_updated_state_with_new_revision(update_env):
     assert state["revision"] == machine.repo_revision() != ""
 
 
-def test_update_blocked_by_divergence_writes_attention_state(update_env):
-    machine, repo, other, home, _calls = update_env
-    _push_change(other, "home/dot_new", "x\n")
-    (repo / "home/dot_local").write_text("y\n")
+def _commit_local(repo: Path, path: str, content: str) -> None:
+    (repo / path).write_text(content)
     _git("add", "-A", cwd=repo)
-    _git("commit", "-q", "-m", "local", cwd=repo)
+    _git("commit", "-q", "-m", f"local {path}", cwd=repo)
+
+
+def test_update_blocked_by_conflicting_divergence_writes_attention_state(update_env):
+    machine, repo, other, home, _calls = update_env
+    _push_change(other, "home/dot_placeholder", "remote\n")
+    _commit_local(repo, "home/dot_placeholder", "local\n")
 
     with pytest.raises(SystemExit):
         _update(machine)
     state = machine.read_update_state()
-    assert state["state"] == "attention"
-    assert "diverged" in state["reason"]
+    assert state["state"] == "attention" and state["pending"] == "1"
+    assert "diverged: 1 local and 1 incoming commit" in state["reason"]
+    assert "git pull --rebase" in state["reason"]
 
 
-def test_status_explains_state_and_fix(update_env, capsys):
-    machine, *_ = update_env
-    machine.write_update_state("attention", "history has diverged")
-    machine.cmd_status()
+def test_status_is_compact_and_names_the_blocker(update_env, capsys):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_placeholder", "remote\n")
+    _git("fetch", "-q", cwd=repo)
+    (repo / "home/dot_placeholder").write_text("local\n")
+    machine.write_update_state("attention", "old reason")
+
+    assert machine.cmd_status() == 0
     out = capsys.readouterr().out
-    assert "update state: attention" in out
-    assert "reason: history has diverged" in out
-    assert "fix: " in out
+    assert "1 behind origin/main" in out
+    assert "conflict with local changes in home/dot_placeholder" in out
+    assert "then run: machine" in out
+    assert "zsh-full" in out and "config in sync" in out
+    assert "context:" not in out  # the host config is not dumped
+    assert "\x1b[" not in out  # no colors when not a terminal
+    assert "update pending" not in out
+
+
+def test_status_verbose_shows_configs_and_files(update_env, capsys):
+    machine, repo, _other, _home, _calls = update_env
+    (repo / "wip.txt").write_text("x\n")
+
+    assert machine.cmd_status(verbose=True) == 0
+    out = capsys.readouterr().out
+    assert "context: private" in out
+    assert "local changes" in out and "wip.txt" in out
 
 
 def _auto(machine) -> int:
@@ -191,8 +214,20 @@ def test_attention_lists_items_without_prompting_when_not_interactive(
     assert machine.cmd_attention() == 0
     out = capsys.readouterr().out
     assert "[update] the automatic update was reverted" in out
-    assert "[system] system update pending: ansible/new.yml" in out
+    # no `machine apply` on the old checkout while the update item is open
+    assert "the pending system step runs with the update" in out
+    assert "[system]" not in out
     assert calls == []
+
+
+def test_attention_offers_apply_for_a_system_update_alone(update_env, capsys):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "ansible/new.yml", "x\n")
+    _git("fetch", "-q", cwd=repo)
+    _git("merge", "-q", "--ff-only", "origin/main", cwd=repo)
+
+    assert machine.cmd_attention() == 0
+    assert "[system] system update pending: ansible/new.yml" in capsys.readouterr().out
 
 
 def test_attention_resolves_items_on_a_terminal(update_env, capsys, monkeypatch):
@@ -262,29 +297,70 @@ def test_auto_update_treats_own_host_profile_as_system_change(update_env):
     assert machine.safe_update_target("origin/main") is None
 
 
-def test_auto_update_blocked_by_local_changes(update_env):
+def test_auto_update_keeps_unrelated_local_changes(update_env):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")
     (repo / "home/dot_placeholder").write_text("edited\n")
 
     assert _auto(machine) == 0
-    assert not (repo / "home/dot_new").exists()
+    assert (repo / "home/dot_new").is_file()
+    assert (repo / "home/dot_placeholder").read_text() == "edited\n"
+    assert machine.read_update_state()["state"] == "updated"
+    assert not _git("stash", "list", cwd=repo).strip()
+
+
+def test_auto_update_merges_cleanly_overlapping_local_change(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_lines", "a\nb\nc\nd\ne\n")
+    _git("pull", "-q", "--ff-only", cwd=repo)
+    _push_change(other, "home/dot_lines", "A\nb\nc\nd\ne\n")
+    (repo / "home/dot_lines").write_text("a\nb\nc\nd\nE\n")
+
+    assert _auto(machine) == 0
+    assert (repo / "home/dot_lines").read_text() == "A\nb\nc\nd\nE\n"
+    assert machine.repo_revision() == _git("rev-parse", "origin/main", cwd=repo).strip()
+    assert not _git("stash", "list", cwd=repo).strip()
+
+
+def test_auto_update_records_conflict_without_stashing(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_placeholder", "remote\n")
+    (repo / "home/dot_placeholder").write_text("local\n")
+
+    assert _auto(machine) == 0
+    assert (repo / "home/dot_placeholder").read_text() == "local\n"
     assert calls == []
     state = machine.read_update_state()
     assert state["state"] == "attention"
-    assert "home/dot_placeholder" in state["reason"]
+    assert "conflict with local changes in home/dot_placeholder" in state["reason"]
+    assert not _git("stash", "list", cwd=repo).strip()
 
 
-def test_auto_update_reports_diverged_history(update_env):
-    machine, repo, other, _home, calls = update_env
+def test_auto_update_revert_restores_local_changes(update_env, monkeypatch):
+    machine, repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
     _push_change(other, "home/dot_new", "x\n")
-    (repo / "home/dot_mine").write_text("y\n")
-    _git("add", "-A", cwd=repo)
-    _git("commit", "-q", "-m", "local", cwd=repo)
+    (repo / "home/dot_placeholder").write_text("edited\n")
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed\ndetails")
 
     assert _auto(machine) == 0
-    assert calls == []
-    assert machine.read_update_state()["state"] == "attention"
+    assert machine.repo_revision() == before
+    assert (repo / "home/dot_placeholder").read_text() == "edited\n"
+    assert not _git("stash", "list", cwd=repo).strip()
+    assert machine.update_failure_file.read_text() == "zsh failed\ndetails\n"
+
+
+def test_auto_update_does_not_rebase_diverged_history(update_env):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    _commit_local(repo, "home/dot_mine", "y\n")
+    head = machine.repo_revision()
+
+    assert _auto(machine) == 0
+    assert calls == [] and machine.repo_revision() == head
+    state = machine.read_update_state()
+    assert state["state"] == "attention"
+    assert "rebase cleanly → run: machine update" in state["reason"]
 
 
 def test_auto_update_reverts_when_zsh_breaks(update_env, monkeypatch):
@@ -481,16 +557,90 @@ def test_update_system_flag_applies_without_profile_change(update_env):
     assert calls[-1] == "apply"
 
 
-def test_update_stops_when_local_change_overlaps_incoming(update_env, capsys):
-    machine, repo, other, _home, calls = update_env
+def _conflict(repo: Path, other: Path) -> None:
     _push_change(other, "home/dot_placeholder", "remote\n")
     (repo / "home/dot_placeholder").write_text("local\n")
 
+
+def test_update_stops_on_conflict_without_a_terminal(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _conflict(repo, other)
+    head = machine.repo_revision()
+
     with pytest.raises(SystemExit):
         _update(machine)
-    assert "manual attention needed" in capsys.readouterr().err
+    err = capsys.readouterr().err.strip().splitlines()
+    assert (
+        "1 incoming commit conflict with local changes in home/dot_placeholder"
+        in err[-1]
+    )
+    assert (repo / "home/dot_placeholder").read_text() == "local\n"
+    assert machine.repo_revision() == head and calls == []
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and state["pending"] == "1"
+
+
+def test_update_conflict_defaults_to_manual_on_a_terminal(
+    update_env, capsys, monkeypatch
+):
+    machine, repo, other, _home, calls = update_env
+    _conflict(repo, other)
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    asked = []
+    monkeypatch.setattr(
+        machine_system(),
+        "choose",
+        lambda title, choices, default: asked.append(choices) or default,
+    )
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert asked and asked[0][0] == "resolve manually"
+    assert "git mergetool" in capsys.readouterr().out
     assert (repo / "home/dot_placeholder").read_text() == "local\n"
     assert calls == []
+
+
+def test_update_conflict_stash_choice_updates_and_lists_the_entry(
+    update_env, capsys, monkeypatch
+):
+    machine, repo, other, _home, _calls = update_env
+    _conflict(repo, other)
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    monkeypatch.setattr(
+        machine_system(), "choose", lambda title, choices, default: choices[1]
+    )
+
+    assert _update(machine) == 0
+    assert (repo / "home/dot_placeholder").read_text() == "remote\n"
+    entries = machine.stash_entries()
+    assert len(entries) == 1 and "conflicting with origin/main" in entries[0][2]
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: False)
+    items = machine.attention_items()
+    assert [item.kind for item in items] == ["stash"]
+
+
+def test_update_keeps_cleanly_merging_overlap(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_lines", "a\nb\nc\nd\ne\n")
+    _git("pull", "-q", "--ff-only", cwd=repo)
+    _push_change(other, "home/dot_lines", "A\nb\nc\nd\ne\n")
+    (repo / "home/dot_lines").write_text("a\nb\nc\nd\nE\n")
+
+    plan = machine.update_plan(fetch=True)
+    assert plan["merged"] == ["home/dot_lines"] and plan["blockers"] == []
+    assert _update(machine) == 0
+    assert (repo / "home/dot_lines").read_text() == "A\nb\nc\nd\nE\n"
+    assert not _git("stash", "list", cwd=repo).strip()
+
+
+def test_plan_counts_untracked_file_at_an_added_path_as_conflict(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_new", "remote\n")
+    (repo / "home/dot_new").write_text("mine\n")
+
+    plan = machine.update_plan(fetch=True)
+    assert plan["conflicts"] == ["home/dot_new"]
 
 
 def test_update_keeps_unrelated_local_change(update_env):
@@ -503,27 +653,164 @@ def test_update_keeps_unrelated_local_change(update_env):
     assert (repo / "local-edit.txt").read_text() == "wip\n"
 
 
-def test_update_force_stashes_and_restores_overlapping_change(update_env):
+def test_update_force_stashes_only_the_conflict(update_env):
     machine, repo, other, _home, _calls = update_env
-    _push_change(other, "home/dot_placeholder", "remote\n")
-    (repo / "home/dot_placeholder").write_text("local\n")
+    _push_change(other, "home/dot_lines", "a\nb\nc\nd\ne\n")
+    _git("pull", "-q", "--ff-only", cwd=repo)
+    _push_change(other, "home/dot_lines", "A\nb\nc\nd\ne\n")
+    _conflict(repo, other)
+    (repo / "home/dot_lines").write_text("a\nb\nc\nd\nE\n")
 
-    with pytest.raises(SystemExit):
-        _update(machine, force=True)  # the stash pop conflicts: local work is kept
-    assert _git("stash", "list", cwd=repo).strip()
+    assert _update(machine, force=True) == 0
+    assert (repo / "home/dot_placeholder").read_text() == "remote\n"
+    assert (repo / "home/dot_lines").read_text() == "A\nb\nc\nd\nE\n"
+    entries = machine.stash_entries()
+    assert len(entries) == 1
+    shown = _git("stash", "show", "--name-only", entries[0][1], cwd=repo)
+    assert shown.split() == ["home/dot_placeholder"]
 
 
-def test_update_stops_on_diverged_history(update_env, capsys):
+def test_stash_item_restores_or_keeps_the_entry(update_env, capsys, monkeypatch):
+    machine, repo, other, _home, _calls = update_env
+    _conflict(repo, other)
+    assert _update(machine, force=True) == 0
+    (item,) = machine.stash_items()
+    assert item.question is None  # the item asks restore / drop / keep itself
+    monkeypatch.setattr(
+        machine_system(), "choose", lambda title, choices, default: choices[0]
+    )
+
+    assert item.resolve() == 1  # conflicts with the new upstream text
+    assert machine.stash_entries()  # kept
+    assert "git stash drop" in capsys.readouterr().out
+    _git("reset", "-q", "--hard", cwd=repo)
+    _git("stash", "drop", "-q", cwd=repo)
+    assert machine.stash_entries() == []  # dropped by hand: the record is cleared
+    assert machine.read_update_state()["stash"] == ""
+
+
+def test_stash_item_keeps_by_default_and_drops_on_request(update_env, monkeypatch):
+    machine, repo, other, _home, _calls = update_env
+    _conflict(repo, other)
+    assert _update(machine, force=True) == 0
+    (item,) = machine.stash_items()
+
+    assert item.resolve() == 0  # not a terminal: the default keeps it
+    assert machine.stash_entries()
+    monkeypatch.setattr(
+        machine_system(), "choose", lambda title, choices, default: choices[1]
+    )
+    assert item.resolve() == 0
+    assert machine.stash_entries() == []
+    assert (repo / "home/dot_placeholder").read_text() == "remote\n"
+
+
+def test_status_counts_stash_entries_recognised_by_name(update_env, capsys):
+    machine, repo, _other, _home, _calls = update_env
+    (repo / "home/dot_placeholder").write_text("aside\n")
+    _git(
+        "stash", "push", "-q", "-m", "machine update 2026-01-01T00:00:00: old", cwd=repo
+    )
+    (repo / "home/dot_placeholder").write_text("other\n")
+    _git("stash", "push", "-q", "-m", "my own stash", cwd=repo)
+    assert machine.read_update_state()["stash"] == ""  # not recorded
+
+    entries = machine.stash_entries()
+    assert [message.partition(": ")[2] for _r, _s, message in entries] == [
+        "machine update 2026-01-01T00:00:00: old"
+    ]
+    assert machine.cmd_status() == 0
+    out = capsys.readouterr().out
+    assert "1 stash entry put aside by machine" in out
+    assert "machine attention" in out
+    assert machine.cmd_status(verbose=True) == 0
+    assert "machine update 2026-01-01T00:00:00: old" in capsys.readouterr().out
+
+
+def test_update_rebases_clean_diverged_history(update_env):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_remote", "r\n")
-    (repo / "home/dot_local").write_text("l\n")
-    _git("add", "-A", cwd=repo)
-    _git("commit", "-q", "-m", "local", cwd=repo)
+    _commit_local(repo, "home/dot_local", "l\n")
+    (repo / "home/dot_placeholder").write_text("wip\n")
+
+    assert _update(machine) == 0
+    assert _git("rev-list", "--count", "origin/main..HEAD", cwd=repo).strip() == "1"
+    assert _git("rev-list", "--count", "HEAD..origin/main", cwd=repo).strip() == "0"
+    assert (repo / "home/dot_remote").is_file()
+    assert (repo / "home/dot_placeholder").read_text() == "wip\n"
+    assert not _git("stash", "list", cwd=repo).strip()
+
+
+def test_update_does_not_rebase_a_pushed_local_commit(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_remote", "r\n")
+    _commit_local(repo, "home/dot_local", "l\n")
+    _git("push", "-q", "origin", "HEAD:feature", cwd=repo)
+    _git("fetch", "-q", cwd=repo)
 
     with pytest.raises(SystemExit):
         _update(machine)
-    assert "diverged" in capsys.readouterr().err
+    assert "already on a remote branch" in capsys.readouterr().err
     assert calls == []
+
+
+def test_update_does_not_rebase_with_signing_on(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_remote", "r\n")
+    _commit_local(repo, "home/dot_local", "l\n")
+    _git("config", "commit.gpgsign", "true", cwd=repo)
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert "commit signing is on" in capsys.readouterr().err
+
+
+def test_update_does_not_rebase_merge_commits(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_remote", "r\n")
+    _git("checkout", "-q", "-b", "side", cwd=repo)
+    _commit_local(repo, "home/dot_side", "s\n")
+    _git("checkout", "-q", "main", cwd=repo)
+    _commit_local(repo, "home/dot_local", "l\n")
+    _git("merge", "-q", "--no-ff", "-m", "merge side", "side", cwd=repo)
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert "merge commit" in capsys.readouterr().err
+
+
+def test_update_reports_zsh_failure_without_reloading(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    _push_change(other, "home/dot_placeholder", "changed\n")
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh: parse error")
+
+    assert _update(machine) == 1
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "zsh" in state["reason"]
+    assert machine.update_failure_file.read_text() == "zsh: parse error\n"
+
+
+def test_attention_shows_failed_check_output(update_env, capsys, monkeypatch):
+    machine, *_ = update_env
+    machine.state_dir.mkdir(parents=True, exist_ok=True)
+    machine.update_failure_file.write_text("zsh: parse error\n")
+    machine.write_update_state("attention", "reverted", failed_revision="abc")
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    monkeypatch.setattr(machine_system(), "prompt_yes_no", lambda *a, **k: False)
+
+    assert machine.cmd_attention() == 0
+    assert "zsh: parse error" in capsys.readouterr().out
+
+
+def test_attention_conflict_item_runs_update_without_a_yes_no_question(
+    update_env, monkeypatch
+):
+    machine, repo, other, _home, _calls = update_env
+    _conflict(repo, other)
+    _git("fetch", "-q", cwd=repo)
+    (item,) = machine.attention_items()
+    assert item.kind == "update" and item.question is None
+    assert "conflict with local changes" in item.text
 
 
 def test_update_content_change_runs_only_the_converge_check(update_env):

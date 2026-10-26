@@ -14,11 +14,6 @@ from .local_changes import classify_paths
 
 
 class AutoUpdateMixin:
-    def _git(self, *args: str) -> subprocess.CompletedProcess:
-        return system.run(
-            ["git", "-C", str(self.repo), *args], capture=True, check=False
-        )
-
     def is_system_commit(self, commit: str) -> bool:
         """System commits need Ansible or a host-config apply and are never applied unattended."""
         own_profile = self.host_config_path().relative_to(self.repo).as_posix()
@@ -75,7 +70,7 @@ class AutoUpdateMixin:
         if plan["state"] == "no-upstream":
             return 0  # nothing to compare with; no state change, like a failed fetch
         if plan["state"] == "diverged":
-            self.write_update_state("attention", plan["blockers"][0])
+            self.write_update_state("attention", self.blocked_reason(plan), pending="1")
             self.event("update-auto", "blocked", "diverged")
             return 0
         if plan["state"] == "up-to-date":
@@ -85,13 +80,9 @@ class AutoUpdateMixin:
             return 0
 
         self.set_pending(True)
-        if plan["local_changes"]:
-            self.write_update_state(
-                "attention",
-                "local changes block the automatic update: "
-                + ", ".join(plan["local_changes"]),
-            )
-            self.event("update-auto", "blocked", "local-changes")
+        if plan["conflicts"]:
+            self.write_update_state("attention", plan["blockers"][0])
+            self.event("update-auto", "blocked", "conflict")
             return 0
 
         target = self.safe_update_target(plan["upstream"])
@@ -113,25 +104,27 @@ class AutoUpdateMixin:
         timer = events.Timer()
         previous = self.repo_revision()
         steps = set(classify_paths(self.incoming_changes(target)))
-        merged = self._git("merge", "--ff-only", target)
-        if merged.returncode != 0:
+        # A copy of the local changes, so that a revert can restore them.
+        local = self.stash_store_copy("before the automatic update")
+        if not self.fast_forward_keeping_local(target):
+            if local:
+                self.stash_drop(local)  # the checkout was restored as it was
             self.write_update_state(
                 "attention", "fast-forward failed; run: machine update"
             )
             self.event("update-auto", "blocked", "fast-forward-failed")
             return 0
+        failure = ""
         if "dotfiles" in steps and not self._dotfiles_apply_quiet():
-            return self._revert_auto(
-                previous, target, "dotfile apply failed", "apply-failed", timer
-            )
-        if "tools" in steps and not self._tools_install_quiet():
-            return self._revert_auto(
-                previous, target, "tool install failed", "tools-failed", timer
-            )
-
-        reason = self.zsh_health_failure()
-        if reason:
-            return self._revert_auto(previous, target, reason, "zsh-unhealthy", timer)
+            failure, code = "dotfile apply failed", "apply-failed"
+        elif "tools" in steps and not self._tools_install_quiet():
+            failure, code = "tool install failed", "tools-failed"
+        elif reason := self.zsh_health_failure():
+            failure, code = reason, "zsh-unhealthy"
+        if failure:
+            return self._revert_auto(previous, target, failure, code, timer, local)
+        if local:
+            self.stash_drop(local)
 
         remaining = (
             self.repo_revision() != self._git("rev-parse", upstream).stdout.strip()
@@ -179,15 +172,21 @@ class AutoUpdateMixin:
         reason: str,
         code: str,
         timer: events.Timer,
+        local: str = "",
     ) -> int:
         warn(f"automatic update failed ({reason}); reverting to {previous[:8]}")
         self._git("reset", "--hard", previous)
+        restored = not local or self.stash_apply(local)
         self.event("update-auto", "reverted", code, timer.seconds())
         self._dotfiles_apply_quiet()
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.update_failure_file.write_text(reason + "\n", encoding="utf-8")
+        summary = reason.splitlines()[0] if reason else code
         self.write_update_state(
             "attention",
-            f"the automatic update to {target[:8]} was reverted: {reason}; "
-            "check it, then run: machine update",
+            f"the automatic update to {target[:8]} was reverted: {summary}"
+            + ("" if restored else "; local changes are in the stash")
+            + " → see machine attention",
             failed_revision=target,
         )
         return 0

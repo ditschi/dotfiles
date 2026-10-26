@@ -26,6 +26,7 @@ STATE_KEYS = (
     "pending",
     "failed_revision",
     "ansible_applied_rev",
+    "stash",
 )
 
 
@@ -199,7 +200,9 @@ class UpdateMixin:
             == 0
         )
 
-    def incoming_changes(self, upstream: str) -> list[tuple[str, str]]:
+    def incoming_changes(
+        self, upstream: str, base: str = "HEAD"
+    ) -> list[tuple[str, str]]:
         result = system.run(
             [
                 "git",
@@ -209,7 +212,7 @@ class UpdateMixin:
                 "--name-status",
                 "--no-renames",
                 "-z",
-                "HEAD",
+                base,
                 upstream,
             ],
             capture=True,
@@ -281,31 +284,43 @@ class UpdateMixin:
                 "local_changes": self.local_changes(),
                 "resolvable": [],
                 "overlap": [],
+                "merged": [],
+                "conflicts": [],
+                "rebase_blocker": "",
+                "incoming_commits": 0,
+                "local_commits": 0,
+                "host_config_changes": [],
                 "blockers": [f"upstream {upstream} not found"],
             }
+        rebase_blocker = ""
         if self._is_ancestor("HEAD", upstream):
             incoming = self.incoming_changes(upstream)
             state = "behind" if incoming else "up-to-date"
         elif self._is_ancestor(upstream, "HEAD"):
             incoming, state = [], "up-to-date"
         else:
-            incoming, state = [], "diverged"
+            state = "diverged"
+            base = (self._git("merge-base", "HEAD", upstream).stdout or "").strip()
+            incoming = self.incoming_changes(upstream, base) if base else []
+            rebase_blocker = self.rebase_blocker(upstream)
         resolvable = [
             path for _name, path, _run, pending in self.local_resolvers() if pending()
         ]
         local = self.local_changes()
         remaining = [path for path in local if path not in resolvable]
         overlap = sorted(set(remaining) & {path for _status, path in incoming})
-        blockers = []
-        if state == "diverged":
-            blockers.append(f"history has diverged from {upstream}")
-        if overlap:
-            blockers.append(
-                "locally changed files are also changed upstream: " + ", ".join(overlap)
+        conflicts = (
+            self.trial_conflicts(
+                upstream, overlap, {path for status, path in incoming if status == "A"}
             )
-        return {
+            if overlap and state == "behind"
+            else overlap
+        )
+        plan = {
             "upstream": upstream,
             "state": state,
+            "incoming_commits": self.commit_count(f"HEAD..{upstream}"),
+            "local_commits": self.commit_count(f"{upstream}..HEAD"),
             "host_config_changes": self.incoming_host_config_changes(
                 incoming, upstream
             ),
@@ -314,8 +329,44 @@ class UpdateMixin:
             "local_changes": remaining,
             "resolvable": resolvable,
             "overlap": overlap,
-            "blockers": blockers,
+            "merged": [path for path in overlap if path not in conflicts],
+            "conflicts": conflicts if state == "behind" else [],
+            "rebase_blocker": rebase_blocker,
         }
+        plan["blockers"] = (
+            [self.blocked_reason(plan)] if self.plan_blocked(plan) else []
+        )
+        return plan
+
+    @staticmethod
+    def plan_blocked(plan: dict) -> bool:
+        if plan["state"] == "diverged":
+            return bool(plan["rebase_blocker"])
+        return bool(plan["conflicts"])
+
+    @staticmethod
+    def blocked_reason(plan: dict) -> str:
+        """The needs-attention reason: what blocks, how much is waiting, what to run next."""
+        incoming = plan.get("incoming_commits", 0)
+        commits = f"{incoming} incoming commit{'s' if incoming != 1 else ''}"
+        if plan["state"] == "diverged":
+            local = plan.get("local_commits", 0)
+            if not plan["rebase_blocker"]:
+                return (
+                    f"history diverged: {local} local and {commits}; "
+                    "they rebase cleanly → run: machine update"
+                )
+            return (
+                f"history diverged: {local} local and {commits} "
+                f"({plan['rebase_blocker']}) → run: git pull --rebase, then machine"
+            )
+        if plan["state"] == "no-upstream":
+            return f"upstream {plan['upstream']} not found"
+        return (
+            f"{commits} conflict with local changes in "
+            + ", ".join(plan["conflicts"])
+            + " → resolve them, then run: machine"
+        )
 
     def incoming_host_config_changes(
         self, incoming: list[tuple[str, str]], upstream: str
@@ -376,20 +427,6 @@ class UpdateMixin:
             values["state"], values["reason"], pending="1" if pending else ""
         )
 
-    def print_update_state(self) -> None:
-        values = self.read_update_state()
-        state = values["state"]
-        print(f"update state: {state}")
-        if state == "attention":
-            print(f"  reason: {values['reason']}")
-        fixes = {
-            "available": "run: machine update",
-            "updated": "run: reload (restarts the current shell) or open a new shell",
-            "attention": "run: machine update --check, resolve the reason, then machine update",
-        }
-        if state in fixes:
-            print(f"  fix: {fixes[state]}")
-
     def print_update_plan(self, plan: dict) -> None:
         print(f"upstream: {plan['upstream']} ({plan['state']})")
         print(f"incoming files: {len(plan['incoming'])}")
@@ -398,6 +435,10 @@ class UpdateMixin:
             print("host config changes: " + "; ".join(plan["host_config_changes"]))
         if plan["resolvable"]:
             print("resolved automatically: " + ", ".join(plan["resolvable"]))
+        if plan.get("merged"):
+            print("merge cleanly (kept): " + ", ".join(plan["merged"]))
+        if plan.get("conflicts"):
+            print("conflict: " + ", ".join(plan["conflicts"]))
         if plan["local_changes"]:
             print("local changes (kept): " + ", ".join(plan["local_changes"]))
         if plan["blockers"]:
@@ -461,30 +502,96 @@ class UpdateMixin:
             self.print_update_plan(plan)
         return 0
 
-    def merge_upstream(self, plan: dict, force: bool) -> None:
-        repo = str(self.repo)
-        stashed = False
-        if plan["overlap"]:
-            system.run(["git", "-C", repo, "status", "--short"])
-            if not force:
-                die(
-                    "manual attention needed: "
-                    + plan["blockers"][0]
-                    + " (--force stashes them, merges and restores them)"
-                )
-            system.run(
-                ["git", "-C", repo, "stash", "push", "--include-untracked", "--"]
-                + plan["overlap"]
-            )
-            stashed = True
-        elif plan["local_changes"]:
+    # --- conflicts ----------------------------------------------------------
+
+    def show_conflict_diff(self, plan: dict) -> None:
+        """Colored diff of the conflicting local changes and the commits touching them."""
+        files = plan["conflicts"]
+        tracked = [path for path in files if path not in set(self.untracked_paths())]
+        print(f"\nLocal changes that conflict with {plan['upstream']}:")
+        if tracked:
+            system.run(["git", "-C", str(self.repo), "diff", "HEAD", "--", *tracked])
+        for path in sorted(set(files) - set(tracked)):
+            print(f"  untracked here, added upstream: {path}")
+        print("\nIncoming commits that touch them:")
+        system.run(
+            [
+                "git",
+                "-C",
+                str(self.repo),
+                "--no-pager",
+                "log",
+                "--oneline",
+                f"HEAD..{plan['upstream']}",
+                "--",
+                *files,
+            ]
+        )
+
+    def print_conflict_commands(self, plan: dict) -> None:
+        print(
+            "\nResolve the conflict outside machine, for example:\n"
+            f"  git stash && git merge --ff-only {plan['upstream']} && git stash pop\n"
+            "  git mergetool            # or edit the conflict markers by hand\n"
+            "  git stash drop           # once the files are resolved\n"
+            "  machine\n"
+        )
+
+    def block_update(self, plan: dict) -> None:
+        """Record needs-attention for a blocked plan and stop; the reason is printed last."""
+        reason = plan["blockers"][0]
+        self.write_update_state(
+            "attention", reason, pending="1" if plan["incoming_commits"] else ""
+        )
+        die(reason)
+
+    def stash_conflicts(self, plan: dict) -> str:
+        sha = self.stash_push(
+            f"conflicting with {plan['upstream']} "
+            f"{self._rev(plan['upstream'])[:8]}",
+            plan["conflicts"],
+        )
+        if not sha:
+            die("could not put the conflicting local changes into the stash")
+        log(
+            f"conflicting local changes are in {self._stash_ref(sha)}; "
+            "restore them with: machine attention"
+        )
+        return sha
+
+    def resolve_conflicts(self, plan: dict, force: bool) -> dict:
+        """Ask (or follow --force) what to do with conflicting changes; returns the new plan."""
+        interactive = system.is_tty() and not force
+        if interactive:
+            self.show_conflict_diff(plan)
+        manual, stash = "resolve manually", "put them into the stash and update"
+        choice = stash if force else manual
+        if interactive:
+            choice = system.choose("Conflicting local changes", [manual, stash], manual)
+        if choice != stash:
+            if interactive:
+                self.print_conflict_commands(plan)
+            self.block_update(plan)
+        self.stash_conflicts(plan)
+        return self.update_plan(fetch=False)
+
+    def merge_upstream(self, plan: dict) -> None:
+        if plan["local_changes"]:
             log("keeping local changes: " + ", ".join(plan["local_changes"]))
-        if plan["state"] == "behind":
-            system.run(["git", "-C", repo, "merge", "--ff-only", plan["upstream"]])
-        if stashed:
-            popped = system.run(["git", "-C", repo, "stash", "pop"], check=False)
-            if popped.returncode != 0:
-                die("local changes kept in `git stash`; resolve the conflict manually")
+        if plan["merged"]:
+            log(
+                "merging local changes with incoming ones: " + ", ".join(plan["merged"])
+            )
+        if plan["state"] == "behind" and not self.fast_forward_keeping_local(
+            plan["upstream"]
+        ):
+            plan = dict(
+                plan,
+                blockers=[
+                    "the update could not keep the local changes; nothing changed"
+                ],
+            )
+            self.block_update(plan)
 
     def cmd_update(self, args: types.SimpleNamespace) -> int:
         if getattr(args, "check", False):
@@ -516,12 +623,23 @@ class UpdateMixin:
         self.ensure_update_timer()
         self.run_local_resolvers(interactive=True)
         plan = self.update_plan(fetch=True)
-        if plan["state"] in ("diverged", "no-upstream"):
+        if plan["state"] == "no-upstream":
             self.write_update_state("attention", plan["blockers"][0])
             die(plan["blockers"][0])
-        if plan["overlap"] and not args.force:
-            self.write_update_state("attention", plan["blockers"][0])
-        self.merge_upstream(plan, args.force)
+        if plan["state"] == "diverged":
+            if plan["rebase_blocker"] or not self.rebase_keeping_local(
+                plan["upstream"]
+            ):
+                if not plan["rebase_blocker"]:
+                    plan = dict(
+                        plan, rebase_blocker="the rebase failed; nothing changed"
+                    )
+                    plan["blockers"] = [self.blocked_reason(plan)]
+                self.block_update(plan)
+            plan = dict(plan, state="up-to-date", local_changes=[], merged=[])
+        elif plan["conflicts"]:
+            plan = self.resolve_conflicts(plan, args.force)
+        self.merge_upstream(plan)
         steps = set(plan["steps"])
 
         profile_backup = self.backup_applied_host()
@@ -553,6 +671,20 @@ class UpdateMixin:
             self.write_update_state("attention", not_set_up)
         else:
             self.write_update_state("updated", pending="", failed_revision="")
+        zsh_failure = (
+            self.zsh_health_failure()
+            if steps & {"dotfiles", "shell"} and not not_set_up
+            else ""
+        )
+        self.update_failure_file.unlink(missing_ok=True)
+        if zsh_failure:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            self.update_failure_file.write_text(zsh_failure + "\n", encoding="utf-8")
+            self.write_update_state(
+                "attention",
+                "zsh does not start cleanly after the update; see machine attention",
+            )
+            warn(f"zsh health check failed after the update:\n{zsh_failure}")
 
         if not self.saved_ansible():
             log("ansible: false in the host config; system changes are not applied")
@@ -570,7 +702,10 @@ class UpdateMixin:
                 else "--system" if args.system else "system files changed"
             )
             log(f"applying system changes ({reason})")
-            return self.cmd_apply(apply_args)
+            code = self.cmd_apply(apply_args)
+            return code or (1 if zsh_failure else 0)
 
+        if zsh_failure:
+            return 1  # the shell wrapper only reloads after a successful update
         log("update finished" if not not_set_up else "update finished, host not set up")
         return 0

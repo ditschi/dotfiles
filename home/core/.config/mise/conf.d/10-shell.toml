@@ -8,6 +8,8 @@ fd = "latest"
 starship = "latest"
 jq = "latest"
 delta = "latest"
+# Terminal UI for git (staging, history, conflict hunks); started by hand, never by machine.
+lazygit = "latest"
 tealdeer = "latest"
 # Static Linux build published by the tmux project; the registry entry has no checksum step.
 "aqua:tmux/tmux-builds" = "latest"

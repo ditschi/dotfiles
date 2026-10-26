@@ -7,6 +7,11 @@ import subprocess
 import types
 
 
+from rich.columns import Columns
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+
 from . import system
 from .core import (
     CONTEXTS,
@@ -211,34 +216,127 @@ class CommandsMixin:
         log("apply finished")
         return 0
 
-    def cmd_status(self) -> int:
-        print(f"repo: {self.repo}")
-        system.run(["git", "-C", str(self.repo), "status", "-sb"])
-        if self.update_last_check.is_file():
-            stamp = self.update_last_check.read_text(encoding="utf-8").strip()
-            print(f"last check: {stamp}")
+    def cmd_status(self, verbose: bool = False) -> int:
+        """Compact overview; colors only on a terminal (rich honours NO_COLOR)."""
+        console = Console(highlight=False)
+        if not console.is_terminal:
+            console.width = 400  # piped: keep each row on one line, greppable
+        plan = self.update_plan(fetch=False)
+        state = self.read_update_state()
+        grid = Table.grid(padding=(0, 2))
+        grid.add_column(style="bold cyan", no_wrap=True)
+        grid.add_column()
+
+        branch = (self._git("rev-parse", "--abbrev-ref", "HEAD").stdout or "").strip()
+        behind, ahead = plan["incoming_commits"], plan["local_commits"]
+        position = Text(f"{branch or '?'} · ")
+        if behind or ahead:
+            parts = [f"{behind} behind"] if behind else []
+            parts += [f"{ahead} ahead"] if ahead else []
+            position.append(" / ".join(parts) + f" {plan['upstream']}", style="yellow")
         else:
-            print("last check: never")
-        pending = "yes" if self.read_update_state()["pending"] else "no"
-        print(f"update pending: {pending}")
-        self.print_update_state()
-        self.print_update_plan(self.update_plan(fetch=False))
-        repo_host = self.host_config_path()
-        print(f"host config: {repo_host}")
-        print(f"  exists: {repo_host.is_file()}")
-        if repo_host.is_file() and self.applied_host_path.is_file():
-            print(
-                "  in sync: "
-                f"{profile_fingerprint(repo_host) == profile_fingerprint(self.applied_host_path)}"
+            position.append(f"up to date with {plan['upstream']}", style="green")
+        stamp = (
+            self.update_last_check.read_text(encoding="utf-8").strip()
+            if self.update_last_check.is_file()
+            else "never"
+        )
+        position.append(f" · checked {stamp[:16].replace('T', ' ')}", style="dim")
+        grid.add_row("repo", position)
+
+        if state["state"] == "attention" or plan["blockers"]:
+            reason = plan["blockers"][0] if plan["blockers"] else state["reason"]
+            grid.add_row(
+                Text("attention", style="bold red"),
+                Text(f"⚠ {reason or 'see machine attention'}", style="red"),
             )
+            if "→" not in (reason or ""):
+                grid.add_row("", Text("→ run: machine", style="bold"))
+
+        if plan["incoming"]:
+            grid.add_row(
+                "incoming",
+                f"{len(plan['incoming'])} files → "
+                + (", ".join(plan["steps"]) or "no steps"),
+            )
+        local = set(self.local_changes())
+        if local:
+            untracked = len(local & set(self.untracked_paths()))
+            parts = [f"{len(local) - untracked} modified", f"{untracked} untracked"]
+            if plan["merged"]:
+                parts.append(f"{len(plan['merged'])} merge cleanly")
+            if plan["conflicts"]:
+                parts.append(f"{len(plan['conflicts'])} conflict")
+            grid.add_row("local", ", ".join(parts) + " (kept)")
+        stashes = self.stash_entries()
+        if stashes:
+            count = len(stashes)
+            grid.add_row(
+                "stash",
+                Text(
+                    f"{count} stash entr{'y' if count == 1 else 'ies'} put aside by "
+                    "machine → restore or drop them: machine attention",
+                    style="yellow",
+                ),
+            )
+
+        repo_host = self.host_config_path()
+        host = Text(repo_host.stem)
         if self.applied_host_path.is_file():
-            print(f"applied host config: {self.applied_host_path}")
-            print(self.applied_host_path.read_text(encoding="utf-8"), end="")
+            host.append(f" · {self.current_context() or '-'} · {self.current_device()}")
+        if not repo_host.is_file():
+            host.append(" · no host config in the repo", style="yellow")
+        elif not self.applied_host_path.is_file():
+            host.append(" · not applied yet", style="yellow")
+        elif profile_fingerprint(repo_host) == profile_fingerprint(
+            self.applied_host_path
+        ):
+            host.append(" · config in sync", style="green")
         else:
-            print("applied host config: missing")
-        if system.have("mise") and self.mise_local_config.is_file():
-            print("dotfile groups:")
-            print(self.mise_local_config.read_text(encoding="utf-8"), end="")
+            host.append(" · config differs from the repo", style="yellow")
+        grid.add_row("host", host)
+        if self.applied_host_path.is_file():
+            features = self.saved_features()
+            grid.add_row(
+                "features",
+                (
+                    Columns(features, column_first=True, padding=(0, 2))
+                    if features
+                    else "-"
+                ),
+            )
+            grid.add_row("groups", " ".join(self.host_dotfile_groups()) or "-")
+        console.print(grid)
+
+        if verbose:
+            if plan["incoming"]:
+                console.print("\n[bold]incoming files[/bold]")
+                for item in plan["incoming"]:
+                    console.print(f"  {item['status']} {item['path']}", markup=False)
+            if stashes:
+                console.print("\n[bold]stash entries[/bold]")
+                for ref, _sha, message in stashes:
+                    console.print(
+                        f"  {ref}: {message.partition(': ')[2]}", markup=False
+                    )
+            if local:
+                console.print("\n[bold]local changes[/bold]")
+                for path in sorted(local):
+                    console.print(f"  {path}", markup=False)
+            if self.applied_host_path.is_file():
+                console.print(
+                    f"\n[bold]applied host config[/bold] {self.applied_host_path}"
+                )
+                console.print(
+                    self.applied_host_path.read_text(encoding="utf-8").rstrip(),
+                    markup=False,
+                )
+            if self.mise_local_config.is_file():
+                console.print(f"\n[bold]dotfile groups[/bold] {self.mise_local_config}")
+                console.print(
+                    self.mise_local_config.read_text(encoding="utf-8").rstrip(),
+                    markup=False,
+                )
         return 0
 
     def cmd_commit(self, args: types.SimpleNamespace) -> int:

@@ -48,7 +48,7 @@
 
 ## 9. Validation
 
-- [ ] 9.1 Run `pre-commit run --all-files` and `pytest tests/unit -q`; both pass.
+- [x] 9.1 Run `pre-commit run --all-files` and `pytest tests/unit -q`; both pass.
 - [ ] 9.2 On the owner's laptop reproduce the original case (local edit in a file changed upstream, clean merge): `machine update` updates without a prompt and keeps the edit; a conflicting edit stops with the diff and the manual default; an unpushed local commit is rebased.
 
 ## Workflow follow-up

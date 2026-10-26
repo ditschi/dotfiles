@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 import urllib.request
 from pathlib import Path
 
@@ -142,6 +143,17 @@ class MiseToolsMixin:
             elif not present:
                 log(f"{uuid} is not installed on this system; skipping it")
                 continue
+            if uuid == "ddterm@amezin.github.com":
+                launcher = user_dir / uuid / "bin" / "com.github.amezin.ddterm"
+                try:
+                    if launcher.is_file():
+                        mode = launcher.stat().st_mode
+                        if not mode & stat.S_IXUSR:
+                            launcher.chmod(mode | stat.S_IXUSR)
+                except OSError as exc:
+                    warn(f"could not repair the Ddterm launcher permissions: {exc}")
+                    failed = True
+                    continue
             system.run(
                 ["mise", "exec", "--", "gext", "-F", "enable", uuid],
                 env=env,

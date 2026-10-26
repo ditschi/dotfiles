@@ -211,6 +211,48 @@ def test_gnome_extensions_install_missing_ones_and_load_settings_once(
     assert not any(c[0] == "dconf" for c in commands)  # settings load only once
 
 
+@pytest.mark.parametrize("already_installed", [False, True])
+@pytest.mark.parametrize("mode", [0o640, 0o750])
+def test_ddterm_launcher_is_executable_before_enable(
+    machine, monkeypatch, tmp_path, already_installed, mode
+):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+    uuid = "ddterm@amezin.github.com"
+    launcher = (
+        tmp_path
+        / ".local/share/gnome-shell/extensions"
+        / uuid
+        / "bin"
+        / "com.github.amezin.ddterm"
+    )
+
+    def install_launcher():
+        launcher.parent.mkdir(parents=True)
+        launcher.write_text("#!/usr/bin/gjs\n")
+        launcher.chmod(mode)
+
+    if already_installed:
+        install_launcher()
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        if args[-2:] == ["install", uuid]:
+            install_launcher()
+        if args[-2:] == ["enable", uuid]:
+            assert launcher.stat().st_mode & 0o100
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+    host.run_tools_install()
+
+    assert launcher.stat().st_mode & 0o777 == mode | 0o100
+    installs = [args for args in commands if args[-2:] == ["install", uuid]]
+    assert len(installs) == (0 if already_installed else 1)
+
+
 def test_gnome_extension_failure_does_not_fail_the_run_or_mark_settings(
     machine, monkeypatch, tmp_path
 ):

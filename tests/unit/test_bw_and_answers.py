@@ -511,3 +511,27 @@ def test_no_save_offer_without_a_fresh_unlock(tmp_path, monkeypatch):
         cli.system, "prompt_yes_no", lambda *_a: pytest.fail("must not ask")
     )
     machine.offer_saving_bitwarden_session()
+
+
+def test_bitwarden_setup_does_not_prompt_with_a_valid_saved_session(
+    tmp_path, monkeypatch
+):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    (tmp_path / ".env.local").write_text("BW_SESSION=saved-token\n")
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    monkeypatch.setattr(
+        cli.system,
+        "prompt_yes_no",
+        lambda *_: pytest.fail("must not prompt"),
+    )
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("must not prompt"))
+    monkeypatch.setattr(
+        cli.system,
+        "run",
+        lambda args, **_kw: subprocess.CompletedProcess(
+            args, 0, json.dumps({"status": "unlocked"}), ""
+        ),
+    )
+    assert machine.setup_bitwarden()

@@ -142,6 +142,10 @@ class BwClientMixin:
             return False
 
     def setup_bitwarden(self) -> bool:
+        if system.have("bw"):
+            self.load_local_bitwarden_settings()
+            if self.bitwarden_session_valid():
+                return True
         if getattr(self, "unattended", False) or not system.is_tty():
             log(
                 "Bitwarden setup skipped (non-interactive); run machine setup to log in"

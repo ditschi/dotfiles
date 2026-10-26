@@ -129,16 +129,62 @@ def choose(title: str, choices: Sequence[str], default: str) -> str:
     return choices[int(value) - 1] if value.isdigit() else value
 
 
+def _checklist(
+    title: str, choices: Dict[str, str], selected: Sequence[str]
+) -> Optional[List[str]]:
+    """Arrow keys move, space toggles, Enter confirms; None when keys cannot be read."""
+    names = list(choices)
+    chosen = {name for name in names if name in selected}
+    cursor = 0
+    keys = {"\x1b[A": -1, "\x1b[B": 1, "k": -1, "j": 1}
+    click.echo(f"{title} (up/down move, space toggles, a all, n none, Enter confirms)")
+    first = True
+    while True:
+        if not first:
+            click.echo(f"\x1b[{len(names)}A\x1b[J", nl=False)
+        first = False
+        for index, name in enumerate(names):
+            pointer = ">" if index == cursor else " "
+            mark = "x" if name in chosen else " "
+            line = f" {pointer} [{mark}] {name:20} {choices[name]}"
+            click.echo(line[: shutil.get_terminal_size().columns - 1])
+        try:
+            key = click.getchar()
+        except (OSError, EOFError):
+            return None
+        if key in ("\r", "\n"):
+            return [name for name in names if name in chosen]
+        if key in keys:
+            cursor = (cursor + keys[key]) % len(names)
+        elif key == " ":
+            chosen ^= {names[cursor]}
+        elif key == "a":
+            chosen = set(names)
+        elif key == "n":
+            chosen = set()
+
+
 def choose_many(
     title: str, choices: Dict[str, str], selected: Sequence[str]
 ) -> List[str]:
-    """Toggle entries of `choices` ({value: help text}) by number, comma separated.
+    """Pick entries of `choices` ({value: help text}); `selected` is preselected.
 
-    The numbers switch entries on or off relative to the pre-selection (marked `*`),
-    so adding one feature does not drop the others; Enter keeps the pre-selection,
-    `-` selects nothing. Arrow keys are not supported."""
+    Arrow keys + space where the terminal allows it. Otherwise the numbers switch
+    entries on or off relative to the pre-selection (marked `*`), so adding one
+    feature does not drop the others; Enter keeps the pre-selection, `-` selects
+    nothing."""
     if not is_tty():
         return list(selected)
+    if sys.stdout.isatty() and choices:
+        result = _checklist(title, choices, selected)
+        if result is not None:
+            return result
+    return _choose_many_by_number(title, choices, selected)
+
+
+def _choose_many_by_number(
+    title: str, choices: Dict[str, str], selected: Sequence[str]
+) -> List[str]:
     names = list(choices)
     for index, name in enumerate(names, 1):
         mark = "*" if name in selected else " "

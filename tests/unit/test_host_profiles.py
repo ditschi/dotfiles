@@ -802,3 +802,15 @@ def test_hosts_dir_can_point_at_the_test_fixtures(tmp_path, monkeypatch):
     monkeypatch.setenv("MACHINE_HOSTS_DIR", "tests/hosts")
     machine = _cli_mod.Machine()
     assert machine.host_config_path() == repo / "tests/hosts/ci-x.yml"
+
+
+def test_checklist_uses_arrows_and_space(monkeypatch):
+    system = _cli().system
+    monkeypatch.setattr(system, "is_tty", lambda: True)
+    monkeypatch.setattr(system.sys.stdout, "isatty", lambda: True, raising=False)
+    down, up = "\x1b[B", "\x1b[A"
+    keys = iter([down, " ", down, " ", up, " ", "\r"])  # y off, z on, y on again
+    monkeypatch.setattr(system.click, "getchar", lambda: next(keys))
+    choices = {"x": "", "y": "", "z": ""}
+
+    assert system.choose_many("t", choices, ["x", "y"]) == ["x", "y", "z"]

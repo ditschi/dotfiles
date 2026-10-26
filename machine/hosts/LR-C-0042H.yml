@@ -6,11 +6,10 @@ features:
   - fonts
   - desktop
   - gnome
+  - copilot-cli
   - kerberos
   - azure-cli
   - etckeeper
-  - claude-code
-  - copilot-cli
   - lid-switch
   - power-profile-switch
   - battery-charge-limit

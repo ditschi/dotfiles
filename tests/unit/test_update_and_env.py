@@ -1071,3 +1071,36 @@ def test_manual_update_logs_force(update_env):
         "applied",
         "force",
     )
+
+
+def test_update_warns_when_the_host_is_not_set_up(update_env, monkeypatch, capsys):
+    machine, *_rest, calls = update_env
+    monkeypatch.setattr(machine, "mise_local_config", machine.repo / "missing.toml")
+
+    assert _update(machine) == 0
+    assert "dotfiles" not in calls
+    assert "bootstrap" in capsys.readouterr().out
+    assert machine.read_update_state()["state"] == "attention"
+
+
+@pytest.mark.parametrize("answer, ran", [("", True), ("n", False)], ids=["yes", "no"])
+def test_update_offers_bootstrap_in_a_terminal(update_env, monkeypatch, answer, ran):
+    machine, *_rest, _calls = update_env
+    cli = _cli()
+    monkeypatch.setattr(machine, "mise_local_config", machine.repo / "missing.toml")
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+    runs = []
+    real_run = cli.system.run
+
+    def fake_run(args, **kwargs):
+        if str(args[0]).endswith("/bootstrap"):
+            runs.append(list(args))
+            return None
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(cli.system, "run", fake_run)
+
+    _update(machine)
+
+    assert (runs == [[str(machine.repo / "bootstrap")]]) is ran

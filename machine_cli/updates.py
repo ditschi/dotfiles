@@ -508,6 +508,10 @@ class UpdateMixin:
             )
             return code
 
+    def _confirm_bootstrap(self) -> bool:
+        answer = input("Run bootstrap now? [Y/n]: ").strip().lower()
+        return answer in ("", "y", "yes")
+
     def _update_locked(self, args: types.SimpleNamespace) -> int:
         self.ensure_update_timer()
         self.run_local_resolvers(interactive=True)
@@ -524,12 +528,31 @@ class UpdateMixin:
         profile_changed = self.sync_host_config_from_repo()
 
         # Converge check: runs also when nothing was incoming; idempotent and cheap.
+        not_set_up = ""
         if self.mise_local_config.is_file() and system.have("mise"):
             self.run_dotfiles_apply()
             self.run_tools_install()
+        else:
+            reason = (
+                "mise is not installed"
+                if not system.have("mise")
+                else f"{self.mise_local_config} is missing"
+            )
+            message = (
+                f"this host is not set up: {reason}, so dotfiles and tools were "
+                f"not applied (run: {self.repo}/bootstrap)"
+            )
+            warn(message)
+            not_set_up = message
+            if system.is_tty() and self._confirm_bootstrap():
+                system.run([str(self.repo / "bootstrap")])
+                not_set_up = ""
         self.cmd_env_pull()
         self.check_ssh_key_backup()
-        self.write_update_state("updated", pending="", failed_revision="")
+        if not_set_up:
+            self.write_update_state("attention", not_set_up)
+        else:
+            self.write_update_state("updated", pending="", failed_revision="")
 
         if not self.saved_ansible():
             log("ansible: false in the host config; system changes are not applied")
@@ -549,5 +572,5 @@ class UpdateMixin:
             log(f"applying system changes ({reason})")
             return self.cmd_apply(apply_args)
 
-        log("update finished")
+        log("update finished" if not not_set_up else "update finished, host not set up")
         return 0

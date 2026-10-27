@@ -4,6 +4,61 @@ One repo for shell dotfiles and machine bootstrap. Git is the source of truth: f
 
 Behaviour and its motivation live in [openspec/specs/](openspec/specs) and the archived changes; open investigations are in [openspec/investigations/](openspec/investigations); new features are planned with [OpenSpec](openspec/config.yaml); agent rules in [AGENTS.md](AGENTS.md).
 
+## How the pieces fit
+
+Git holds the desired setup; `machine` selects and applies it. Dotfiles and user-space tools are applied before Ansible. Secrets are fetched separately and never stored in Git.
+
+**Color key:** cyan = Git source; amber = `machine` orchestration and host profile; blue = dotfiles; green = mise-managed user tools; red = Ansible and system state; pink = secrets; slate = supporting context.
+
+```mermaid
+graph LR
+  Repo["Git repository<br/><i>Shared source of truth</i>"]
+  Host["Host config<br/><i>machine/hosts/&lt;hostname&gt;.yml</i>"]
+  Home["Dotfile groups<br/><i>home/ + mise.toml</i>"]
+  System["System definitions<br/><i>ansible/</i>"]
+  Machine["machine CLI<br/><i>Orchestrates setup and updates</i>"]
+  Mise["mise<br/><i>Selected groups and tools</i>"]
+  Ansible["Ansible<br/><i>Root work, unless disabled</i>"]
+  Links["Linked dotfiles<br/><i>Symlinks into Git</i>"]
+  Tools["User-space tools<br/><i>Installed without root</i>"]
+  OS["System environment<br/><i>Packages, /etc and services</i>"]
+  Inventory["Inventory<br/><i>Reachability only, not features</i>"]
+  Vault["Bitwarden<br/><i>Outside Git</i>"]
+  Env["Local secret files<br/><i>~/.env + ~/.env.host</i>"]
+
+  Repo --> Host
+  Repo --> Home
+  Repo --> System
+  Host --> Machine
+  Machine --> Mise
+  Home --> Mise
+  Mise --> Links
+  Mise --> Tools
+  Machine --> Ansible
+  System --> Ansible
+  Inventory -.-> Ansible
+  Ansible --> OS
+  Vault -->|unlocked session| Machine
+  Machine -->|env pull| Env
+
+  classDef source fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#fff;
+  classDef control fill:#1E293B,stroke:#F59E0B,stroke-width:2px,color:#fff;
+  classDef dotfiles fill:#1E293B,stroke:#3B82F6,stroke-width:2px,color:#fff;
+  classDef mise fill:#1E293B,stroke:#10B981,stroke-width:2px,color:#fff;
+  classDef system fill:#1E293B,stroke:#EF4444,stroke-width:2px,color:#fff;
+  classDef secrets fill:#1E293B,stroke:#F472B6,stroke-width:2px,color:#fff;
+  classDef context fill:#334155,stroke:#94A3B8,color:#fff;
+  class Repo source;
+  class Host,Machine control;
+  class Home,Links dotfiles;
+  class Mise,Tools mise;
+  class System,Ansible,OS system;
+  class Vault,Env secrets;
+  class Inventory context;
+```
+
+For host selection rules, see [Context, device, hardware and features](#context-device-hardware-and-features); for the repository map, see [Layout](#layout).
+
 ## Quick start (on the new host, no control node)
 
 ```bash
@@ -262,6 +317,38 @@ The shell loads exactly these files, in order (later assignments win):
 | `~/.env.host` | This host's Bitwarden item | Generated |
 | `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local, never overwritten |
 
+The arrows distinguish fetching from shell loading. The shell loads the three files in order; later assignments win.
+
+```mermaid
+graph LR
+  Group["Bitwarden group item<br/><i>env/groups/&lt;group&gt;</i>"]
+  Host["Bitwarden host item<br/><i>env/hosts/&lt;hostname&gt;</i>"]
+  Pull["machine env pull<br/><i>Unlocked vault; back up changed files</i>"]
+  Shared["1. ~/.env<br/><i>Generated group values</i>"]
+  Specific["2. ~/.env.host<br/><i>Generated host values</i>"]
+  Local["3. ~/.env.local<br/><i>Local only; never overwritten by pull</i>"]
+  Shell["Shell environment<br/><i>Last assignment wins</i>"]
+
+  Group --> Pull
+  Host --> Pull
+  Pull -->|writes group values| Shared
+  Pull -->|writes host values| Specific
+  Shared -.->|then load| Specific
+  Specific -.->|then load| Local
+  Local -.-> Shell
+
+  classDef source fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#fff;
+  classDef control fill:#1E293B,stroke:#F59E0B,stroke-width:2px,color:#fff;
+  classDef dotfiles fill:#1E293B,stroke:#3B82F6,stroke-width:2px,color:#fff;
+  classDef mise fill:#1E293B,stroke:#10B981,stroke-width:2px,color:#fff;
+  classDef system fill:#1E293B,stroke:#EF4444,stroke-width:2px,color:#fff;
+  classDef secrets fill:#1E293B,stroke:#F472B6,stroke-width:2px,color:#fff;
+  classDef context fill:#334155,stroke:#94A3B8,color:#fff;
+  class Pull control;
+  class Group,Host,Shared,Specific,Local secrets;
+  class Shell context;
+```
+
 These files are **not** in git and are not symlinks. Before replacing changed
 generated files, their previous contents are backed up with owner-only
 permissions under `~/.local/share/machine/env-backup/`. Other `~/.env.*` files
@@ -384,6 +471,46 @@ Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.
 | mise | Dotfile groups and user-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
 | Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
 | Inventory | Reachability only — no features |
+
+### Manual update flow
+
+Preview with `machine update --check` (read-only), then run `machine update`. The diagram shows the normal local path; failure recovery and background updates are described above.
+
+```mermaid
+graph TD
+  Start["machine update"]
+  Plan["Compare with upstream<br/><i>Resolve known local overrides; plan affected steps</i>"]
+  Blocked{"Overlapping local edits<br/>or diverged history?"}
+  Stop["Stop and report why<br/><i>Local work is kept</i>"]
+  Pull["Fast-forward checkout<br/><i>Sync this host's config</i>"]
+  Dotfiles["Apply selected dotfiles<br/><i>Create links and prune removed groups</i>"]
+  Tools["Converge mise tools<br/><i>Install missing selected tools</i>"]
+  System{"Relevant system work needed<br/>and Ansible enabled?"}
+  Ansible["Run Ansible<br/><i>Selected packages and system roles</i>"]
+  Health["Check applied setup<br/><i>Including zsh startup</i>"]
+  Done["Update state and reload shell<br/><i>Reload via the interactive shell wrapper</i>"]
+
+  Start --> Plan --> Blocked
+  Blocked -->|Yes| Stop
+  Blocked -->|No| Pull
+  Pull --> Dotfiles --> Tools --> System
+  System -->|Yes| Ansible
+  System -->|No| Health
+  Ansible --> Health --> Done
+
+  classDef source fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#fff;
+  classDef control fill:#1E293B,stroke:#F59E0B,stroke-width:2px,color:#fff;
+  classDef dotfiles fill:#1E293B,stroke:#3B82F6,stroke-width:2px,color:#fff;
+  classDef mise fill:#1E293B,stroke:#10B981,stroke-width:2px,color:#fff;
+  classDef system fill:#1E293B,stroke:#EF4444,stroke-width:2px,color:#fff;
+  classDef secrets fill:#1E293B,stroke:#F472B6,stroke-width:2px,color:#fff;
+  classDef context fill:#334155,stroke:#94A3B8,color:#fff;
+  class Start,Plan,Blocked,Pull,Done,Stop control;
+  class Dotfiles dotfiles;
+  class Tools mise;
+  class System,Ansible system;
+  class Health context;
+```
 
 Work modules (`01_work.zsh`) are only linked for the context `work`.
 

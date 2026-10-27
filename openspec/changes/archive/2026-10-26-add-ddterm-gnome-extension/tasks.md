@@ -19,4 +19,4 @@
 
 ## 4. Integration
 
-- [ ] 4.1 On this GNOME/Wayland host run `machine update`, log out and in, and verify Ddterm opens on the monitor with the cursor and the other extensions keep their settings.
+- [x] 4.1 On this GNOME/Wayland host run `machine update`, log out and in, and verify Ddterm opens on the monitor with the cursor and the other extensions keep their settings.

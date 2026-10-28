@@ -37,12 +37,3 @@
     machine_features_not_here: >-
       {{ ([] if hw_laptop | bool else ['lid-switch', 'power-profile-switch', 'battery-charge-limit'])
          + (['zram-swap'] if hw_pi | bool else []) }}
-
-- name: Warn when Cosmic selected on non-Pop
-  ansible.builtin.debug:
-    msg: >-
-      Feature cosmic is selected but it has no packages on this OS;
-      desktop session will not be installed here.
-  when:
-    - "'cosmic' in machine_features"
-    - (packages_by_feature.cosmic | default([]) | length) == 0

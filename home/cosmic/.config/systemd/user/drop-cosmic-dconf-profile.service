@@ -1,0 +1,12 @@
+# start-cosmic imports DCONF_PROFILE (the COSMIC dconf database) into the user manager.
+# With linger the manager keeps it after logout, so a later GNOME login would read and
+# write ~/.config/dconf/cosmic instead of ~/.config/dconf/user. Drop it before GNOME starts.
+# Pulled in by gnome-session-pre.target.d/drop-cosmic-dconf-profile.conf.
+[Unit]
+Description=Drop the COSMIC dconf profile before a GNOME session
+DefaultDependencies=no
+Before=gnome-session-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user unset-environment DCONF_PROFILE

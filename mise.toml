@@ -32,3 +32,6 @@ root = "home/openspec"
 
 [dotfile_groups.gnome]
 root = "home/gnome"
+
+[dotfile_groups.cosmic]
+root = "home/cosmic"

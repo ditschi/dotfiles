@@ -27,7 +27,8 @@ feature_table:
     server: excluded
     container: excluded
   cosmic:
-    help: Cosmic desktop packages (Pop OS)
+    help: COSMIC desktop session (Ubuntu 26.04+ via PPA; built into Pop!_OS)
+    groups: [cosmic]
     desktop: optional
     server: excluded
     container: excluded

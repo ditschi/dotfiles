@@ -63,6 +63,20 @@ def test_split_drops_excluded_and_unknown():
     assert dropped == ["monitoring", "starship"]
 
 
+def test_cosmic_only_on_desktops():
+    for context in ("private", "work"):
+        assert "cosmic" in features.allowed(context, "desktop")
+        assert "cosmic" not in features.defaults(context, "desktop")
+        for device in ("server", "container"):
+            assert features.split(["cosmic"], context, device) == ([], ["cosmic"])
+    assert features.split(["cosmic"], "", "container") == ([], ["cosmic"])
+
+
+def test_cosmic_selects_its_dotfile_group():
+    assert "cosmic" in features.dotfile_groups("private", "desktop", ["cosmic"])
+    assert "cosmic" not in features.dotfile_groups("private", "desktop", ["gnome"])
+
+
 def test_dotfile_groups_from_table():
     groups = features.dotfile_groups(
         "private", "desktop", ["thunderbird", "claude-code", "copilot-cli"]

@@ -1,0 +1,116 @@
+---
+- name: Check whether the COSMIC PPA builds this Ubuntu release
+  ansible.builtin.uri:
+    url: "{{ cosmic_desktop_ppa_url }}/dists/{{ ansible_facts.distribution_release }}/Release"
+    method: HEAD
+    status_code: [200, 404]
+  register: cosmic_desktop_release
+  check_mode: false
+  failed_when: false
+  when:
+    - ansible_facts.distribution == 'Ubuntu'
+    - ansible_facts.distribution_version is version(cosmic_desktop_min_ubuntu, '>=')
+
+- name: Decide whether COSMIC is installed here
+  ansible.builtin.set_fact:
+    cosmic_desktop_supported: "{{ (cosmic_desktop_release.status | default(0)) == 200 }}"
+
+# Pop!_OS ships COSMIC itself: nothing to do and nothing to warn about.
+- name: Warn when COSMIC cannot be installed here
+  ansible.builtin.debug:
+    msg: >-
+      Feature cosmic: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
+      ({{ ansible_facts.distribution_release }}) is not supported;
+      {{ 'the PPA has no build for this release'
+         if ansible_facts.distribution == 'Ubuntu'
+            and ansible_facts.distribution_version is version(cosmic_desktop_min_ubuntu, '>=')
+         else 'the PPA supports only Ubuntu ' ~ cosmic_desktop_min_ubuntu ~ ' and newer' }}.
+      Nothing installed.
+  when:
+    - not cosmic_desktop_supported
+    - ansible_facts.distribution != 'Pop!_OS'
+
+- name: Install COSMIC from the PPA
+  when: cosmic_desktop_supported
+  block:
+    - name: Install the PPA signing key
+      ansible.builtin.copy:
+        src: cosmic-epoch.asc
+        dest: "{{ cosmic_desktop_keyring }}"
+        mode: "0644"
+      register: cosmic_desktop_key_file
+
+    - name: Add the COSMIC PPA source
+      ansible.builtin.template:
+        src: cosmic-epoch.sources.j2
+        dest: "{{ cosmic_desktop_source }}"
+        mode: "0644"
+      register: cosmic_desktop_source_file
+
+    - name: Look up the cosmic-session candidate
+      ansible.builtin.command: apt-cache policy cosmic-session
+      environment:
+        LC_ALL: C
+      register: cosmic_desktop_candidate
+      changed_when: false
+      check_mode: false
+
+    # Without cache_valid_time: a fresh cache from before the source was added has no PPA lists.
+    - name: Refresh the apt cache for the PPA
+      ansible.builtin.apt:
+        update_cache: true
+      when: >-
+        cosmic_desktop_key_file is changed or cosmic_desktop_source_file is changed
+        or 'Candidate:' not in cosmic_desktop_candidate.stdout
+        or 'Candidate: (none)' in cosmic_desktop_candidate.stdout
+
+    - name: Read the current display manager
+      ansible.builtin.slurp:
+        src: /etc/X11/default-display-manager
+      register: cosmic_desktop_dm_before
+      failed_when: false
+
+    - name: Remember the display manager to keep
+      ansible.builtin.set_fact:
+        cosmic_desktop_dm: >-
+          {{ (cosmic_desktop_dm_before.content | b64decode | trim | basename)
+             if cosmic_desktop_dm_before.content is defined else 'gdm3' }}
+
+    # The debconf module needs debconf-utils.
+    - name: Install debconf-utils
+      ansible.builtin.apt:
+        name: debconf-utils
+        state: present
+        cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+
+    # cosmic-greeter is a display manager too; keep the current one as default.
+    - name: Keep the current display manager as default
+      ansible.builtin.debconf:
+        name: "{{ item }}"
+        question: shared/default-x-display-manager
+        value: "{{ cosmic_desktop_dm }}"
+        vtype: select
+      loop:
+        - "{{ cosmic_desktop_dm }}"
+        - cosmic-greeter
+
+    - name: Install the COSMIC session
+      ansible.builtin.apt:
+        name: "{{ cosmic_desktop_packages }}"
+        state: present
+        install_recommends: true
+
+    - name: Read the display manager after the install
+      ansible.builtin.slurp:
+        src: /etc/X11/default-display-manager
+      register: cosmic_desktop_dm_after
+      failed_when: false
+
+    - name: Check that the display manager did not change
+      ansible.builtin.assert:
+        that:
+          - (cosmic_desktop_dm_after.content | default('') | b64decode | trim) == (cosmic_desktop_dm_before.content | default('') | b64decode | trim)
+        fail_msg: >-
+          Installing COSMIC changed /etc/X11/default-display-manager; run
+          'sudo dpkg-reconfigure {{ cosmic_desktop_dm }}' to switch back.
+        quiet: true

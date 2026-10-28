@@ -27,6 +27,7 @@ Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 | `lid_switch` | `lid-switch` on detected laptops — closing the lid does nothing |
 | `power_profile_switch` | `power-profile-switch` on detected laptops — performance on AC, balanced on battery |
 | `battery_charge_limit` | `battery-charge-limit` on detected laptops — 75/80 %, `battery-charge` command |
+| `cosmic_desktop` | `cosmic` (desktops) — COSMIC session on Ubuntu 26.04+ from the unofficial PPA `ppa:hepp3n/cosmic-epoch`, GDM stays; nothing on Pop!_OS ([README](roles/cosmic_desktop/README.md)) |
 | `zram_swap` | `zram-swap`, not on Raspberry Pis |
 | `thinkpad_l13_yoga_gen2` | detected model, no feature — S3 suspend, tablet OSK ([docs](../docs/thinkpad-l13-yoga-gen2.md)) |
 

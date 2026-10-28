@@ -100,3 +100,10 @@ Users SHALL be able to skip Ansible and system provisioning for one apply or upd
 #### Scenario: Skip is per invocation
 - **WHEN** the next `machine apply` or `machine update` runs without `--skip-ansible` and the host config allows Ansible
 - **THEN** normal Ansible behavior runs for applicable system changes
+
+### Requirement: First setup keeps the allowed SSH hosts
+Without an applied host config, `machine setup` SHALL use the `ssh_allow_from` entries of the host's repository config as the current selection: offered preselected on a terminal and kept unchanged without one.
+
+#### Scenario: Non-interactive first setup
+- **WHEN** `machine setup --yes` runs on a fresh host whose repository config lists `ssh_allow_from: [laptop1]`
+- **THEN** the written host config still lists `laptop1`

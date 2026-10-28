@@ -255,7 +255,7 @@ The update SHALL report a pending system update only when the files changed sinc
 - **THEN** no system update is reported for it
 
 ### Requirement: Attention entry point
-`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
+`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
 
 #### Scenario: Open items exist
 - **WHEN** a user runs `machine attention` and items are open
@@ -288,6 +288,22 @@ The update SHALL report a pending system update only when the files changed sinc
 #### Scenario: Blocked update no longer conflicts
 - **WHEN** the update item is open and the local changes now merge cleanly, for example after the user resolved the conflict
 - **THEN** the item offers to run the update, which runs the full update including the system step when it is pending
+
+#### Scenario: Telegraf not installed
+- **WHEN** the host has `monitoring` and `telegraf` is not installed
+- **THEN** a monitoring item says so and offers `machine apply`
+
+#### Scenario: Telegraf without output
+- **WHEN** the host has `monitoring`, `telegraf` is installed, no output file exists and the last apply left `telegraf` disabled for lack of an output
+- **THEN** a monitoring item names the missing Bitwarden item `influxdb-telegraf-write` and offers `machine apply` once the item exists
+
+#### Scenario: Telegraf not active
+- **WHEN** the host has `monitoring`, an output exists and `telegraf` is not active
+- **THEN** a monitoring item shows the last lines of the Telegraf journal and offers to restart the service
+
+#### Scenario: Telegraf working
+- **WHEN** the host has `monitoring` and `telegraf` is active with an output, or the host does not have `monitoring`
+- **THEN** no monitoring item is listed
 
 ### Requirement: Update ends converged
 `machine update` SHALL end with a converge check, also when nothing was incoming: the user-space tools declared in the `mise` configuration are installed (missing ones are added) and the dotfile groups of the host are applied (missing links created, removed ones pruned). The checks SHALL be idempotent and cheap when nothing is missing.

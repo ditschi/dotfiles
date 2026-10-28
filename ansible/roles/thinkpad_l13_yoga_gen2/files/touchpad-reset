@@ -1,0 +1,10 @@
+#!/bin/sh
+# Reload the Elan touchpad/TrackPoint driver when both stop responding.
+# Touchpad and TrackPoint sit on one Elan I2C chip that sometimes hangs (no interrupts).
+set -eu
+
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+
+modprobe -r elan_i2c
+modprobe elan_i2c
+echo "elan_i2c reloaded"

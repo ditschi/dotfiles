@@ -39,6 +39,14 @@
     - thinkpad_l13_yoga_gen2_mem_sleep_modes.content is defined
     - thinkpad_l13_yoga_gen2_mem_sleep not in (thinkpad_l13_yoga_gen2_mem_sleep_modes.content | b64decode)
 
+# --- Touchpad and TrackPoint reset -------------------------------------
+
+- name: Install touchpad-reset
+  ansible.builtin.copy:
+    src: touchpad-reset
+    dest: /usr/local/bin/touchpad-reset
+    mode: "0755"
+
 # --- Tablet mode on-screen keyboard --------------------------------------
 
 - name: Ensure target directories

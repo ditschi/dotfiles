@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO))
 
 from machine_cli.dotfiles import (  # noqa: E402
     DotfilesMixin,
+    clear_conflicting_targets,
     dotfile_groups,
     render_github_token_config,
     render_local_config,
@@ -101,6 +102,22 @@ def test_sweep_removes_only_dangling_links_into_the_checkout(tmp_path):
     assert (home / ".plain").read_text() == "keep"
 
 
+def test_sweep_resolves_checkout_alias_in_dangling_link_target(tmp_path):
+    repo = tmp_path / "checkout"
+    (repo / "home").mkdir(parents=True)
+    repo_alias = tmp_path / "checkout-alias"
+    repo_alias.symlink_to(repo, target_is_directory=True)
+    home = tmp_path / "h"
+    home.mkdir()
+    stale = home / ".zshrc"
+    stale.symlink_to(repo_alias / "home/dot_zshrc")
+
+    removed = sweep_dangling_links(home, repo)
+
+    assert removed == [stale]
+    assert not stale.is_symlink()
+
+
 def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     from machine_cli.dotfiles import clear_conflicting_targets
 
@@ -126,6 +143,24 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     assert (home / ".bashrc.pre-dotfiles.2").read_text() == "distro default"
     assert (home / ".bashrc.pre-dotfiles").read_text() == "older backup"
     assert (home / ".config/app").is_symlink()
+
+
+def test_conflicting_target_cleanup_resolves_checkout_alias(tmp_path):
+    repo = tmp_path / "checkout"
+    new_config = repo / "home/core/.zsh/config/05_pyenv.zsh"
+    new_config.parent.mkdir(parents=True)
+    new_config.write_text("new config")
+    repo_alias = tmp_path / "checkout-alias"
+    repo_alias.symlink_to(repo, target_is_directory=True)
+    home = tmp_path / "h"
+    stale = home / ".zsh/config/05_pyenv.zsh"
+    stale.parent.mkdir(parents=True)
+    stale.symlink_to(repo_alias / "home/dot_zsh/config/05_pyenv.zsh")
+
+    changed = clear_conflicting_targets(repo, home, ["core"])
+
+    assert changed == [(stale, "removed stale link")]
+    assert not stale.is_symlink()
 
 
 def test_fonts_group_follows_the_feature():

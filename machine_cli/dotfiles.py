@@ -115,7 +115,7 @@ def sweep_dangling_links(home: Path, repo: Path) -> list[Path]:
             link = Path(current) / name
             if not link.is_symlink() or link.exists():
                 continue
-            target = Path(os.path.normpath(Path(current) / os.readlink(link)))
+            target = (link.parent / os.readlink(link)).resolve(strict=False)
             if target == repo or repo in target.parents:
                 link.unlink()
                 removed.append(link)
@@ -150,7 +150,7 @@ def clear_conflicting_targets(
     changed: list[tuple[Path, str]] = []
     for source, target in group_targets(repo, home, groups):
         if target.is_symlink():
-            current = Path(os.path.normpath(target.parent / os.readlink(target)))
+            current = (target.parent / os.readlink(target)).resolve(strict=False)
             if current != source and (current == repo or repo in current.parents):
                 target.unlink()
                 changed.append((target, "removed stale link"))

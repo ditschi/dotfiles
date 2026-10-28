@@ -7,7 +7,7 @@ import os
 import re
 import shlex
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlsplit
 
 from . import system
@@ -19,6 +19,18 @@ from .core import (
 
 
 DEFAULT_BW_EMAIL = "chris@ditschers.de"
+# Variables read from the Telegraf item (spec secret-tools, "Influx item layout")
+# and the Ansible variables they become (group_vars/all/packages.yml).
+INFLUX_KEYS = {
+    "INFLUX_URL": "influx_url",
+    "INFLUX_TOKEN": "influx_token",
+    "INFLUX_ORG": "influx_org",
+    "INFLUX_BUCKET": "influx_bucket",
+    "INFLUX_TELEGRAF_CONFIG_BASE": "influx_telegraf_config_base",
+    "INFLUXDB_USER": "influx_username",
+    "INFLUXDB_USER_PASSWORD": "influx_password",  # pragma: allowlist secret
+    "INFLUXDB_DB": "influx_database",
+}
 
 
 class BwClientMixin:
@@ -307,6 +319,35 @@ class BwClientMixin:
             return json.loads(result.stdout)
         except json.JSONDecodeError:
             return None
+
+    def influx_credentials(self) -> Dict[str, str]:
+        """INFLUX_* values of the Telegraf item; empty when bw is missing or locked.
+
+        Custom fields named like the variables win; a login item's password and
+        first URI fill INFLUX_TOKEN and INFLUX_URL. Read once per command."""
+        cached = getattr(self, "_influx_credentials", None)
+        if cached is not None:
+            return cached
+        values: Dict[str, str] = {}
+        if not self.unlock_bitwarden():
+            log(f"Bitwarden not unlocked; Telegraf without item '{self.influx_item}'")
+        else:
+            item = self.bw_get_item_raw(self.influx_item)
+            if not item:
+                log(f"Bitwarden item '{self.influx_item}' not found")
+            else:
+                login = item.get("login") or {}
+                uris = [u.get("uri") for u in login.get("uris") or [] if u.get("uri")]
+                if login.get("password"):
+                    values["INFLUX_TOKEN"] = login["password"]
+                if uris:
+                    values["INFLUX_URL"] = uris[0]
+                for field in item.get("fields") or []:
+                    name = (field.get("name") or "").strip()
+                    if name in INFLUX_KEYS and field.get("value"):
+                        values[name] = str(field["value"])
+        self._influx_credentials = values
+        return values
 
     def bw_items_named(self, name: str) -> Optional[List[dict]]:
         """Items whose name is exactly `name`; None when bw cannot list them."""

@@ -19,6 +19,7 @@ from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
 from .attention import AttentionMixin
 from .local_work import LocalWorkMixin
+from .monitoring import MonitoringMixin
 
 
 class Machine(
@@ -34,6 +35,7 @@ class Machine(
     AutoUpdateMixin,
     AttentionMixin,
     LocalWorkMixin,
+    MonitoringMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()
@@ -75,6 +77,9 @@ class Machine(
         self.legacy_profile_path = self.home / ".config/machine/profile.yml"
         self.takeover_legacy_profile()
         self.vault_item = os.environ.get("MACHINE_VAULT_BW_ITEM", "ansible-vault")
+        self.influx_item = os.environ.get(
+            "MACHINE_INFLUX_BW_ITEM", "influxdb-telegraf-write"
+        )
         os.environ["DOTFILES_REPO"] = str(self.repo)
 
     def event(

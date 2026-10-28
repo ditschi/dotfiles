@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from . import system
+from .monitoring import NOT_ACTIVE
 
 
 @dataclass
@@ -111,6 +112,36 @@ class AttentionMixin:
             )
         return items
 
+    def _run_apply(self) -> int:
+        return self.cmd_apply(
+            types.SimpleNamespace(limit="", playbook="workstation", no_become=False)
+        )
+
+    def monitoring_item(self) -> Optional[AttentionItem]:
+        """Telegraf not installed, without output or not running on a monitoring host."""
+        problem = self.telegraf_problem()
+        if not problem:
+            return None
+        text = self.telegraf_problem_text(problem)
+        if problem != NOT_ACTIVE:
+            return AttentionItem(
+                "monitoring", text, "Run `machine apply` now?", self._run_apply
+            )
+
+        def show_and_restart() -> object:
+            # best effort: without the adm/systemd-journal group the journal is empty
+            system.run(
+                ["journalctl", "-u", "telegraf", "-n", "20", "--no-pager"],
+                check=False,
+            )
+            if system.prompt_yes_no("Restart telegraf now (sudo)?", True):
+                return system.run(
+                    ["sudo", "systemctl", "restart", "telegraf"], check=False
+                ).returncode
+            return 0
+
+        return AttentionItem("monitoring", text, None, show_and_restart)
+
     def attention_items(self) -> list[AttentionItem]:
         items: list[AttentionItem] = []
         update = self.update_item()
@@ -126,11 +157,7 @@ class AttentionMixin:
                     + ", ".join(pending[:5])
                     + (" …" if len(pending) > 5 else ""),
                     "Run `machine apply` now?",
-                    lambda: self.cmd_apply(
-                        types.SimpleNamespace(
-                            limit="", playbook="workstation", no_become=False
-                        )
-                    ),
+                    self._run_apply,
                 )
             )
         if self.ssh_key_attention.is_file():
@@ -142,6 +169,9 @@ class AttentionMixin:
                     self.resolve_ssh_key_difference,
                 )
             )
+        monitoring = self.monitoring_item()
+        if monitoring:
+            items.append(monitoring)
         local = set(self.local_changes())
         for name, path, run, _pending in self.local_resolvers():
             if path in local:

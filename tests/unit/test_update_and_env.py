@@ -929,6 +929,32 @@ def test_new_text_moves_only_when_selected(overrides):
     assert list(backup.iterdir())
 
 
+def test_bashrc_override_selection_shows_full_colored_diff(
+    update_env, monkeypatch, capfd
+):
+    machine, repo, _other, _home, _calls = update_env
+    shared = repo / "home/core/.bashrc"
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    shared.write_text("echo old\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "bashrc", cwd=repo)
+    shared.write_text("echo new\n" + BLOCK)
+
+    system = machine_system()
+    monkeypatch.setattr(
+        system, "choose_many", lambda _title, choices, _selected: list(choices)
+    )
+
+    machine.move_bashrc_overrides(interactive=True)
+
+    output = capfd.readouterr().out
+    assert "\x1b[31m-" in output and "\x1b[32m+" in output
+    plain_output = system.click.unstyle(output)
+    assert "-echo old" in plain_output
+    assert "+echo new" in plain_output
+    assert "+## <!-- BEGIN ANSIBLE MANAGED BLOCK - colors -->" in plain_output
+
+
 def test_known_text_is_removed_silently_and_conflict_is_kept(overrides):
     lo, shared, local, backup = overrides
     shared.write_text("echo base\n" + BLOCK)

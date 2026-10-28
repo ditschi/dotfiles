@@ -118,6 +118,22 @@ class UpdateMixin:
             return
 
         def select(chunks):
+            system.run(
+                [
+                    "git",
+                    "--no-pager",
+                    "-C",
+                    str(self.repo),
+                    "diff",
+                    "--color=always",
+                    "--no-ext-diff",
+                    "--unified=3",
+                    "HEAD",
+                    "--",
+                    str(shared.relative_to(self.repo)),
+                ],
+                check=False,
+            )
             labels = {c.key: f"{c.text.count(chr(10))} line(s)" for c in chunks}
             picked = system.choose_many(
                 "Move text added to .bashrc into ~/.bashrc-local", labels, []

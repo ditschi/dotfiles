@@ -183,9 +183,13 @@
     path = ~/.config/git/work.gitconfig
 [includeIf "hasconfig:remote.*.url:https://github.com/bosch_*/**"]
     path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:https://github.com/*_bosch/**"]
+    path = ~/.config/git/work.gitconfig
 [includeIf "hasconfig:remote.*.url:git@github.com:bosch-*/**"]
     path = ~/.config/git/work.gitconfig
 [includeIf "hasconfig:remote.*.url:git@github.com:bosch_*/**"]
+    path = ~/.config/git/work.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:*_bosch/**"]
     path = ~/.config/git/work.gitconfig
 [includeIf "hasconfig:remote.*.url:https://github.boschdevcloud.com/**"]
     path = ~/.config/git/work.gitconfig

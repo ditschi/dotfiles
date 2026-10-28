@@ -342,8 +342,18 @@ def _identity(env, repo) -> tuple[str, str]:
         ("https://github.com/ditschi/dotfiles.git", PRIVATE, "ditschi"),
         ("git@github.com:ditschi/dotfiles.git", PRIVATE, "ditschi"),
         ("https://github.com/someone/bosch-tool.git", PRIVATE, "ditschi"),
+        ("https://github.com/someone/tool_bosch.git", PRIVATE, "ditschi"),
+        ("git@github.com:someone/tool_bosch.git", PRIVATE, "ditschi"),
+        ("https://github.com/someone_bosch_extra/x.git", PRIVATE, "ditschi"),
         ("https://github.com/bosch-foo/x.git", WORK, "dci2lr_bosch"),
         ("https://github.com/bosch_rbadas/x.git", WORK, "dci2lr_bosch"),
+        (
+            "https://github.com/dci2lr_bosch/idea-collection.git",
+            WORK,
+            "dci2lr_bosch",
+        ),
+        ("https://github.com/someone_bosch/x.git", WORK, "dci2lr_bosch"),
+        ("git@github.com:someone_bosch/x.git", WORK, "dci2lr_bosch"),
         ("git@github.com:bosch-foo/x.git", WORK, "dci2lr_bosch"),
         ("https://github.boschdevcloud.com/DCI2LR/x.git", WORK, "dci2lr_bosch"),
         (

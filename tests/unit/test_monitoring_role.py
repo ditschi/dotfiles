@@ -175,3 +175,44 @@ def test_former_remote_url_note_is_removed(apply_role):
     (etc / "telegraf.d/00_remote_urls.conf").write_text("# old\n")
     run()
     assert "00_remote_urls.conf" not in _names(etc)
+
+
+def _agent_tables(*paths: Path) -> int:
+    return sum(len(re.findall(r"^\s*\[agent\]", p.read_text(), re.M)) for p in paths)
+
+
+def test_fragments_have_no_agent_table():
+    # telegraf.conf holds the only [agent] table; a second one makes Telegraf warn.
+    fragments = sorted((ROLE / "files").glob("machine_*.conf"))
+    assert fragments
+    assert _agent_tables(*fragments) == 0
+
+
+@needs_ansible
+@pytest.mark.parametrize(
+    ("configs", "interval"),
+    [
+        (["machine/base", "machine/laptop"], "30s"),
+        (["machine/base", "machine/server"], "15s"),
+        (["machine/base", "machine/pi"], "60s"),
+        # server wins over laptop, as when both fragments set it and server loaded last
+        (["machine/base", "machine/laptop", "machine/server"], "15s"),
+        (["machine/base", "machine/docker"], None),  # Telegraf's default (10s)
+    ],
+)
+def test_one_agent_table_with_the_machine_interval(apply_role, configs, interval):
+    etc, run = apply_role
+    run(monitoring_configs=configs)
+    main = (etc / "telegraf.conf").read_text()
+    assert _agent_tables(etc / "telegraf.conf", *(etc / "telegraf.d").iterdir()) == 1
+    intervals = re.findall(r'^\s*interval\s*=\s*"([^"]*)"', main, re.M)
+    assert intervals == ([interval] if interval else [])
+
+
+@needs_ansible
+def test_remote_base_leaves_the_interval_to_the_remote_configs(apply_role):
+    etc, run = apply_role
+    run(influx_telegraf_config_base="https://influx.test/t", influx_token="tok")
+    main = (etc / "telegraf.conf").read_text()
+    assert _agent_tables(etc / "telegraf.conf") == 1
+    assert not re.search(r"^\s*interval\s*=", main, re.M)

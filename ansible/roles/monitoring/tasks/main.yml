@@ -49,6 +49,11 @@
     - /etc/telegraf
     - "{{ monitoring_conf_dir }}"
 
+- name: Resolve monitoring config names
+  ansible.builtin.set_fact:
+    _monitoring_names: "{{ monitoring_configs | default([]) }}"
+    _monitoring_remote: "{{ influx_telegraf_config_base | default('') | length > 0 }}"
+
 - name: Minimal main telegraf.conf that loads telegraf.d
   ansible.builtin.copy:
     dest: "{{ monitoring_main_conf }}"
@@ -56,15 +61,14 @@
     content: |
       # Managed by ansible roles/monitoring
       # No hostname: Telegraf reports the system hostname (local runs see "localhost").
+      # The only [agent] table: fragments must not add one (Telegraf warns on overlaps).
       [agent]
         omit_hostname = false
+      {% if monitoring_interval | length > 0 and not _monitoring_remote %}
+        interval = {{ monitoring_interval | to_json }}
+      {% endif %}
       # Drop-ins: {{ monitoring_conf_dir }}
   notify: Restart telegraf
-
-- name: Resolve monitoring config names
-  ansible.builtin.set_fact:
-    _monitoring_names: "{{ monitoring_configs | default([]) }}"
-    _monitoring_remote: "{{ influx_telegraf_config_base | default('') | length > 0 }}"
 
 - name: Remove the former remote URL note
   ansible.builtin.file:

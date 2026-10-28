@@ -18,6 +18,7 @@ from .core import (
     DEVICES,
     log,
     die,
+    parse_profile_file,
     profile_fingerprint,
 )
 
@@ -32,7 +33,13 @@ class CommandsMixin:
         if device and device not in DEVICES:
             die(f"invalid device {device!r}")
         self.ensure_dirs()
-        saved = self.applied_host() if self.applied_host_path.is_file() else {}
+        # A fresh host starts from its repository host config (features, allowed hosts).
+        if self.applied_host_path.is_file():
+            saved = self.applied_host()
+        elif self.host_config_path().is_file():
+            saved = parse_profile_file(self.host_config_path())
+        else:
+            saved = {}
         if not device:
             device = self.default_device()
             if not args.yes and device != "container":
@@ -65,8 +72,8 @@ class CommandsMixin:
                 saved.get("context") == context and saved.get("device") == device
             )
             defaults = (
-                self.saved_features()
-                if same_host and self.saved_features()
+                list(saved["features"])
+                if same_host and saved["features"]
                 else self.default_features_for(context, device)
             )
             features = (
@@ -80,7 +87,7 @@ class CommandsMixin:
         if need_bw:
             self.setup_bitwarden()
 
-        allow_from = self.saved_ssh_allow_from()
+        allow_from = list(saved.get("ssh_allow_from") or [])
         if not args.yes and system.is_tty():
             allow_from = self.prompt_ssh_allow_from(allow_from, context)
 

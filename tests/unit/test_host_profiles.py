@@ -857,3 +857,70 @@ def test_checklist_uses_arrows_and_space(monkeypatch):
     choices = {"x": "", "y": "", "z": ""}
 
     assert system.choose_many("t", choices, ["x", "y"]) == ["x", "y", "z"]
+
+
+def _fresh_setup(tmp_path, monkeypatch, repo_config: str, **args):
+    """Run `machine setup --yes` on a host without an applied host config."""
+    import types
+
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    (repo / "machine/hosts/testhost.yml").write_text(repo_config)
+    written = {}
+    for name in (
+        "ensure_bootstrap_tools",
+        "setup_bitwarden",
+        "write_dotfile_groups",
+        "switch_origin_to_ssh",
+        "maybe_tailscale_login",
+    ):
+        monkeypatch.setattr(machine, name, lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        machine,
+        "persist_host_config",
+        lambda context, device, features, allow_from, yes: written.update(
+            device=device, features=features, allow_from=allow_from
+        ),
+    )
+    setup_args = dict(
+        yes=True,
+        context="",
+        device="",
+        skip_ansible=True,
+        no_become=True,
+        features=None,
+        skip_dotfiles=True,
+        playbook="workstation",
+        limit="",
+        local=True,
+    )
+    setup_args.update(args)
+    assert machine.cmd_setup(types.SimpleNamespace(**setup_args)) == 0
+    return written
+
+
+SERVER_CONFIG = (
+    "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n  - docker\n"
+    "ssh_allow_from:\n  - laptop1\n"
+)
+
+
+def test_first_setup_takes_features_and_allowed_hosts_from_the_repo(
+    tmp_path, monkeypatch
+):
+    written = _fresh_setup(tmp_path, monkeypatch, SERVER_CONFIG)
+    assert written == {
+        "device": "server",
+        "features": ["zsh-full", "docker"],
+        "allow_from": ["laptop1"],
+    }
+
+
+def test_first_setup_uses_defaults_when_the_repo_config_is_for_another_device(
+    tmp_path, monkeypatch
+):
+    written = _fresh_setup(tmp_path, monkeypatch, SERVER_CONFIG, device="desktop")
+    assert written["device"] == "desktop"
+    assert "monitoring" in written["features"]  # private desktop defaults
+    assert written["allow_from"] == ["laptop1"]

@@ -39,7 +39,6 @@ packages_by_feature:
     - flameshot
     - gnome-shell-extension-manager
     - gnome-shell-extension-prefs
-    - guake
   docker:
     - docker.io
     - docker-compose-v2

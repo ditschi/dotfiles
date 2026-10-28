@@ -67,6 +67,9 @@ class MiseToolsMixin:
             self.set_terminal_fonts()
         if GNOME_FEATURE in features:
             self.ensure_gnome_extensions(env)
+            # After the extension step, so a first setup sets the font of a just-installed Ddterm.
+            if FONT_FEATURE in features:
+                terminal_fonts.set_ddterm_font(self.home)
 
     def download_thunderbird_extension(self) -> None:
         """Put the pinned bridge extension into downloads/ (gitignored) for a manual install."""
@@ -116,7 +119,6 @@ class MiseToolsMixin:
             system.run(["fc-cache", "-f", str(link.parent)], check=False, capture=True)
 
     def set_terminal_fonts(self) -> None:
-        terminal_fonts.set_guake_font()
         terminal_fonts.set_vscode_font(self.home)
 
     def ensure_gnome_extensions(self, env: dict) -> None:

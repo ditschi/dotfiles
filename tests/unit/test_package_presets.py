@@ -117,29 +117,26 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
 def test_expected_package_invariants(name: str):
     packages = resolve_packages(host_vars(name))
     assert "curl" in packages
+    assert "guake" not in packages
     if name == "pi-zero":
         assert "eza" not in packages
         assert "ldap-utils" not in packages
-        assert "guake" not in packages
         assert "zsh" in packages
         assert "fonts-firacode" not in packages
         assert "unattended-upgrades" in packages
     if name == "work-desktop":
         assert "ldap-utils" in packages
         assert "krb5-user" in packages
-        assert "guake" in packages
         assert "unattended-upgrades" not in packages
         assert "openssh-server" not in packages
     if name == "private-laptop":
         assert "ldap-utils" not in packages
-        assert "guake" in packages
         assert "openssh-server" in packages
         assert "thunderbird" in packages
     if name == "private-server":
         assert "docker.io" in packages
         assert "unattended-upgrades" in packages
         assert "openssh-server" in packages
-        assert "guake" not in packages
     if name == "container":
         assert "fonts-firacode" not in packages
         assert "ldap-utils" not in packages

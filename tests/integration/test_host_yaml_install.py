@@ -113,7 +113,6 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert host.package("unattended-upgrades").is_installed
     assert host.package("etckeeper").is_installed
     assert host.file("/etc/.git").is_directory
-    assert not host.package("guake").is_installed
     assert not host.package("ldap-utils").is_installed
     conf_dir = host.file("/etc/telegraf/telegraf.d")
     assert conf_dir.exists
@@ -151,7 +150,6 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert "monitoring" in local.content_string
     assert "gnome" in local.content_string
     assert host.package("zsh").is_installed
-    assert host.package("guake").is_installed
     assert host.package("flameshot").is_installed
     assert not host.package("ldap-utils").is_installed
     assert host.file("/etc/telegraf/telegraf.conf").exists

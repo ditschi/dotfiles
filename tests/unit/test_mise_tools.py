@@ -304,3 +304,31 @@ def test_no_gnome_extensions_without_gnome_shell(machine):
     host.run_tools_install()
 
     assert not any("gext" in c for c in commands)
+
+
+def test_ddterm_font_is_set_after_the_extension_install(machine, monkeypatch, tmp_path):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+    _profile(host, ["gnome", "fonts"])
+    monkeypatch.setattr(
+        mise_tools.system,
+        "have",
+        lambda name: name in ("mise", "gnome-shell", "dconf", "gsettings"),
+    )
+    uuid = "ddterm@amezin.github.com"
+    schemas = tmp_path / ".local/share/gnome-shell/extensions" / uuid / "schemas"
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        if args[-2:] == ["install", uuid]:
+            schemas.mkdir(parents=True)
+        out = "'Monospace Regular 10'\n" if args[-1:] == ["custom-font"] else ""
+        return subprocess.CompletedProcess(args, 0, stdout=out, stderr="")
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    install = commands.index(["mise", "exec", "--", "gext", "-F", "install", uuid])
+    font = next(i for i, c in enumerate(commands) if c[0] == "gsettings" and "set" in c)
+    assert install < font

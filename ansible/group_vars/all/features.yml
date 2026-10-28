@@ -22,7 +22,7 @@ feature_table:
     server: excluded
     container: excluded
   gnome:
-    help: GNOME tools (flameshot, guake, shell extensions, …)
+    help: GNOME tools (flameshot, shell extensions, …)
     groups: [gnome]
     server: excluded
     container: excluded

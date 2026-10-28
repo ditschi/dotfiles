@@ -1,4 +1,4 @@
-"""Set the terminal font of Guake and the VS Code terminal to the Nerd Font."""
+"""Set the terminal font of Ddterm and the VS Code terminal to the Nerd Font."""
 
 from __future__ import annotations
 
@@ -54,28 +54,52 @@ def set_vscode_font(home: Path, family: str = FONT_FAMILY) -> bool:
     return True
 
 
-def guake_font(current: str, family: str = FONT_FAMILY) -> str:
-    """`'Monospace 10'` -> `'<family> 10'`; the size is kept."""
+DDTERM_SCHEMA = "org.gnome.shell.extensions.ddterm"
+DDTERM_SCHEMA_DIR = Path(
+    ".local/share/gnome-shell/extensions/ddterm@amezin.github.com/schemas"
+)
+
+
+def ddterm_font(current: str, family: str = FONT_FAMILY) -> str:
+    """`'Monospace Regular 12'` -> `'<family> 12'`; the size is kept."""
     size = re.search(r"\s(\d+(?:\.\d+)?)\s*'?$", current.strip())
     return f"{family} {size.group(1) if size else 10}"
 
 
-def set_guake_font(family: str = FONT_FAMILY) -> bool:
-    """Only when Guake's gsettings schema exists; returns True when the key changed."""
-    if not system.have("gsettings"):
+def set_ddterm_font(home: Path, family: str = FONT_FAMILY) -> bool:
+    """Only when the Ddterm extension (with its own schema) is installed; returns True on a change.
+
+    The schema lives in the extension directory, so gsettings needs `--schemadir`.
+    """
+    schemas = home / DDTERM_SCHEMA_DIR
+    if not schemas.is_dir() or not system.have("gsettings"):
         return False
+    base = ["gsettings", "--schemadir", str(schemas)]
     got = system.run(
-        ["gsettings", "get", "guake.style.font", "style"], check=False, capture=True
+        [*base, "get", DDTERM_SCHEMA, "custom-font"], check=False, capture=True
     )
     if got.returncode != 0:
+        log("could not read the Ddterm font; not set")
         return False
-    wanted = guake_font(got.stdout or "", family)
-    if (got.stdout or "").strip().strip("'") == wanted:
-        return False
-    system.run(
-        ["gsettings", "set", "guake.style.font", "style", wanted],
-        check=False,
-        capture=True,
+    wanted = ddterm_font(got.stdout or "", family)
+    system_font = system.run(
+        [*base, "get", DDTERM_SCHEMA, "use-system-font"], check=False, capture=True
     )
-    log(f"set the Guake font to {wanted}")
-    return True
+    changed = False
+    if (got.stdout or "").strip().strip("'") != wanted:
+        system.run(
+            [*base, "set", DDTERM_SCHEMA, "custom-font", wanted],
+            check=False,
+            capture=True,
+        )
+        changed = True
+    if (system_font.stdout or "").strip() != "false":
+        system.run(
+            [*base, "set", DDTERM_SCHEMA, "use-system-font", "false"],
+            check=False,
+            capture=True,
+        )
+        changed = True
+    if changed:
+        log(f"set the Ddterm font to {wanted}")
+    return changed

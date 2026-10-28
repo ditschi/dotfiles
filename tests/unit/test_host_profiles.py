@@ -206,6 +206,49 @@ def test_apply_syncs_then_runs_ansible(tmp_path: Path, monkeypatch):
     assert calls == ["ansible"]
 
 
+def test_apply_skip_ansible_syncs_profile_without_system_provisioning(
+    tmp_path: Path, monkeypatch
+):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/testhost.yml").write_text(
+        "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n"
+    )
+    monkeypatch.setattr(
+        machine,
+        "ensure_bootstrap_tools",
+        lambda *_a, **_k: pytest.fail("skip must not bootstrap system tools"),
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must be skipped")
+    )
+
+    args = argparse.Namespace(
+        limit="", playbook="workstation", no_become=True, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
+    assert machine.current_host() == ("private", "server")
+    assert machine.applied_host()["ansible"] is True
+
+
+def test_remote_apply_skip_ansible_does_not_connect(tmp_path: Path, monkeypatch):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/remote.yml").write_text(
+        "---\ncontext: work\ndevice: server\nfeatures:\n  - zsh-full\n"
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must be skipped")
+    )
+
+    args = argparse.Namespace(
+        limit="remote", playbook="workstation", no_become=True, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
+
+
 def test_apply_reverts_profile_on_ansible_failure(tmp_path: Path, monkeypatch):
     import argparse
     import subprocess

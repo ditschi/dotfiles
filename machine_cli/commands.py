@@ -134,9 +134,10 @@ class CommandsMixin:
             raise
 
     def cmd_apply(self, args: types.SimpleNamespace) -> int:
-        """Apply the host config (repo → applied copy) + ansible; revert on failure."""
+        """Apply the host config and Ansible; optionally skip system provisioning."""
         playbook = getattr(args, "playbook", "workstation") or "workstation"
         ask_become = not getattr(args, "no_become", False)
+        skip_ansible = getattr(args, "skip_ansible", False)
         limit = getattr(args, "limit", "") or ""
 
         if limit:
@@ -147,6 +148,11 @@ class CommandsMixin:
                     f"create it or run setup on that host"
                 )
             log(f"remote apply using {host_file.relative_to(self.repo)}")
+            if skip_ansible:
+                log(
+                    "ansible skipped (--skip-ansible); remote system changes remain pending"
+                )
+                return 0
             try:
                 self.run_ansible(
                     playbook,
@@ -183,6 +189,9 @@ class CommandsMixin:
         )
         if not data["ansible"]:
             log("ansible: false in the host config; skipping ansible")
+            return 0
+        if skip_ansible:
+            log("ansible skipped (--skip-ansible); system changes remain pending")
             return 0
 
         try:

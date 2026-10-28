@@ -115,8 +115,10 @@ def _push_change(other: Path, path: str, content: str) -> None:
     _git("push", "-q", "origin", "HEAD:main", cwd=other)
 
 
-def _update(machine, *, force=False, system=False) -> int:
-    return machine.cmd_update(argparse.Namespace(force=force, system=system))
+def _update(machine, *, force=False, system=False, skip_ansible=False) -> int:
+    return machine.cmd_update(
+        argparse.Namespace(force=force, system=system, skip_ansible=skip_ansible)
+    )
 
 
 def test_update_pulls_and_skips_apply_when_profile_unchanged(update_env):
@@ -555,6 +557,25 @@ def test_update_system_flag_applies_without_profile_change(update_env):
     machine, _repo, _other, _home, calls = update_env
     assert _update(machine, system=True) == 0
     assert calls[-1] == "apply"
+
+
+def test_update_skip_ansible_keeps_system_change_pending(update_env, capsys):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine, skip_ansible=True) == 0
+    assert calls == ["dotfiles", "tools", "env"]
+    assert "system changes remain pending" in capsys.readouterr().out
+    assert "ansible/roles/x.yml" in machine.pending_system_paths("HEAD")
+
+
+def test_update_skip_ansible_overrides_system_flag(update_env):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine, system=True, skip_ansible=True) == 0
+    assert calls == ["dotfiles", "tools", "env"]
+    assert "ansible/roles/x.yml" in machine.pending_system_paths("HEAD")
 
 
 def _conflict(repo: Path, other: Path) -> None:

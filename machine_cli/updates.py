@@ -747,21 +747,27 @@ class UpdateMixin:
         if not self.saved_ansible():
             log("ansible: false in the host config; system changes are not applied")
         elif profile_changed or args.system or "system" in steps:
-            apply_args = types.SimpleNamespace(
-                limit="",
-                playbook="workstation",
-                no_become=False,
-                profile_backup=profile_backup,
-                profile_changed=profile_changed,
-            )
             reason = (
                 "host config changed"
                 if profile_changed
                 else "--system" if args.system else "system files changed"
             )
-            log(f"applying system changes ({reason})")
-            code = self.cmd_apply(apply_args)
-            return code or (1 if zsh_failure else 0)
+            if getattr(args, "skip_ansible", False):
+                log(
+                    f"ansible skipped (--skip-ansible); system changes remain pending ({reason})"
+                )
+            else:
+                apply_args = types.SimpleNamespace(
+                    limit="",
+                    playbook="workstation",
+                    no_become=False,
+                    skip_ansible=False,
+                    profile_backup=profile_backup,
+                    profile_changed=profile_changed,
+                )
+                log(f"applying system changes ({reason})")
+                code = self.cmd_apply(apply_args)
+                return code or (1 if zsh_failure else 0)
 
         if zsh_failure:
             return 1  # the shell wrapper only reloads after a successful update

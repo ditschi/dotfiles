@@ -332,3 +332,16 @@ def test_ddterm_font_is_set_after_the_extension_install(machine, monkeypatch, tm
     install = commands.index(["mise", "exec", "--", "gext", "-F", "install", uuid])
     font = next(i for i, c in enumerate(commands) if c[0] == "gsettings" and "set" in c)
     assert install < font
+
+
+def test_logout_hint_only_after_a_new_extension(machine, monkeypatch, tmp_path, capsys):
+    host, _commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+    host.run_tools_install()
+    assert "log out and in" in capsys.readouterr().out
+
+    user_dir = tmp_path / ".local/share/gnome-shell/extensions"
+    for uuid in mise_tools.GNOME_EXTENSIONS:
+        (user_dir / uuid).mkdir(parents=True, exist_ok=True)
+    host.run_tools_install()
+    assert "log out and in" not in capsys.readouterr().out

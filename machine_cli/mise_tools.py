@@ -128,6 +128,7 @@ class MiseToolsMixin:
         user_dir = self.home / ".local" / "share" / "gnome-shell" / "extensions"
         system_dir = Path("/usr/share/gnome-shell/extensions")
         failed = False
+        installed = False
         for uuid in (*GNOME_EXTENSIONS, *GNOME_SYSTEM_EXTENSIONS):
             present = (user_dir / uuid).is_dir() or (system_dir / uuid).is_dir()
             if not present and uuid in GNOME_EXTENSIONS:
@@ -144,6 +145,7 @@ class MiseToolsMixin:
                     log(f"could not install {uuid}: {why}; skipping it")
                     failed = True
                     continue
+                installed = True
             elif not present:
                 log(f"{uuid} is not installed on this system; skipping it")
                 continue
@@ -164,7 +166,8 @@ class MiseToolsMixin:
                 check=False,
                 capture=True,
             )
-        log("log out and in to load new GNOME extensions")
+        if installed:
+            log("log out and in to load new GNOME extensions")
         if not failed:
             self.load_gnome_extension_settings()
 

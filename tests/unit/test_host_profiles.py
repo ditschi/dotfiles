@@ -5,19 +5,19 @@ import subprocess
 import os
 import re
 import textwrap
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 import yaml
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():
-    return SourceFileLoader("machine_cli_hosts", str(MACHINE)).load_module()
+    return load_machine_module("machine_cli_hosts", MACHINE)
 
 
 def test_format_and_fingerprint_roundtrip(tmp_path: Path):

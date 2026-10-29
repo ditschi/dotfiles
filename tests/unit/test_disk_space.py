@@ -5,11 +5,11 @@ from __future__ import annotations
 import importlib
 import os
 import sys
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
@@ -240,7 +240,7 @@ def disk_machine(tmp_path, monkeypatch):
     info = tmp_path / "mountinfo"
     info.write_text(VM, encoding="utf-8")
     monkeypatch.setenv("MACHINE_MOUNTINFO", str(info))
-    cli = SourceFileLoader("machine_disk", str(MACHINE)).load_module()
+    cli = load_machine_module("machine_disk", MACHINE)
     monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     machine = cli.Machine()

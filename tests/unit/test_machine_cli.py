@@ -4,18 +4,18 @@ import os
 import shutil
 import subprocess
 import textwrap
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():
-    return SourceFileLoader("machine_entry", str(MACHINE)).load_module()
+    return load_machine_module("machine_entry", MACHINE)
 
 
 def test_help_lists_setup_update_and_env():

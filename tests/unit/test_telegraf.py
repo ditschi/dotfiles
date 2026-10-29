@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
@@ -37,7 +37,7 @@ def telegraf_machine(tmp_path, monkeypatch, fake_bw, features=("monitoring",)):
     )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    cli = SourceFileLoader("machine_telegraf", str(MACHINE)).load_module()
+    cli = load_machine_module("machine_telegraf", MACHINE)
     monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     machine = cli.Machine()

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Callable, Mapping, Optional
+
+from machine_loader import load_machine_module
 
 MACHINE = Path(__file__).resolve().parents[2] / "machine_cli/machine"
 
@@ -14,7 +15,7 @@ MACHINE = Path(__file__).resolve().parents[2] / "machine_cli/machine"
 def _default_context() -> Optional[str]:
     """The context `machine` would pick on this host, or None if it cannot run."""
     try:
-        module = SourceFileLoader("machine_cli_tls", str(MACHINE)).load_module()
+        module = load_machine_module("machine_cli_tls", MACHINE)
         return module.Machine().default_context()
     except Exception:  # missing dependency or unreadable profile: keep verification
         return None

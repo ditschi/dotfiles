@@ -6,11 +6,11 @@ import os
 import shutil
 import subprocess
 import textwrap
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
@@ -26,7 +26,7 @@ ssh_allow_from: []
 
 
 def _cli():
-    return SourceFileLoader("machine_cli_update", str(MACHINE)).load_module()
+    return load_machine_module("machine_cli_update", MACHINE)
 
 
 def _git(*args: str, cwd: Path) -> str:

@@ -8,14 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
 
 
 def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatch):
-    from importlib.machinery import SourceFileLoader
-
     repo = tmp_path / "dotfiles"
     (repo / "home" / "core").mkdir(parents=True)
     (repo / "home" / "core" / ".zshrc").write_text("#z\n", encoding="utf-8")
@@ -36,20 +35,18 @@ def test_setup_rerun_keeps_saved_features_as_defaults(tmp_path: Path, monkeypatc
     )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
 
-    cli = SourceFileLoader("machine_entry", str(MACHINE)).load_module()
+    cli = load_machine_module("machine_entry", MACHINE)
     machine = cli.Machine()
     assert machine.saved_features() == ["zsh-full", "monitoring"]
 
 
 def isolated_machine(tmp_path, monkeypatch):
-    from importlib.machinery import SourceFileLoader
-
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("DOTFILES_REPO", str(REPO))
     monkeypatch.delenv("MACHINE_SSH_KEY", raising=False)
     monkeypatch.delenv("MACHINE_PROFILE", raising=False)
     monkeypatch.delenv("SUDO_USER", raising=False)
-    cli = SourceFileLoader("machine_keys", str(MACHINE)).load_module()
+    cli = load_machine_module("machine_keys", MACHINE)
     monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     # No versioned host file may match, whatever machine the tests run on.

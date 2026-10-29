@@ -178,9 +178,5 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert not host.file("/usr/local/bin/thinkpad-charge").exists
     assert host.file("/etc/systemd/zram-generator.conf").exists
     assert host.file("/etc/systemd/user/tablet-osk.service").exists
-    assert host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
-    assert (
-        "Port 5115"
-        in host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").content_string
-    )
+    assert not host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
     assert_second_apply_is_idempotent(host)

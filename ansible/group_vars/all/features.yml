@@ -115,7 +115,7 @@ feature_table:
     help: Compressed swap in RAM (not on Raspberry Pis)
     container: excluded
   sshd-home:
-    help: sshd Port 5115 + authorized_keys from machine/ssh_keys
+    help: authorized_keys from machine/ssh_keys
     work: excluded
     container: excluded
 

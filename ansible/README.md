@@ -21,7 +21,7 @@ Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 | Role | Feature / gate |
 | --- | --- |
 | `monitoring` | `monitoring` |
-| `sshd_home` | `sshd-home` — Port 5115 + authorized_keys |
+| `sshd_home` | `sshd-home` — authorized_keys (removes legacy Port 5115) |
 | `stylus_touch_guard` | `stylus-touch-guard` |
 | `touch_device` | `touch-device` — GNOME extensions TouchUp + Screen Rotate |
 | `lid_switch` | `lid-switch` on detected laptops — closing the lid does nothing |

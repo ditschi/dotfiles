@@ -195,7 +195,7 @@ ansible/
   tasks/detect_hardware.yml # laptop, Raspberry Pi, Pi Zero
   roles/
     monitoring/           # Telegraf agent configs
-    sshd_home/            # port 5115 + authorized_keys
+    sshd_home/            # authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
     touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
     cosmic_desktop/       # COSMIC session on Ubuntu 26.04+ from ppa:hepp3n/cosmic-epoch
@@ -468,7 +468,7 @@ Laptops: features `lid-switch` (closing the lid does nothing), `power-profile-sw
 COSMIC: feature `cosmic` (optional on desktops, never on servers or in containers) installs `cosmic-session` on Ubuntu 26.04+ from the unofficial PPA `ppa:hepp3n/cosmic-epoch` (key pinned in the role); GDM stays the display manager, so GNOME and COSMIC can both be chosen at login. Pop!_OS ships COSMIC, so nothing happens there. The feature also selects the dotfile group `cosmic`, whose user unit removes `DCONF_PROFILE` before a GNOME session starts: COSMIC puts it into the systemd user manager, and with linger it would otherwise survive the logout and make the next GNOME login use COSMIC's dconf database. Deselecting removes nothing; see [ansible/roles/cosmic_desktop/README.md](ansible/roles/cosmic_desktop/README.md).
 Mail: feature `thunderbird` (default on private desktops) installs Thunderbird and the mise group `home/thunderbird` with `tb` and `tb-bridge` of [thunderbird-cli](https://github.com/vitalio-sh/thunderbird-cli). The bridge extension is not installed automatically, because it accepts any local bridge, also one of another user: `machine` downloads the pinned XPI to `downloads/` in the checkout (gitignored); install it once in Thunderbird (Add-ons and Themes → gear → Install Add-on From File). Start the bridge with `tb-bridge &`, then `tb health`.
 
-SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `authorized_keys` from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
+SSH home fleet: feature `sshd-home` → `authorized_keys` (`roles/sshd_home`) from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
 
 ### Galaxy vs. local roles
 
@@ -476,7 +476,7 @@ SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `aut
 | --- | --- |
 | Telegraf | **Local** `roles/monitoring` (InfluxData apt source, Bitwarden output + `machine/*` fragments). Galaxy `dj-wasabi.telegraf` / `boutetnico.telegraf` possible, but heavier and a worse fit. |
 | Docker | **apt** `docker.io` / `compose-v2`. Later optionally `geerlingguy.docker` or collection `community.docker`. |
-| SSH keys/port | **Local** `sshd_home` + collection `ansible.posix` (`authorized_key`). |
+| SSH keys | **Local** `sshd_home` + collection `ansible.posix` (`authorized_key`). |
 | Stylus | **Local** (ex helpers-and-automation). |
 
 Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.

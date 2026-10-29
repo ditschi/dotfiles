@@ -12,5 +12,5 @@ collections:
 #     → we keep roles/monitoring (Influx env + machine/* fragments).
 #   Docker: geerlingguy.docker / community.docker
 #     → apt packages_docker (docker.io) is enough for home; CE later if needed.
-#   SSH: ansible.posix.authorized_key (+ local sshd_home port drop-in)
+#   SSH: ansible.posix.authorized_key (local role sshd_home)
 # Install: ansible-galaxy collection install -r ansible/requirements.yml

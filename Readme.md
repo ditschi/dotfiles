@@ -122,6 +122,8 @@ zsh plugins are managed by [antidote](https://antidote.sh): edit `~/.zsh/plugins
 
 bash is a fallback with the same tools: Starship, fzf (Ctrl+R), zoxide (`z`), LS_COLORS and the git helpers (`git open`, `git recent`, `git recall`) from the antidote checkouts, Up/Down prefix search, Esc Esc for `sudo`, and pasting commands with a leading `$ ` or `❯ `.
 
+In both interactive shells, a failed command with an accidentally repeated leading word or phrase puts a cleaned version at the next prompt: `git git status` becomes `git status`, and `git remote git remote -v` becomes `git remote -v`. Edit it, press Enter to run it, or cancel with Ctrl+C. The original command always runs first; successful commands are never rewritten, and suggestions never run automatically. This helper handles only simple unquoted, single-line commands, leaving shell syntax such as expansions, pipelines and redirections untouched. It does not replace existing or queued input.
+
 Data of the former zinit/Powerlevel10k setup is not removed automatically. After the switch it can be deleted with:
 
 ```bash

@@ -205,10 +205,57 @@ command_not_found_handle() {
     return 127
 }
 
+if [ -r "$HOME/.zsh/command-prefix.sh" ]; then
+    . "$HOME/.zsh/command-prefix.sh"
+    _dotfiles_prefix_capture() {
+        _dotfiles_prefix_line=$READLINE_LINE
+        _dotfiles_prefix_pending=''
+    }
+    _dotfiles_prefix_precmd() {
+        local command_status=$?
+        if declare -F starship_precmd >/dev/null; then
+            command_status=${STARSHIP_CMD_STATUS:-$command_status}
+        fi
+        _dotfiles_prefix_status=$command_status
+        _dotfiles_prefix_pending=''
+        if ((command_status)) && dotfiles_command_prefix "${_dotfiles_prefix_line:-}"; then
+            _dotfiles_prefix_pending=$DOTFILES_COMMAND_PREFIX_SUGGESTION
+        fi
+        _dotfiles_prefix_line=''
+        return "$command_status"
+    }
+    _dotfiles_prefix_insert() {
+        if [[ -z $READLINE_LINE ]] && ! read -r -t 0; then
+            READLINE_LINE=${_dotfiles_prefix_pending:-}
+            READLINE_POINT=${#READLINE_LINE}
+        fi
+        _dotfiles_prefix_pending=''
+    }
+    _dotfiles_prefix_bind() {
+        local keymap binding sequence
+        for keymap in emacs-standard vi-insert vi-command; do
+            while IFS= read -r binding; do
+                case "$binding" in
+                    *': accept-line')
+                        sequence=${binding%: accept-line}
+                        [[ $sequence == '"\C-x\C-a"' ]] && continue
+                        bind -m "$keymap" "$sequence: \"\\C-x\\C-c\\C-x\\C-a\\C-x\\C-i\""
+                        ;;
+                esac
+            done < <(bind -m "$keymap" -p)
+            bind -m "$keymap" '"\C-x\C-a": accept-line'
+            bind -m "$keymap" -x '"\C-x\C-c": _dotfiles_prefix_capture'
+            bind -m "$keymap" -x '"\C-x\C-i": _dotfiles_prefix_insert'
+        done
+    }
+    _dotfiles_prefix_bind
+fi
+
 
 # Prompt: Starship (~/.config/starship.toml, shared with zsh) when installed, else a plain PS1.
 # Starship keeps this PROMPT_COMMAND and runs it before it draws the prompt.
 PROMPT_COMMAND='history -a;history -r'
+declare -F _dotfiles_prefix_precmd >/dev/null && PROMPT_COMMAND="_dotfiles_prefix_precmd;$PROMPT_COMMAND"
 # keep the hook that `mise activate bash` added above (it updates tools after `mise use`)
 declare -F _mise_hook_prompt_command >/dev/null && PROMPT_COMMAND="_mise_hook_prompt_command;$PROMPT_COMMAND"
 declare -F dotfiles_update_prompt >/dev/null && PROMPT_COMMAND="$PROMPT_COMMAND;dotfiles_update_prompt"

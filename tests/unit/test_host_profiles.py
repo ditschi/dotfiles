@@ -748,6 +748,22 @@ def test_setup_writes_the_repo_host_file_without_asking(tmp_path, monkeypatch, y
     )
 
 
+def test_setup_commit_uses_the_private_identity_of_the_repo(tmp_path, monkeypatch):
+    """On a new host ~/.gitconfig is not linked yet, so the commit brings its identity."""
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "prompt_yes_no", lambda q, d: True)
+    ran = []
+    monkeypatch.setattr(cli_mod.system, "run", lambda cmd, **kw: ran.append(cmd))
+
+    machine.persist_host_config("work", "desktop", ["zsh-full"], [], yes=False)
+
+    commit = next(cmd for cmd in ran if "commit" in cmd)
+    identity = Path(repo) / "home/core/.config/git/private.gitconfig"
+    assert commit[commit.index("-c") + 1] == f"include.path={identity}"
+
+
 def test_setup_writes_no_repo_host_file_in_a_container(tmp_path, monkeypatch):
     cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
     machine.persist_host_config("", "container", ["zsh-full"], [], yes=True)

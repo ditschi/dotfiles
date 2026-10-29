@@ -298,12 +298,16 @@ class ProfileMixin:
             and system.prompt_yes_no("Commit now (machine commit)?", False)
         ):
             rel = str(path.relative_to(self.repo))
+            # On a new host ~/.gitconfig is not linked yet; this repo uses the private identity.
+            identity = Path(self.repo) / "home/core/.config/git/private.gitconfig"
             system.run(["git", "-C", str(self.repo), "add", rel])
             system.run(
                 [
                     "git",
                     "-C",
                     str(self.repo),
+                    "-c",
+                    f"include.path={identity}",
                     "commit",
                     "-m",
                     f"Add/update host config for {system.hostname_short()}",

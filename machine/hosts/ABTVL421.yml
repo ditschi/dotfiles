@@ -1,17 +1,11 @@
 ---
 context: work
-device: desktop
+device: server
 features:
   - zsh-full
-  - fonts
-  - desktop
-  - gnome
-  - docker
+  - copilot-cli
+  - opencode
   - kerberos
   - azure-cli
   - etckeeper
-  - ssh-host-key
-  - claude-code
-  - copilot-cli
-  - zram-swap
 ssh_allow_from: []

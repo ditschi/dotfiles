@@ -1,45 +1,65 @@
 # Dotfiles + machine setup
 
-One repo for shell dotfiles and machine bootstrap. Git is the source of truth: files under `$HOME` are symlinks into this repo. Commit and push changes from any host; other hosts run `machine update`.
+Shared shell configuration, user tools and machine setup for work and private hosts. Choose a host's context, device and features once; `machine` uses those choices to keep it configured.
 
-Behaviour and its motivation live in [openspec/specs/](openspec/specs) and the archived changes; open investigations are in [openspec/investigations/](openspec/investigations); new features are planned with [OpenSpec](openspec/config.yaml); agent rules in [AGENTS.md](AGENTS.md).
+- **New host:** run `./bootstrap` from a checkout. It starts guided setup on that host; no separate control node is needed.
+- **Existing host:** run `machine update`. Preview first with `machine update --check`.
+- **Shared settings:** managed files in `$HOME` are symlinks into this checkout. Edit, commit and push here; update the other hosts to receive the change.
+- **Local settings and secrets:** stay in host-local files. User tools work without root; Ansible handles system changes and can be disabled per host with `ansible: false`.
+
+[Quick start](#quick-start-on-the-new-host-no-control-node) · [Common commands](#day-to-day) · [How it fits together](#how-the-pieces-fit) · [Host configuration](#context-device-hardware-and-features) · [Secrets](#secrets--bitwarden) · [Tests](#tests)
 
 ## How the pieces fit
 
-Git holds the desired setup; `machine` selects and applies it. Dotfiles and user-space tools are applied before Ansible. Secrets are fetched separately and never stored in Git.
+The checkout holds the desired configuration. On each host, `machine` reads its host config and coordinates three jobs: link dotfiles, install user tools, and apply system configuration. Dotfiles and tools are applied before Ansible; secrets are fetched only with an unlocked vault.
 
-**Color key:** cyan = Git source; amber = `machine` orchestration and host profile; blue = dotfiles; green = mise-managed user tools; red = Ansible and system state; pink = secrets; slate = supporting context.
+**Color key:** cyan = Git; amber = host selection and orchestration; blue = dotfiles; green = mise tools; red = Ansible/system; pink = secrets. Solid arrows show actions or outputs; dotted arrows supply configuration.
 
 ```mermaid
-graph LR
-  Repo["Git repository<br/><i>Shared source of truth</i>"]
-  Host["Host config<br/><i>machine/hosts/&lt;hostname&gt;.yml</i>"]
-  Home["Dotfile groups<br/><i>home/ + mise.toml</i>"]
-  System["System definitions<br/><i>ansible/</i>"]
-  Machine["machine CLI<br/><i>Orchestrates setup and updates</i>"]
-  Mise["mise<br/><i>Selected groups and tools</i>"]
-  Ansible["Ansible<br/><i>Root work, unless disabled</i>"]
-  Links["Linked dotfiles<br/><i>Symlinks into Git</i>"]
-  Tools["User-space tools<br/><i>Installed without root</i>"]
-  OS["System environment<br/><i>Packages, /etc and services</i>"]
-  Inventory["Inventory<br/><i>Reachability only, not features</i>"]
-  Vault["Bitwarden<br/><i>Outside Git</i>"]
-  Env["Local secret files<br/><i>~/.env + ~/.env.host</i>"]
+flowchart TB
+  linkStyle default stroke:#808080,stroke-width:2px;
+  Remote[("🌐 GitHub repository<br/>Shared history")]
+  Vault[("🔐 Bitwarden vault<br/>Group and host secrets")]
 
-  Repo --> Host
-  Repo --> Home
-  Repo --> System
-  Host --> Machine
-  Machine --> Mise
-  Home --> Mise
-  Mise --> Links
+  subgraph HostMachine["💻 This machine"]
+    direction TB
+    subgraph Checkout["📂 Local Git checkout"]
+      direction LR
+      Profile["Host config<br/>machine/hosts/&lt;hostname&gt;.yml"]
+      Dotfiles["Dotfiles + tool declarations<br/>home/ + mise.toml"]
+      Definitions["Ansible definitions<br/>ansible/ roles, packages, inventory"]
+    end
+
+    Machine("⚙️ machine CLI<br/>setup / update / apply")
+
+    subgraph Apply["Apply the selected configuration"]
+      direction LR
+      Linker("🔗 mise dot<br/>Link selected dotfile groups")
+      Mise("🛠️ mise<br/>Install selected user tools")
+      Ansible("⚙️ Ansible<br/>System changes, when enabled")
+      Secrets("🔑 machine env pull<br/>Fetch group and host values")
+    end
+
+    subgraph Result["Configured state on this host"]
+      direction LR
+      Links["Managed files in HOME<br/>Symlinks into the checkout"]
+      Tools["User tools<br/>No root required"]
+      OS["System packages<br/>/etc and services"]
+      Env["Secret files<br/>~/.env + ~/.env.host"]
+    end
+  end
+
+  Remote -->|clone / pull| Checkout
+  Profile -.->|selects features| Machine
+  Dotfiles -.-> Linker
+  Dotfiles -.-> Mise
+  Definitions -.-> Ansible
+  Machine --> Linker & Mise & Ansible & Secrets
+  Linker --> Links
   Mise --> Tools
-  Machine --> Ansible
-  System --> Ansible
-  Inventory -.-> Ansible
   Ansible --> OS
-  Vault -->|unlocked session| Machine
-  Machine -->|env pull| Env
+  Vault -->|unlocked session| Secrets
+  Secrets --> Env
 
   classDef source fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#fff;
   classDef control fill:#1E293B,stroke:#F59E0B,stroke-width:2px,color:#fff;
@@ -47,14 +67,16 @@ graph LR
   classDef mise fill:#1E293B,stroke:#10B981,stroke-width:2px,color:#fff;
   classDef system fill:#1E293B,stroke:#EF4444,stroke-width:2px,color:#fff;
   classDef secrets fill:#1E293B,stroke:#F472B6,stroke-width:2px,color:#fff;
-  classDef context fill:#334155,stroke:#94A3B8,color:#fff;
-  class Repo source;
-  class Host,Machine control;
-  class Home,Links dotfiles;
+  class Remote source;
+  class Profile,Machine control;
+  class Dotfiles,Linker,Links dotfiles;
   class Mise,Tools mise;
-  class System,Ansible,OS system;
-  class Vault,Env secrets;
-  class Inventory context;
+  class Definitions,Ansible,OS system;
+  class Vault,Secrets,Env secrets;
+  style HostMachine fill:none,stroke:#94A3B8,stroke-width:2px
+  style Checkout fill:none,stroke:#38BDF8,stroke-width:2px
+  style Apply fill:none,stroke:#94A3B8,stroke-dasharray:5 5
+  style Result fill:none,stroke:#94A3B8,stroke-dasharray:5 5
 ```
 
 For host selection rules, see [Context, device, hardware and features](#context-device-hardware-and-features); for the repository map, see [Layout](#layout).
@@ -118,8 +140,6 @@ Both shells use [Starship](https://starship.rs) with the shared `~/.config/stars
 zsh plugins are managed by [antidote](https://antidote.sh): edit `~/.zsh/plugins.txt` (one plugin per line; order matters) and open a new shell — the generated `~/.cache/zsh/plugins.zsh` is rebuilt and missing plugins are cloned to `~/.local/share/antidote`. `antidote update` updates them. The prompt appears first; completion (`compinit`), fzf-tab, history-substring-search, autosuggestions and fast-syntax-highlighting load right after it via zsh-defer. Tools such as fzf, zoxide, eza, fd, delta and Starship come from mise; their shell init is cached in `~/.cache/zsh` and regenerated when the binary changes.
 
 bash is a fallback with the same tools: Starship, fzf (Ctrl+R), zoxide (`z`), LS_COLORS and the git helpers (`git open`, `git recent`, `git recall`) from the antidote checkouts, Up/Down prefix search, Esc Esc for `sudo`, and pasting commands with a leading `$ ` or `❯ `.
-
-In both interactive shells, a failed command with an accidentally repeated leading word or phrase puts a cleaned version at the next prompt: `git git status` becomes `git status`, and `git remote git remote -v` becomes `git remote -v`. Edit it, press Enter to run it, or cancel with Ctrl+C. The original command always runs first; successful commands are never rewritten, and suggestions never run automatically. This helper handles only simple unquoted, single-line commands, leaving shell syntax such as expansions, pipelines and redirections untouched. It does not replace existing or queued input.
 
 Data of the former zinit/Powerlevel10k setup is not removed automatically. After the switch it can be deleted with:
 
@@ -213,7 +233,7 @@ the dotfile tool does not deploy the CLI, a plain `git pull` cannot leave it hal
 
 `machine --debug <command>` (or `DEBUG=1`) prints every command the CLI
 runs and passes `-v` to Ansible.
-
+ repos follow once the main repos are on Copier. Repo-owned files are never to
 The script itself only defines the command line. The implementation is the package
 `machine_cli/` next to it:
 
@@ -323,6 +343,7 @@ The arrows distinguish fetching from shell loading. The shell loads the three fi
 
 ```mermaid
 graph LR
+  linkStyle default stroke:#808080,stroke-width:2px;
   Group["Bitwarden group item<br/><i>env/groups/&lt;group&gt;</i>"]
   Host["Bitwarden host item<br/><i>env/hosts/&lt;hostname&gt;</i>"]
   Pull["machine env pull<br/><i>Unlocked vault; back up changed files</i>"]
@@ -480,6 +501,7 @@ Preview with `machine update --check` (read-only), then run `machine update`. Th
 
 ```mermaid
 graph TD
+  linkStyle default stroke:#808080,stroke-width:2px;
   Start["machine update"]
   Plan["Compare with upstream<br/><i>Resolve known local overrides; plan affected steps</i>"]
   Blocked{"Overlapping local edits<br/>or diverged history?"}

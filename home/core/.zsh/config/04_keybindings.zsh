@@ -45,6 +45,35 @@ bindkey "^[[D" backward-char
 alias \$=''
 '❯'() { "$@" }
 
+if [[ -o interactive && -r "$HOME/.zsh/command-prefix.sh" ]]; then
+  source "$HOME/.zsh/command-prefix.sh"
+  autoload -Uz add-zsh-hook add-zle-hook-widget
+
+  _dotfiles_prefix_preexec() {
+    _dotfiles_prefix_line=$1
+    _dotfiles_prefix_pending=''
+  }
+  _dotfiles_prefix_precmd() {
+    local command_status=$?
+    _dotfiles_prefix_pending=''
+    if ((command_status)) && dotfiles_command_prefix "${_dotfiles_prefix_line:-}"; then
+      _dotfiles_prefix_pending=$DOTFILES_COMMAND_PREFIX_SUGGESTION
+    fi
+    _dotfiles_prefix_line=''
+    return 0
+  }
+  _dotfiles_prefix_line_init() {
+    if [[ -z $BUFFER ]] && (( ! PENDING && ! KEYS_QUEUED_COUNT )); then
+      BUFFER=${_dotfiles_prefix_pending:-}
+      CURSOR=${#BUFFER}
+    fi
+    _dotfiles_prefix_pending=''
+  }
+  add-zsh-hook preexec _dotfiles_prefix_preexec
+  precmd_functions=(_dotfiles_prefix_precmd ${precmd_functions:#_dotfiles_prefix_precmd})
+  add-zle-hook-widget line-init _dotfiles_prefix_line_init
+fi
+
 # Esc Esc toggles `sudo ` in front of the command line (the last command when the line is empty).
 dotfiles_sudo_command_line() {
   [[ -z $BUFFER ]] && zle up-history

@@ -6,8 +6,10 @@
 # A shell remembers the revision it started with; a different revision means "reload".
 
 # Exported so that the Starship env_var module can read the segment.
-export DOTFILES_UPDATE_SEGMENT="" DOTFILES_UPDATE_SEGMENT_KIND=""
+export DOTFILES_UPDATE_SEGMENT="" DOTFILES_UPDATE_SEGMENT_KIND="" DOTFILES_DISK_SEGMENT=""
 DOTFILES_UPDATE_STATE_FILE="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}"
+# Low filesystems, recorded by `machine` and its 15-minute timer (segment=<text>).
+DOTFILES_DISK_STATE_FILE="${MACHINE_DISK_STATE:-${MACHINE_STATE_DIR:-$HOME/.local/share/machine}/disk-state}"
 
 _dfu_read() {
     local key value
@@ -22,8 +24,19 @@ _dfu_read() {
     done <"$DOTFILES_UPDATE_STATE_FILE"
 }
 
-# Sets DOTFILES_UPDATE_SEGMENT (empty when nothing is to be shown) and DOTFILES_UPDATE_SEGMENT_KIND.
+_dfu_read_disk() {
+    local key value
+    DOTFILES_DISK_SEGMENT=""
+    [ -r "$DOTFILES_DISK_STATE_FILE" ] || return 0
+    while IFS='=' read -r key value || [ -n "$key" ]; do
+        [ "$key" = segment ] && DOTFILES_DISK_SEGMENT="$value"
+    done <"$DOTFILES_DISK_STATE_FILE"
+}
+
+# Sets DOTFILES_UPDATE_SEGMENT (empty when nothing is to be shown), DOTFILES_UPDATE_SEGMENT_KIND
+# and DOTFILES_DISK_SEGMENT (low filesystems; separate from the update state).
 dotfiles_update_prompt() {
+    _dfu_read_disk
     _dfu_read
     DOTFILES_UPDATE_SEGMENT="" DOTFILES_UPDATE_SEGMENT_KIND=""
     if [ "$_dfu_state" = attention ]; then

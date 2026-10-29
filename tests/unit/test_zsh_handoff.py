@@ -389,3 +389,64 @@ def test_machine_update_reloads_the_interactive_shell_only_on_success(shell, tmp
     )
     out = run_machine_function(shell, tmp_path, 0, "update", tty=False)
     assert "RELOADED" not in out and "RC=0" in out
+
+
+def disk_segment(shell: str, home: Path, steps: str = "") -> str:
+    """Evaluate both segments with no PATH, so an external command would fail."""
+    script = (
+        f'. "{STATE_SH}"; dotfiles_update_startup; {steps}\n'
+        "PATH=/nonexistent; dotfiles_update_prompt\n"
+        'echo "UPD=$DOTFILES_UPDATE_SEGMENT_KIND"; echo "DISK=$DOTFILES_DISK_SEGMENT"'
+    )
+    result = subprocess.run(
+        [shutil.which(shell), "-c", script],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "not found" not in result.stderr
+    return result.stdout
+
+
+def write_disk_state(home: Path, segment: str) -> Path:
+    path = home / ".local/share/machine/disk-state"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"segment={segment}\nmounts=\n", encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_disk_segment(shell, tmp_path):
+    # missing file: nothing
+    assert "DISK=\n" in disk_segment(shell, tmp_path)
+    write_disk_state(tmp_path, "⚠ disk /mnt/data 97%")
+    out = disk_segment(shell, tmp_path)
+    assert "DISK=⚠ disk /mnt/data 97%" in out and "UPD=\n" in out
+    # nothing printed at shell start for a low disk
+    assert out.splitlines()[0].startswith("UPD=")
+    # both segments together
+    write_state(tmp_path, "available")
+    out = disk_segment(shell, tmp_path)
+    assert "UPD=available" in out and "DISK=⚠ disk /mnt/data 97%" in out
+    # empty state: nothing
+    write_disk_state(tmp_path, "")
+    assert "DISK=\n" in disk_segment(shell, tmp_path)
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_disk_segment_follows_state_in_open_shell(shell, tmp_path):
+    path = write_disk_state(tmp_path, "⚠ disk / 98%")
+    freed = f"printf 'segment=\\nmounts=\\n' > \"{path}\""
+    assert "DISK=\n" in disk_segment(shell, tmp_path, freed)
+
+
+def test_prompts_show_the_disk_segment():
+    starship = (REPO / "home/prompt/.config/starship.toml").read_text(encoding="utf-8")
+    assert "${env_var.DOTFILES_DISK_SEGMENT}" in starship
+    assert "[env_var.DOTFILES_DISK_SEGMENT]" in starship
+    theme = (REPO / "home/core/.zsh/config/03_theme.zsh").read_text(encoding="utf-8")
+    assert "DOTFILES_DISK_SEGMENT" in theme
+    bashrc = (REPO / "home/core/.bashrc").read_text(encoding="utf-8")
+    assert "${DOTFILES_DISK_SEGMENT:+$DOTFILES_DISK_SEGMENT }" in bashrc

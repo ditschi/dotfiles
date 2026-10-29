@@ -2,6 +2,12 @@
 # Filename = short hostname (`hostname -s`).
 #   context: private | work        device: desktop | server (container: set by machine)
 #   ansible: false                  optional; skips Ansible on hosts without root
+#   disk_space:                     optional; low-disk limits per mount point (machine attention)
+#     - path: /mnt/data             default: low below 5 % and below 20 GiB free
+#       min_free: 100G              either limit replaces both defaults;
+#       min_free_percent: 3         with both, low only below both
+#     - path: /mnt/scratch
+#       ignore: true                never reported
 # Feature defaults and which features a host may have: ansible/group_vars/all/features.yml
 #
 # Fleet (home):

@@ -296,6 +296,21 @@ class CommandsMixin:
                 ),
             )
 
+        lows = self.low_disks(quiet=True)
+        if lows:
+            grid.add_row(
+                Text("disk", style="bold red"),
+                Text(
+                    "⚠ "
+                    + ", ".join(
+                        f"{low.short()} full" if low.space_low else low.short()
+                        for low in lows
+                    )
+                    + " → free space: machine attention",
+                    style="red",
+                ),
+            )
+
         repo_host = self.host_config_path()
         host = Text(repo_host.stem)
         if self.applied_host_path.is_file():

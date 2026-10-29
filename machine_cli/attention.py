@@ -172,6 +172,12 @@ class AttentionMixin:
         monitoring = self.monitoring_item()
         if monitoring:
             items.append(monitoring)
+        for low in self.low_disks():
+            items.append(
+                AttentionItem(
+                    "disk", low.text(), None, lambda low=low: self.resolve_low_disk(low)
+                )
+            )
         local = set(self.local_changes())
         for name, path, run, _pending in self.local_resolvers():
             if path in local:

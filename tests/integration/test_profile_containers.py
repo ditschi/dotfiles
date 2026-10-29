@@ -53,11 +53,12 @@ def test_host_dotfiles(profile_env):
     assert not host.file("/home/tester/.p10k.zsh").exists
     assert host.file("/home/tester/.config/starship.toml").is_symlink
 
-    timer = host.file("/home/tester/.config/systemd/user/dotfiles-update-check.timer")
-    if device == "container":
-        assert not timer.exists
-    else:
-        assert timer.exists
+    for name in ("dotfiles-update-check.timer", "machine-disk-check.timer"):
+        timer = host.file(f"/home/tester/.config/systemd/user/{name}")
+        if device == "container":
+            assert not timer.exists
+        else:
+            assert timer.exists
 
     applied = host.file("/home/tester/.local/share/machine/applied-host.yml")
     assert applied.exists

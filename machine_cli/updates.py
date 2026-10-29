@@ -514,15 +514,22 @@ class UpdateMixin:
             yield
 
     def ensure_update_timer(self) -> None:
-        unit = self.home / ".config/systemd/user/dotfiles-update-check.timer"
-        if not unit.is_file() or not system.have("systemctl"):
+        """Enable the update check and the low-disk check timers of the systemd group."""
+        units = self.home / ".config/systemd/user"
+        timers = [
+            name
+            for name in ("dotfiles-update-check.timer", "machine-disk-check.timer")
+            if (units / name).is_file()
+        ]
+        if not timers or not system.have("systemctl"):
             return
         system.run(["systemctl", "--user", "daemon-reload"], check=False, capture=True)
-        system.run(
-            ["systemctl", "--user", "enable", "--now", "dotfiles-update-check.timer"],
-            check=False,
-            capture=True,
-        )
+        for timer in timers:
+            system.run(
+                ["systemctl", "--user", "enable", "--now", timer],
+                check=False,
+                capture=True,
+            )
         self.ensure_linger()
 
     def ensure_linger(self) -> None:

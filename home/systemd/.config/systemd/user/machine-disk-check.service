@@ -1,0 +1,6 @@
+[Unit]
+Description=Record filesystems low on space for the shell prompt
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/machine disk --record

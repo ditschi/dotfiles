@@ -101,6 +101,13 @@ class ProfileMixin:
                 return bool(parse_profile_file(path)["ansible"])
         return True
 
+    def saved_disk_space(self) -> List[object]:
+        """`disk_space` of the repository host config, else of the applied copy."""
+        for path in (self.host_config_path(), self.applied_host_path):
+            if path.is_file():
+                return list(parse_profile_file(path)["disk_space"])
+        return []
+
     def allowed_features(
         self, features: Sequence[str], context: str, device: str
     ) -> List[str]:
@@ -160,6 +167,7 @@ class ProfileMixin:
                 list(data["features"]),
                 list(data["ssh_allow_from"]),
                 bool(data["ansible"]),
+                list(data["disk_space"]),
             ),
             encoding="utf-8",
         )
@@ -183,7 +191,9 @@ class ProfileMixin:
             else self.saved_ssh_allow_from()
         )
         ansible = self.saved_ansible() if ansible is None else ansible
-        text = format_profile_yaml(context, device, features, allow, ansible)
+        text = format_profile_yaml(
+            context, device, features, allow, ansible, self.saved_disk_space()
+        )
         self.applied_host_path.write_text(text, encoding="utf-8")
         self.applied_host_path.chmod(0o600)
 
@@ -201,8 +211,14 @@ class ProfileMixin:
     ) -> Path:
         self.host_configs_dir.mkdir(parents=True, exist_ok=True)
         path = self.host_config_path(hostname)
+        if path.is_file():
+            disk_space = parse_profile_file(path)["disk_space"]
+        else:  # a new file for this host keeps the applied copy's entries
+            disk_space = [] if hostname else self.saved_disk_space()
         path.write_text(
-            format_profile_yaml(context, device, features, ssh_allow_from, ansible),
+            format_profile_yaml(
+                context, device, features, ssh_allow_from, ansible, disk_space
+            ),
             encoding="utf-8",
         )
         log(f"wrote host config {path.relative_to(self.repo)}")
@@ -264,7 +280,9 @@ class ProfileMixin:
             return
         path = self.host_config_path()
         ansible = self.saved_ansible()
-        new_text = format_profile_yaml(context, device, features, allow_from, ansible)
+        new_text = format_profile_yaml(
+            context, device, features, allow_from, ansible, self.saved_disk_space()
+        )
         old_text = path.read_text(encoding="utf-8") if path.is_file() else ""
         if old_text == new_text:
             return
@@ -416,4 +434,6 @@ def host_config_changes(old: dict, new: dict) -> list[str]:
         if added or removed:
             parts = [f"+ {x}" for x in added] + [f"- {x}" for x in removed]
             changes.append(label + ", ".join(parts))
+    if (old.get("disk_space") or []) != (new.get("disk_space") or []):
+        changes.append("disk_space changed")
     return changes

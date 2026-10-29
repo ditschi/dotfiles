@@ -24,6 +24,13 @@ context: |
   outcome, propose the most plausible motivation in clean prose, and have the owner
   confirm or reword it before it is written as fact.
 
+  Open questions (every artifact and explore/propose/update conversations): ask
+  unresolved questions and history-derived motivations with the ask_user form, not
+  prose - one selectable option per answer (confirm / reword / reject for proposed
+  wordings), the recommended option as default, plus a choice to confirm all
+  recommendations. Write confirmed answers as plain prose; leave unanswered ones
+  under Open Questions.
+
 rules:
   proposal:
     - The Why states only motivation confirmed by the owner, in clean prose. For motivation inferred from history, propose a wording and ask before writing it; otherwise list it as an assumption.
@@ -33,10 +40,6 @@ rules:
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
   tasks:
     - Include validation - pre-commit run --all-files and pytest tests/unit -q; ansible-lint ansible/*.yml for Ansible changes.
-  # Applies to every artifact and to explore/propose/update conversations.
-  open-questions:
-    - Ask unresolved questions and history-derived motivations with the ask_user form, not prose - one selectable option per answer (confirm / reword / reject for proposed wordings), the recommended option as default, plus a choice to confirm all recommendations.
-    - Write confirmed answers as plain prose; leave unanswered ones under Open Questions.
 
 operations:
   archive:

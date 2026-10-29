@@ -163,6 +163,36 @@ def test_conflicting_target_cleanup_resolves_checkout_alias(tmp_path):
     assert not stale.is_symlink()
 
 
+def test_conflicting_target_cleanup_removes_stale_parent_directory_link(tmp_path):
+    repo = tmp_path / "checkout"
+    for name in ("cache-eval.sh", "config/00_LOADER.zsh"):
+        (repo / "home/core/.zsh" / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / "home/core/.zsh" / name).write_text(name)
+    home = tmp_path / "h"
+    home.mkdir()
+    stale = home / ".zsh"
+    stale.symlink_to(Path("../checkout/.zsh"))  # oldest layout, dangling
+
+    changed = clear_conflicting_targets(repo, home, ["core"])
+
+    assert changed == [(stale, "removed stale link")]
+    assert not stale.is_symlink() and not stale.exists()
+
+
+def test_conflicting_target_cleanup_keeps_parent_link_outside_checkout(tmp_path):
+    repo = tmp_path / "checkout"
+    (repo / "home/core/.zsh").mkdir(parents=True)
+    (repo / "home/core/.zsh/cache-eval.sh").write_text("x")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    home = tmp_path / "h"
+    home.mkdir()
+    (home / ".zsh").symlink_to(elsewhere, target_is_directory=True)
+
+    assert clear_conflicting_targets(repo, home, ["core"]) == []
+    assert (home / ".zsh").is_symlink()
+
+
 def test_fonts_group_follows_the_feature():
     assert "fonts" in dotfile_groups("private", "desktop", ["fonts"])
     assert "fonts" not in dotfile_groups("private", "desktop", [])

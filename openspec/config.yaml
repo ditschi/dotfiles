@@ -16,13 +16,17 @@ context: |
   asked; do not tag it. Anything unconfirmed goes only under an explicit Open Questions
   or Assumptions section, never stated as fact.
 
-  The former decision log (docs/decisions/) is retired; its content lives in specs and
-  archived design.md files. Cite sources as plain text (commit hash).
-
   Git history and legacy records are evidence, not wording. Commits are incremental
   steps toward a result and are often badly worded. Abstract the intended behaviour or
   outcome, propose the most plausible motivation in clean prose, and have the owner
   confirm or reword it before it is written as fact.
+
+  Open questions (every artifact and explore/propose/update conversations): ask
+  unresolved questions and history-derived motivations with the ask_user form, not
+  prose - one selectable option per answer (confirm / reword / reject for proposed
+  wordings), the recommended option as default, plus a choice to confirm all
+  recommendations. Write confirmed answers as plain prose; leave unanswered ones
+  under Open Questions.
 
 rules:
   proposal:
@@ -32,11 +36,7 @@ rules:
     - List alternatives that were considered and why they were rejected, as stated by the owner.
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
   tasks:
-    - Include validation - pre-commit run --all-files and pytest tests/unit -q; ansible-lint ansible/*.yml for Ansible changes.
-  # Applies to every artifact and to explore/propose/update conversations.
-  open-questions:
-    - Ask unresolved questions and history-derived motivations with the ask_user form, not prose - one selectable option per answer (confirm / reword / reject for proposed wordings), the recommended option as default, plus a choice to confirm all recommendations.
-    - Write confirmed answers as plain prose; leave unanswered ones under Open Questions.
+    - Include validation - pre-commit run for changed files and pytest tests/unit -q; ansible-lint ansible/*.yml for Ansible changes.
 
 operations:
   archive:

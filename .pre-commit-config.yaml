@@ -27,7 +27,7 @@ repos:
     rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
-        args: [-e, SC1090, -e, SC1091]
+        args: [-e, SC1090, -e, SC1091, -s, bash]
         exclude_types: [zsh]
         exclude: ^openspec/changes/(archive/)?[^/]+/spike/
       - id: shellcheck

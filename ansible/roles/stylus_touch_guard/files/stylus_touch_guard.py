@@ -8,31 +8,68 @@ from __future__ import annotations
 
 import argparse
 import time
-from typing import Optional
+from typing import Callable, Optional
 
-from evdev import InputDevice, list_devices
+from evdev import InputDevice, ecodes, list_devices
 import psutil
 import subprocess
 
 TOUCHSCREEN_LOCK_DELAY = 2.0
-STYLUS_NAME_HINTS = ("stylus", "pen")
-TOUCH_NAME_HINTS = ("finger", "touchscreen", "touch digitizer", "touch")
-EXCLUDE_HINTS = ("keyboard", "consumer control", "trackpoint", "mouse")
+# Name fallbacks for devices whose capabilities cannot be read. The Wacom
+# touchscreen is called "Wacom Pen and multitouch sensor Finger", so the
+# stylus hint must match a trailing "pen", not the substring.
+STYLUS_NAME_SUFFIXES = (" pen", " stylus")
+TOUCH_NAME_HINTS = ("finger", "touchscreen", "touch digitizer")
+EXCLUDE_HINTS = ("keyboard", "consumer control", "trackpoint", "mouse", "touchpad")
 
 
 def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _name_matches(name: str, hints: tuple[str, ...]) -> bool:
-    lower = name.lower()
-    if any(x in lower for x in EXCLUDE_HINTS):
+def _excluded(dev: InputDevice) -> bool:
+    lower = dev.name.lower()
+    return any(x in lower for x in EXCLUDE_HINTS)
+
+
+def _capabilities(dev: InputDevice) -> tuple[set[int], set[int], set[int]]:
+    """Return (key codes, abs codes, input props); empty if unreadable."""
+    try:
+        caps = dev.capabilities(absinfo=False)
+        props = dev.input_props()
+    except OSError:
+        return set(), set(), set()
+    return (
+        set(caps.get(ecodes.EV_KEY, ())),
+        set(caps.get(ecodes.EV_ABS, ())),
+        set(props),
+    )
+
+
+def is_stylus(dev: InputDevice) -> bool:
+    if _excluded(dev):
         return False
-    return any(h in lower for h in hints)
+    keys, _, _ = _capabilities(dev)
+    if ecodes.BTN_TOOL_PEN in keys:
+        return True
+    return dev.name.lower().endswith(STYLUS_NAME_SUFFIXES)
+
+
+def is_touchscreen(dev: InputDevice) -> bool:
+    """Direct-touch multitouch device; never a touchpad or the stylus."""
+    if _excluded(dev) or is_stylus(dev):
+        return False
+    _, absolute, props = _capabilities(dev)
+    if ecodes.INPUT_PROP_POINTER in props:
+        return False
+    if ecodes.INPUT_PROP_DIRECT in props and ecodes.ABS_MT_POSITION_X in absolute:
+        return True
+    lower = dev.name.lower()
+    return any(h in lower for h in TOUCH_NAME_HINTS)
 
 
 def find_device(
-    hints: tuple[str, ...], prefer_wacom: bool = True
+    matches: Callable[[InputDevice], bool], prefer_wacom: bool = True
 ) -> Optional[InputDevice]:
     candidates: list[InputDevice] = []
     for path in list_devices():
@@ -40,7 +77,7 @@ def find_device(
             dev = InputDevice(path)
         except OSError:
             continue
-        if not _name_matches(dev.name, hints):
+        if not matches(dev):
             continue
         candidates.append(dev)
     if not candidates:
@@ -106,8 +143,8 @@ def stylus_close(stylus: InputDevice) -> bool:
 
 
 def resolve_devices(debug: bool = False) -> tuple[InputDevice, str]:
-    stylus = find_device(STYLUS_NAME_HINTS)
-    touch = find_device(TOUCH_NAME_HINTS)
+    stylus = find_device(is_stylus)
+    touch = find_device(is_touchscreen)
     if not stylus or not touch:
         raise RuntimeError(
             "Could not find stylus/touch devices. "

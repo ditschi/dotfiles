@@ -444,9 +444,12 @@ url = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.gz"
 
 [[tools."npm:@anthropic-ai/claude-code"]]
 version = "2.1.308"
-aube = { path = "locks/npm-anthropic-ai-claude-code/2.1.308", digest = "sha256:3beac0360a67f40b5cc051217910d3225c91588185629ebf803c3eb94700aa45" }
+aube = { path = "locks/npm-anthropic-ai-claude-code/2.1.308~c130a719", digest = "sha256:3beac0360a67f40b5cc051217910d3225c91588185629ebf803c3eb94700aa45" }
 backend = "npm:@anthropic-ai/claude-code"
 specifiers = ["latest"]
+
+[tools."npm:@anthropic-ai/claude-code".options]
+allow_builds = '["@anthropic-ai/claude-code"]'
 
 [[tools."npm:@fission-ai/openspec"]]
 version = "1.14.3"

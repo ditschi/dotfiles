@@ -17,4 +17,4 @@
 ## 4. Validation
 
 - [x] 4.1 Run `pre-commit run --all-files` and `pytest tests/unit -q`; both pass.
-- [ ] 4.2 On ABTVL421 after `machine update`, in a new VS Code terminal, check without running copilot: `echo "$PATH" | tr : '\n' | grep copilotCli` shows the `/mnt/data/...` path, and `machine status` shows the home note.
+- [x] 4.2 On ABTVL421 after `machine update`, in a new VS Code terminal, check without running copilot: `echo "$PATH" | tr : '\n' | grep copilotCli` shows the `/mnt/data/...` path, and `machine status` shows the home note.

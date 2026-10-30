@@ -167,6 +167,8 @@ group `openspec`, so OpenSpec comes with any of them. Private hosts preselect Cl
 work hosts Claude Code and Copilot; opencode and containers are opt-in. mise installs
 them without sudo; authentication remains a manual step.
 
+On hosts where `$HOME` is a symlink or bind mount (for example `/home/u` → `/mnt/data/home/u`), VS Code's Copilot CLI wrapper in `…/github.copilot-chat/copilotCli` fails to drop itself from `PATH` and starts itself recursively until memory runs out. `~/.zsh/config/01_env.zsh` therefore rewrites that `PATH` entry to its canonical path, so `copilot` reaches the mise-installed CLI. `machine status` notes such a home in the host row (`home is …`).
+
 ### Git config
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.

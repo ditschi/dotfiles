@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -20,7 +21,7 @@ def _cli():
 
 def test_help_lists_setup_update_and_env():
     result = subprocess.run(
-        ["python3", str(MACHINE), "--help"],
+        [sys.executable, str(MACHINE), "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -34,7 +35,7 @@ def test_help_lists_setup_update_and_env():
 @pytest.mark.parametrize("args", [["-h"], ["update", "-h"]])
 def test_short_help_option(args):
     result = subprocess.run(
-        ["python3", str(MACHINE), *args],
+        [sys.executable, str(MACHINE), *args],
         check=True,
         capture_output=True,
         text=True,
@@ -45,7 +46,7 @@ def test_short_help_option(args):
 @pytest.mark.parametrize("command", ["apply", "update"])
 def test_apply_and_update_expose_skip_ansible(command):
     result = subprocess.run(
-        ["python3", str(MACHINE), command, "--help"],
+        [sys.executable, str(MACHINE), command, "--help"],
         check=True,
         capture_output=True,
         text=True,
@@ -58,7 +59,7 @@ def test_symlinked_entry_point_finds_the_checkout(tmp_path):
     link.parent.mkdir()
     link.symlink_to(MACHINE)
     result = subprocess.run(
-        ["python3", str(link), "status"],
+        [sys.executable, str(link), "status"],
         cwd=tmp_path,
         env={**os.environ, "DOTFILES_REPO": ""},
         capture_output=True,
@@ -74,7 +75,7 @@ def test_zsh_completion_registers_machine():
     # callback — it doesn't embed profile/feature names. See the dynamic test
     # below for proof that tab-completion actually resolves real subcommands.
     result = subprocess.run(
-        ["python3", str(MACHINE), "completion", "zsh"],
+        [sys.executable, str(MACHINE), "completion", "zsh"],
         check=True,
         capture_output=True,
         text=True,
@@ -91,7 +92,7 @@ def test_dynamic_completion_resolves_subcommands():
         "_MACHINE_COMPLETE": "bash_complete",
     }
     result = subprocess.run(
-        ["python3", str(MACHINE)],
+        [sys.executable, str(MACHINE)],
         check=True,
         capture_output=True,
         text=True,
@@ -251,7 +252,7 @@ def test_shared_sde_one_off_commands_and_extended_mounts(tmp_path, extended, ima
     tools.mkdir()
     docker = tools / "docker"
     docker.write_text(
-        "#!/usr/bin/env python3\n"
+        f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "with open(os.environ['DOCKER_LOG'], 'a') as log:\n"
         "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
@@ -337,7 +338,7 @@ def test_shared_sde_interactive_reuse_and_rebuild(
     tools.mkdir()
     docker = tools / "docker"
     docker.write_text(
-        "#!/usr/bin/env python3\n"
+        f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "args = sys.argv[1:]\n"
         "with open(os.environ['DOCKER_LOG'], 'a') as log:\n"

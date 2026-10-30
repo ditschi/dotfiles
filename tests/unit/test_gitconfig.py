@@ -60,7 +60,7 @@ def test_gitconfig_relocation_preserves_local_overrides_and_multivalues(tmp_path
     env = {**os.environ, "HOME": str(tmp_path)}
     env.pop("CI", None)
     command = [
-        "python3",
+        sys.executable,
         "-m",
         "machine_cli.local_overrides",
         "--shared",
@@ -108,7 +108,7 @@ def test_gitconfig_check_rejects_malformed_config(tmp_path):
     shared.write_text("[broken\n")
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "machine_cli.local_overrides",
             "--check",
@@ -129,7 +129,7 @@ def test_gitconfig_hook_in_ci_checks_without_moving_settings(tmp_path):
     local = tmp_path / ".gitconfig.local"
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "machine_cli.local_overrides",
             "--shared",

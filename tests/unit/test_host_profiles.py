@@ -4,6 +4,7 @@ import getpass
 import subprocess
 import os
 import re
+import sys
 import textwrap
 from pathlib import Path
 
@@ -139,7 +140,7 @@ def test_help_lists_apply_and_profile_but_no_migration():
     import subprocess
 
     result = subprocess.run(
-        ["python3", str(MACHINE), "--help"],
+        [sys.executable, str(MACHINE), "--help"],
         check=True,
         capture_output=True,
         text=True,

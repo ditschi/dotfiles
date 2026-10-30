@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -176,7 +177,7 @@ def test_work_key_is_not_written_to_the_repo(tmp_path, monkeypatch, fake_bw):
 
 def test_cli_offers_sync_and_rotate_only():
     result = subprocess.run(
-        ["python3", str(MACHINE), "ssh", "--help"],
+        [sys.executable, str(MACHINE), "ssh", "--help"],
         capture_output=True,
         text=True,
         check=True,

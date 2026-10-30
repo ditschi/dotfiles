@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import textwrap
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def fake_bw(tmp_path: Path):
     script.write_text(
         textwrap.dedent(
             f"""\
-            #!/usr/bin/env python3
+            #!{sys.executable}
             import json, os, sys
             from pathlib import Path
             STORE = Path({str(store)!r})

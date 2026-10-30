@@ -449,7 +449,7 @@ def test_every_command_records_the_state(tmp_path):
         "MACHINE_MOUNTINFO": os.devnull,
     }
     subprocess.run(
-        ["python3", str(MACHINE), "commit", "--help"],
+        [sys.executable, str(MACHINE), "commit", "--help"],
         env=env,
         check=True,
         capture_output=True,

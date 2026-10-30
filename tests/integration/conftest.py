@@ -195,8 +195,10 @@ def running_container(
                     name,
                     "sh",
                     "-c",
-                    # retries: the proxy passes on a dropped upstream download as 503
-                    f'echo \'Acquire::http::Proxy "{apt_proxy}"; Acquire::Retries "5";\''
+                    # retries: the proxy passes on a dropped upstream download as 503;
+                    # HTTPS sources (InfluxData) go direct: the cache cannot tunnel TLS.
+                    f'echo \'Acquire::http::Proxy "{apt_proxy}"; '
+                    'Acquire::https::Proxy "DIRECT"; Acquire::Retries "5";\''
                     " >/etc/apt/apt.conf.d/01-test-proxy",
                 ],
                 check=True,

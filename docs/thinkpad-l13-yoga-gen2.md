@@ -4,7 +4,7 @@ Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `
 
 | What | How it is selected | Role |
 | --- | --- | --- |
-| S3 suspend, on-screen keyboard in tablet mode | detected model (DMI `ThinkPad L13 Yoga Gen 2`), no feature | `thinkpad_l13_yoga_gen2` |
+| S3 suspend, `touchpad-reset`, on-screen keyboard in tablet mode | detected model (DMI `ThinkPad L13 Yoga Gen 2`), no feature | `thinkpad_l13_yoga_gen2` |
 | Lid does nothing | feature `lid-switch` (laptops) | `lid_switch` |
 | Power profile per power source | feature `power-profile-switch` (laptops) | `power_profile_switch` |
 | Battery charge thresholds | feature `battery-charge-limit` (laptops) | `battery_charge_limit` |
@@ -42,6 +42,23 @@ If these show up after resume from S3 (not seen so far on this machine):
 | --- | --- |
 | Touchpad buttons dead | `options psmouse elantech_smbus=0` in `/etc/modprobe.d/psmouse.conf`, then `update-initramfs -u` |
 | NVMe I/O errors, root read-only | kernel parameter `nvme_core.default_ps_max_latency_us=0` (reported with the factory Kioxia SSD) |
+
+## Touchpad and TrackPoint freeze
+
+Symptom: touchpad and TrackPoint stop at the same time while the touchscreen and keyboard keep
+working (seen on 2026-10-28 after two days of uptime, in laptop mode, with no kernel message).
+
+Cause: both sit on one Elan chip on I2C (`elan_i2c`, address `0-0015`). It hangs and sends no
+more interrupts; the input devices stay registered.
+
+Fix: the model role installs `touchpad-reset`, which reloads `elan_i2c` (asks for sudo).
+
+```bash
+grep elan_i2c /proc/interrupts      # count does not grow while touching: chip hangs
+touchpad-reset
+```
+
+Suspend and resume usually resets the chip too.
 
 ## Lid
 

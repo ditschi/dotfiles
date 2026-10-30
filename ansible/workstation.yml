@@ -101,6 +101,15 @@
         cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
       when: ansible_facts.os_family == "Debian" and (install_packages | default([])) | length > 0
 
+- name: COSMIC desktop (Ubuntu via PPA)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [cosmic]
+  roles:
+    - role: cosmic_desktop
+      when: "'cosmic' in machine_features"
+
 - name: Monitoring (Telegraf)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

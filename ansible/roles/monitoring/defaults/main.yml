@@ -1,7 +1,26 @@
 ---
 # Role: Telegraf agent for home profiles.
-# Prefer remote Influx Telegraf configs when INFLUX_TELEGRAF_CONFIG_BASE is set.
-# Fallback: ship local fragments under files/ and stitch an outputs.conf from env.
+# Inputs: local fragments under files/ (default) or, with INFLUX_TELEGRAF_CONFIG_BASE,
+# the remote Influx configs instead. Output from the Influx credentials (Bitwarden).
 
 monitoring_conf_dir: /etc/telegraf/telegraf.d
 monitoring_main_conf: /etc/telegraf/telegraf.conf
+# [agent] interval in telegraf.conf, the only [agent] table (fragments must not have one).
+# First match wins: pi, server, laptop — so laptop+server gets 15s, as when both fragments
+# set it and the later file (server) won. Empty: Telegraf's default (10s).
+# Not written with INFLUX_TELEGRAF_CONFIG_BASE: the remote configs set their own agent.
+monitoring_interval: >-
+  {{ '60s' if 'machine/pi' in monitoring_configs | default([])
+     else '15s' if 'machine/server' in monitoring_configs | default([])
+     else '30s' if 'machine/laptop' in monitoring_configs | default([])
+     else '' }}
+# Read by the upstream telegraf.service (EnvironmentFile, $TELEGRAF_OPTS).
+monitoring_default_file: /etc/default/telegraf
+# The service runs as this group; it must read the output files (they hold the token).
+monitoring_service_group: telegraf
+
+# InfluxData apt source; key pinned in files/influxdata-archive.asc
+# (fingerprint 24C975CBA61A024EE1B631787C3D57159FC2F927).
+monitoring_repo_url: https://repos.influxdata.com/debian
+monitoring_keyring: /etc/apt/keyrings/influxdata-archive.asc
+monitoring_source: /etc/apt/sources.list.d/influxdata.sources

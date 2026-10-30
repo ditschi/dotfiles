@@ -117,6 +117,7 @@ From the laptop to a reachable device:
 | --- | --- |
 | Change an alias for all hosts | Edit the file in `$HOME` (it is the repo file), `machine commit -m "..." && machine push` |
 | Bring other hosts up to date | `machine update` (pulls, runs only the affected steps) |
+| Apply repository/user-space changes without system provisioning | `machine update --skip-ansible` |
 | Packages/system | `machine update --system` or `machine apply` |
 | Apply a host config remotely | `machine apply --limit homeserver` |
 | Full setup / change features | `machine setup` (saved answers as defaults) |
@@ -126,6 +127,8 @@ From the laptop to a reachable device:
 | `~/.env` from Bitwarden | `machine env pull` |
 | Resolve different SSH keys (host / Bitwarden) | `machine ssh sync` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
+
+`machine apply --skip-ansible` syncs the applied host config but skips Ansible and bootstrap system provisioning for that invocation. `machine update --skip-ansible` still merges repository changes and applies dotfiles/user-space tools, but leaves system changes pending for a later `machine update --system` or `machine apply`. This is a one-run override; it does not write `ansible: false` to the host config. If both `--skip-ansible` and `--system` are passed to update, the explicit skip wins.
 
 `machine update` only runs what changed upstream: the tool install (`mise install`, plus the Azure CLI via `uv tool`) for a changed `home/core/.config/mise/*`, the dotfile apply (`mise dot apply --prune`) for added/removed files under `home/` or a changed `mise.toml`, Ansible when `ansible/**` changed in a part that applies to this host (roles of features this host does not have, docs and inventory are ignored, and so is a feature-table change to `help` or `groups` only; a host never set up by Ansible or with `ansible: false` gets no system step), a host-config sync when `machine/hosts/**` changed. Local edits are kept: a trial merge (`git merge-tree`, nothing changes) decides whether an edited file that is also changed upstream merges cleanly; then the update keeps the edit and continues. Only a real conflict stops it. On a terminal it shows the diff (through delta) and the incoming commits, and offers *resolve manually* (default; prints the git commands, resolve outside `machine`) or *put the conflicting changes into the stash and update*; `--force` makes the second choice without asking. Stash entries made by `machine` are named `machine update <date>: <why>`; `machine status` counts them and `machine attention` shows each one and asks whether to restore, drop or keep it. When history diverged, a manual update rebases the local commits onto the upstream if a trial rebase (`git replay`) is clean, no local commit is on a remote branch, none is a merge commit, commit signing is off and no rebase/merge is in progress; otherwise it stops with `git pull --rebase` as the hint. `machine update --check [--json]` shows the plan (including the files that merge cleanly and the conflicts) without changing anything. The background job (`machine update --auto`, every 6 hours via the user timer) applies home-only changes on its own and keeps local changes that merge cleanly; it stops on a conflict or a diverged history (it never stashes or rebases): it fast-forwards to just before the first commit that touches `ansible/**` or this host's config, runs the dotfile apply when needed, then runs the zsh health check; if zsh no longer starts it reverts to the previous revision, restores the local changes, does not retry that revision and shows needs-attention (the check output is kept for `machine attention`). A manual update runs the same zsh check; on a failure it shows the output, sets needs-attention and does not reload the shell. Everything from the first system commit on stays pending for a manual `machine update`. Every `machine update` ends with a converge check (dotfile apply and tool install, also when nothing is incoming), and on a terminal the shell is reloaded afterwards by the `machine` shell function. A failed tool install reverts like a failed zsh check. `MACHINE_SKIP_TOOLS=1` skips the tool install in `machine setup` (tests). `machine setup` and `machine update` also enable systemd linger for the user (best effort, not in containers; on failure they print `sudo loginctl enable-linger <user>`), so the timer runs on headless hosts without a login. Managed blocks added to `~/.bashrc` by other tools are moved to `~/.bashrc-local` (sourced at the end of `.bashrc`).
 
@@ -176,7 +179,7 @@ On hosts where `$HOME` is a symlink or bind mount (for example `/home/u` → `/m
 
 - `~/.gitconfig` → symlink into the repo, identical on all hosts. `git config --global alias.x ...` lands there directly → commit, done.
 - `~/.gitconfig.local` → host-local, not in git, included after the shared settings. `machine setup` creates it once from the context (`work` → work user, otherwise private) and never overwrites it; on work hosts an existing file only gets a missing `http.sslCAInfo` appended. Signing key, `safe.directory`, credentials and proxy go here.
-- Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`, GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper.
+- Owner rules at the end of `~/.gitconfig` override the host default by remote URL: github.com `bosch-*`/`bosch_*`/`*_bosch` owners (HTTPS and SSH), GHES and Bitbucket → `~/.config/git/work.gitconfig`, any other github.com owner → `~/.config/git/private.gitconfig`. Each sets identity plus the GitHub credential username and helper. A repository name ending in `_bosch` does not select the work identity.
 - `git-credential-env VAR` serves tokens from the environment or `~/.env` (`GITHUB_TOKEN`, `BDC_GITHUB_TOKEN`, `GITHUB_PRIVATE_TOKEN`) and never stores them. When a GUI-started process lacks the token, it sources only `~/.shell/common/environment.sh` in Bash; it does not start interactive shell initialization. For github.com the variable follows the host type: `GITHUB_TOKEN` on private hosts, `GITHUB_PRIVATE_TOKEN` on work hosts (where `GITHUB_TOKEN` is the work token); `machine` writes the choice to `~/.config/git/github-token.gitconfig` on every dotfile apply. On private hosts `machine setup` also switches the checkout's `origin` to SSH (`git@github.com:…`) when the SSH key authenticates at GitHub, so pushing needs no token. `~/.netrc` entries for the same host take precedence in curl, so keep GitHub out of it.
 - Single repo with a different identity: `git user-work` / `git user-private` (repo-local include of the same snippet), undo with `git user-unset-local`; show: `git user-show`.
 - `machine update` and `machine commit` move host-only entries from the shared config into `~/.gitconfig.local`. A key that is absent locally moves, an equal value is dropped from the shared file, and a different local value is a conflict that `machine update` asks about (non-interactive runs keep both and leave the shared file dirty). Repeated values are preserved. Backups live under `~/.local/share/machine/local-overrides-backup/`. Text added to `~/.bashrc` is handled the same way: known text is removed silently, new text is moved only when you select it, and moved text stands between `# machine-local begin/end` markers in `~/.bashrc-local`.
@@ -222,9 +225,10 @@ ansible/
   tasks/detect_hardware.yml # laptop, Raspberry Pi, Pi Zero
   roles/
     monitoring/           # Telegraf agent configs
-    sshd_home/            # port 5115 + authorized_keys
+    sshd_home/            # authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
     touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
+    cosmic_desktop/       # COSMIC session on Ubuntu 26.04+ from ppa:hepp3n/cosmic-epoch
     lid_switch/ power_profile_switch/ battery_charge_limit/  # laptop features (detected laptops)
     zram_swap/            # compressed swap in RAM (not on Raspberry Pis)
     thinkpad_l13_yoga_gen2/ # model role: S3 suspend, tablet OSK (selected by DMI)
@@ -404,12 +408,26 @@ Item names (secure note, or login with note + custom fields). Later items and cu
 | Group | `env/groups/<group>` | `env/groups/work`, `env/groups/private` |
 | This host | `env/hosts/<hostname>` | `env/hosts/ditschi-ThinkPad-L13-Yoga-Gen-2` |
 | Infra | `ansible-vault` | vault password |
+| Telegraf | `influxdb-telegraf-write` | Influx write token for Telegraf (not for shell `.env`) |
 
 **Folders in Bitwarden** (personal vault) or collections (organization), same names:
 
 - `work` — work laptops only (`env/groups/work`, SSH/VPN)
 - `home` — private machines and shared home secrets
 - `infra` — `ansible-vault`, host password hashes, not for shell `.env`
+
+**Telegraf item** `influxdb-telegraf-write` (override: `MACHINE_INFLUX_BW_ITEM`): `machine setup`, `machine apply` and the apply step of `machine update` read it before Ansible on hosts with `monitoring` and hand the values only to Ansible (a private temp file, removed afterwards); they never reach `~/.env*`. Custom fields named like the variables win. For a login item, the password is used as `INFLUX_TOKEN` and the first URI as `INFLUX_URL` when those fields are missing.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `INFLUX_URL` | yes (or login URI) | InfluxDB URL |
+| `INFLUX_TOKEN` | for InfluxDB 2.x (or login password) | write token |
+| `INFLUX_ORG` | for InfluxDB 2.x | organisation |
+| `INFLUX_BUCKET` | no (default `telegraf`) | bucket |
+| `INFLUX_TELEGRAF_CONFIG_BASE` | no | load the Telegraf configs from Influx instead of the local fragments |
+| `INFLUXDB_USER`, `INFLUXDB_USER_PASSWORD`, `INFLUXDB_DB` | for InfluxDB 1.x | user, password, database (default `telegraf`) |
+
+Missing item or locked vault: the run continues without credentials and keeps an existing Telegraf output.
 
 Contents of an `env/…` item:
 
@@ -472,23 +490,24 @@ Adding a feature: one row in the feature table plus either apt packages (`packag
 
 In Docker the device is `container` without context; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` set others (used by `machine testenv` and the tests). `MACHINE_HARDWARE=laptop,pi,pi-zero` replaces the hardware detection in tests.
 
-Private hosts get `monitoring` (Telegraf) by default. Config names are resolved **only** in `tasks/resolve_monitoring.yml` from the hardware and the device (not in the CLI). Remote configs via `INFLUX_TELEGRAF_CONFIG_BASE` / `INFLUX_URL` from Bitwarden are preferred; otherwise files under `ansible/roles/monitoring/files/`.
+Private hosts get `monitoring` (Telegraf) by default, installed from the InfluxData apt source. Config names are resolved **only** in `tasks/resolve_monitoring.yml` from the hardware and the device (not in the CLI). The inputs are the local files under `ansible/roles/monitoring/files/`; with `INFLUX_TELEGRAF_CONFIG_BASE` set, the remote Influx configs replace them. The output comes from the Bitwarden item `influxdb-telegraf-write` (see [Secrets / Bitwarden](#secrets--bitwarden)). Telegraf runs only with an output; otherwise it stays stopped and `machine attention` says why. See [ansible/roles/monitoring/README.md](ansible/roles/monitoring/README.md).
 
-Feature `gnome`: besides the apt packages (Guake, Flameshot), `machine` installs and enables GNOME Shell extensions without root (Ddterm, gTile, Clipboard Indicator, Quick Settings Audio Panel, Audio Devices Hider, Astra Monitor; Tiling Assistant is only enabled) with `gext` from mise. Their shared settings (`home/gnome/.config/machine/dconf/*.ini`) are loaded once per host; delete `~/.local/state/machine/gnome-extension-settings` to load them again. Log out and in afterwards. Host-specific keys (audio device names, Astra storage device) are not shipped.
+Feature `gnome`: besides the apt packages (Flameshot, extension manager), `machine` installs and enables GNOME Shell extensions without root (Ddterm, gTile, Clipboard Indicator, Quick Settings Audio Panel, Audio Devices Hider, Astra Monitor; Tiling Assistant is only enabled) with `gext` from mise. Their shared settings (`home/gnome/.config/machine/dconf/*.ini`) are loaded once per host; delete `~/.local/state/machine/gnome-extension-settings` to load them again. Log out and in afterwards. Host-specific keys (audio device names, Astra storage device) are not shipped. Ddterm is the drop-down terminal (F12); with the feature `fonts`, `machine` sets its font, like the VS Code terminal's, to FiraCode Nerd Font Mono and keeps the size. Guake is no longer installed or configured; an installed Guake is left alone (`sudo apt remove guake` removes it).
 
 Yoga/convertible (L13): feature `stylus-touch-guard` → role `stylus_touch_guard`. Previously: [helpers-and-automation](https://github.com/ditschi/helpers-and-automation) (**archived / deprecated**).
 Laptops: features `lid-switch` (closing the lid does nothing), `power-profile-switch` and `battery-charge-limit` (`battery-charge status|normal|full`) are preselected on desktops and applied only on detected laptops; `zram-swap` is preselected everywhere except containers and not applied on Raspberry Pis. Tuning for one model is a role selected by the hardware, not a feature: `thinkpad_l13_yoga_gen2` (S3 suspend, tablet on-screen keyboard), see [docs/thinkpad-l13-yoga-gen2.md](docs/thinkpad-l13-yoga-gen2.md). `MACHINE_HARDWARE` also accepts `l13-yoga-gen2` in tests.
+COSMIC: feature `cosmic` (optional on desktops, never on servers or in containers) installs `cosmic-session` on Ubuntu 26.04+ from the unofficial PPA `ppa:hepp3n/cosmic-epoch` (key pinned in the role); GDM stays the display manager, so GNOME and COSMIC can both be chosen at login. Pop!_OS ships COSMIC, so nothing happens there. The feature also selects the dotfile group `cosmic`, whose user unit removes `DCONF_PROFILE` before a GNOME session starts: COSMIC puts it into the systemd user manager, and with linger it would otherwise survive the logout and make the next GNOME login use COSMIC's dconf database. Deselecting removes nothing; see [ansible/roles/cosmic_desktop/README.md](ansible/roles/cosmic_desktop/README.md).
 Mail: feature `thunderbird` (default on private desktops) installs Thunderbird and the mise group `home/thunderbird` with `tb` and `tb-bridge` of [thunderbird-cli](https://github.com/vitalio-sh/thunderbird-cli). The bridge extension is not installed automatically, because it accepts any local bridge, also one of another user: `machine` downloads the pinned XPI to `downloads/` in the checkout (gitignored); install it once in Thunderbird (Add-ons and Themes → gear → Install Add-on From File). Start the bridge with `tb-bridge &`, then `tb health`.
 
-SSH home fleet: feature `sshd-home` → port **5115** (`roles/sshd_home`) + `authorized_keys` from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
+SSH home fleet: feature `sshd-home` → `authorized_keys` (`roles/sshd_home`) from [`machine/ssh_keys/`](machine/ssh_keys/) for entries in `ssh_allow_from`.
 
 ### Galaxy vs. local roles
 
 | Need | Decision |
 | --- | --- |
-| Telegraf | **Local** `roles/monitoring` (Influx env + `machine/*` fragments). Galaxy `dj-wasabi.telegraf` / `boutetnico.telegraf` possible, but heavier and a worse fit. |
+| Telegraf | **Local** `roles/monitoring` (InfluxData apt source, Bitwarden output + `machine/*` fragments). Galaxy `dj-wasabi.telegraf` / `boutetnico.telegraf` possible, but heavier and a worse fit. |
 | Docker | **apt** `docker.io` / `compose-v2`. Later optionally `geerlingguy.docker` or collection `community.docker`. |
-| SSH keys/port | **Local** `sshd_home` + collection `ansible.posix` (`authorized_key`). |
+| SSH keys | **Local** `sshd_home` + collection `ansible.posix` (`authorized_key`). |
 | Stylus | **Local** (ex helpers-and-automation). |
 
 Collections: `ansible-galaxy collection install -r ansible/requirements.yml`.

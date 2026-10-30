@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO))
 
 from machine_cli.dotfiles import (  # noqa: E402
     DotfilesMixin,
+    clear_conflicting_targets,
     dotfile_groups,
     group_targets,
     render_github_token_config,
@@ -158,6 +159,22 @@ def test_shell_layout_migration_removes_old_links_and_keeps_local_files(tmp_path
     assert local_module.read_text() == "# unmanaged\n"
 
 
+def test_sweep_resolves_checkout_alias_in_dangling_link_target(tmp_path):
+    repo = tmp_path / "checkout"
+    (repo / "home").mkdir(parents=True)
+    repo_alias = tmp_path / "checkout-alias"
+    repo_alias.symlink_to(repo, target_is_directory=True)
+    home = tmp_path / "h"
+    home.mkdir()
+    stale = home / ".zshrc"
+    stale.symlink_to(repo_alias / "home/dot_zshrc")
+
+    removed = sweep_dangling_links(home, repo)
+
+    assert removed == [stale]
+    assert not stale.is_symlink()
+
+
 def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     from machine_cli.dotfiles import clear_conflicting_targets
 
@@ -183,6 +200,54 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     assert (home / ".bashrc.pre-dotfiles.2").read_text() == "distro default"
     assert (home / ".bashrc.pre-dotfiles").read_text() == "older backup"
     assert (home / ".config/app").is_symlink()
+
+
+def test_conflicting_target_cleanup_resolves_checkout_alias(tmp_path):
+    repo = tmp_path / "checkout"
+    new_config = repo / "home/core/.zsh/config/05_pyenv.zsh"
+    new_config.parent.mkdir(parents=True)
+    new_config.write_text("new config")
+    repo_alias = tmp_path / "checkout-alias"
+    repo_alias.symlink_to(repo, target_is_directory=True)
+    home = tmp_path / "h"
+    stale = home / ".zsh/config/05_pyenv.zsh"
+    stale.parent.mkdir(parents=True)
+    stale.symlink_to(repo_alias / "home/dot_zsh/config/05_pyenv.zsh")
+
+    changed = clear_conflicting_targets(repo, home, ["core"])
+
+    assert changed == [(stale, "removed stale link")]
+    assert not stale.is_symlink()
+
+
+def test_conflicting_target_cleanup_removes_stale_parent_directory_link(tmp_path):
+    repo = tmp_path / "checkout"
+    for name in ("cache-eval.sh", "config/00_LOADER.zsh"):
+        (repo / "home/core/.zsh" / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / "home/core/.zsh" / name).write_text(name)
+    home = tmp_path / "h"
+    home.mkdir()
+    stale = home / ".zsh"
+    stale.symlink_to(Path("../checkout/.zsh"))  # oldest layout, dangling
+
+    changed = clear_conflicting_targets(repo, home, ["core"])
+
+    assert changed == [(stale, "removed stale link")]
+    assert not stale.is_symlink() and not stale.exists()
+
+
+def test_conflicting_target_cleanup_keeps_parent_link_outside_checkout(tmp_path):
+    repo = tmp_path / "checkout"
+    (repo / "home/core/.zsh").mkdir(parents=True)
+    (repo / "home/core/.zsh/cache-eval.sh").write_text("x")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    home = tmp_path / "h"
+    home.mkdir()
+    (home / ".zsh").symlink_to(elsewhere, target_is_directory=True)
+
+    assert clear_conflicting_targets(repo, home, ["core"]) == []
+    assert (home / ".zsh").is_symlink()
 
 
 def test_fonts_group_follows_the_feature():

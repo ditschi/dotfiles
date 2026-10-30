@@ -1,0 +1,8 @@
+---
+# Unofficial COSMIC PPA (ppa:hepp3n/cosmic-epoch); key pinned in files/cosmic-epoch.asc.
+cosmic_desktop_ppa_url: https://ppa.launchpadcontent.net/hepp3n/cosmic-epoch/ubuntu
+cosmic_desktop_min_ubuntu: "26.04"
+cosmic_desktop_keyring: /etc/apt/keyrings/cosmic-epoch.asc
+cosmic_desktop_source: /etc/apt/sources.list.d/cosmic-epoch.sources
+cosmic_desktop_packages:
+  - cosmic-session

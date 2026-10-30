@@ -1,22 +1,44 @@
 ---
 # Role gated at playbook level (workstation.yml). Tasks assume monitoring feature.
 
-- name: Ensure telegraf package present when available
-  ansible.builtin.apt:
-    name: telegraf
-    state: present
-    update_cache: true
-    cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
-  register: monitoring_telegraf_apt
-  failed_when: false
+- name: Install telegraf from the InfluxData source
   when: ansible_facts.os_family == "Debian"
+  block:
+    - name: Install the InfluxData signing key
+      ansible.builtin.copy:
+        src: influxdata-archive.asc
+        dest: "{{ monitoring_keyring }}"
+        mode: "0644"
+      register: monitoring_key_file
 
-- name: Note when telegraf package is missing from apt
-  ansible.builtin.debug:
-    msg: >-
-      telegraf is not in apt; add the InfluxData repo or install the .deb.
-      Config will still be written under {{ monitoring_conf_dir }}.
-  when: monitoring_telegraf_apt is defined and monitoring_telegraf_apt.failed | default(false)
+    - name: Add the InfluxData source
+      ansible.builtin.template:
+        src: influxdata.sources.j2
+        dest: "{{ monitoring_source }}"
+        mode: "0644"
+      register: monitoring_source_file
+
+    - name: Look up the telegraf candidate
+      ansible.builtin.command: apt-cache policy telegraf
+      environment:
+        LC_ALL: C
+      register: monitoring_candidate
+      changed_when: false
+      check_mode: false
+
+    # Without cache_valid_time: a fresh cache from before the source was added has no InfluxData lists.
+    - name: Refresh the apt cache for the InfluxData source
+      ansible.builtin.apt:
+        update_cache: true
+      when: >-
+        monitoring_key_file is changed or monitoring_source_file is changed
+        or 'Candidate:' not in monitoring_candidate.stdout
+        or 'Candidate: (none)' in monitoring_candidate.stdout
+
+    - name: Install telegraf
+      ansible.builtin.apt:
+        name: telegraf
+        state: present
 
 - name: Ensure telegraf config directories
   ansible.builtin.file:
@@ -24,9 +46,13 @@
     state: directory
     mode: "0755"
   loop:
-    - /etc/telegraf
+    - "{{ monitoring_conf_dir | dirname }}"
     - "{{ monitoring_conf_dir }}"
-  become: true
+
+- name: Resolve monitoring config names
+  ansible.builtin.set_fact:
+    _monitoring_names: "{{ monitoring_configs | default([]) }}"
+    _monitoring_remote: "{{ influx_telegraf_config_base | default('') | length > 0 }}"
 
 - name: Minimal main telegraf.conf that loads telegraf.d
   ansible.builtin.copy:
@@ -34,87 +60,192 @@
     mode: "0644"
     content: |
       # Managed by ansible roles/monitoring
+      # No hostname: Telegraf reports the system hostname (local runs see "localhost").
+      # The only [agent] table: fragments must not add one (Telegraf warns on overlaps).
       [agent]
-        hostname = "{{ inventory_hostname }}"
         omit_hostname = false
+      {% if monitoring_interval | length > 0 and not _monitoring_remote %}
+        interval = {{ monitoring_interval | to_json }}
+      {% endif %}
       # Drop-ins: {{ monitoring_conf_dir }}
-  become: true
+  notify: Restart telegraf
 
-- name: Resolve monitoring config names
-  ansible.builtin.set_fact:
-    _monitoring_names: "{{ monitoring_configs | default([]) }}"
+- name: Remove the former remote URL note
+  ansible.builtin.file:
+    path: "{{ monitoring_conf_dir }}/00_remote_urls.conf"
+    state: absent
 
-- name: Deploy local fallback config fragments
+- name: Deploy local config fragments
   ansible.builtin.copy:
     src: "{{ item | replace('/', '_') }}.conf"
     dest: "{{ monitoring_conf_dir }}/{{ item | replace('/', '_') }}.conf"
     mode: "0644"
   loop: "{{ _monitoring_names }}"
-  become: true
-  when:
-    - _monitoring_names | length > 0
-    - influx_telegraf_config_base | default('') | length == 0
+  when: not _monitoring_remote
+  notify: Restart telegraf
 
-- name: Write remote Influx Telegraf config URL list
-  ansible.builtin.copy:
-    dest: "{{ monitoring_conf_dir }}/00_remote_urls.conf"
-    mode: "0644"
-    content: |
-      # Remote Telegraf configs from Influx (names: {{ _monitoring_names | join(', ') }})
-      # Start with: telegraf {% for n in _monitoring_names %}--config {{ influx_telegraf_config_base }}/{{ n }} {% endfor %}
-  become: true
+- name: Find local fragments replaced by the remote configs
+  ansible.builtin.find:
+    paths: "{{ monitoring_conf_dir }}"
+    patterns: "machine_*.conf"
+  register: monitoring_local_fragments
+  when: _monitoring_remote
+
+- name: Remove local fragments replaced by the remote configs
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ monitoring_local_fragments.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: _monitoring_remote
+  notify: Restart telegraf
+
+# inputs.docker reads /var/run/docker.sock; the docker group grants that (root-equivalent).
+- name: Check for the docker group
+  ansible.builtin.getent:
+    database: group
+    key: docker
+    fail_key: false
+  when: "'machine/docker' in _monitoring_names and not _monitoring_remote"
+
+- name: Let telegraf read the Docker socket
+  ansible.builtin.user:
+    name: telegraf
+    groups: docker
+    append: true
   when:
-    - _monitoring_names | length > 0
-    - influx_telegraf_config_base | default('') | length > 0
+    - ansible_facts.os_family == "Debian"
+    - "'machine/docker' in _monitoring_names and not _monitoring_remote"
+    - (ansible_facts.getent_group | default({})).docker | default(none) is not none
+  notify: Restart telegraf
+
+# Read by the upstream telegraf.service: $TELEGRAF_OPTS and INFLUX_TOKEN for the remote configs.
+- name: Write the telegraf service environment
+  ansible.builtin.template:
+    src: telegraf.default.j2
+    dest: "{{ monitoring_default_file }}"
+    mode: "0600"
+  when: not _monitoring_remote or influx_token | default('') | length > 0
+  notify: Restart telegraf
 
 - name: Write InfluxDB 1.x output when credentials present
   ansible.builtin.copy:
     dest: "{{ monitoring_conf_dir }}/99_output_influx1.conf"
-    mode: "0600"
+    group: "{{ monitoring_service_group }}"
+    mode: "0640"
     content: |
       [[outputs.influxdb]]
-        urls = ["{{ influx_url }}"]
-        database = "{{ influx_database }}"
+        urls = [{{ influx_url | to_json }}]
+        database = {{ influx_database | to_json }}
         skip_database_creation = true
-        username = "{{ influx_username }}"
-        password = "{{ influx_password }}"
+        username = {{ influx_username | to_json }}
+        password = {{ influx_password | to_json }}
         timeout = "5s"
-  become: true
   when:
     - influx_url | default('') | length > 0
     - influx_username | default('') | length > 0
     - influx_token | default('') | length == 0
+  register: monitoring_output_influx1
+  notify: Restart telegraf
 
 - name: Write InfluxDB 2.x output when token present
   ansible.builtin.copy:
     dest: "{{ monitoring_conf_dir }}/99_output_influx2.conf"
-    mode: "0600"
+    group: "{{ monitoring_service_group }}"
+    mode: "0640"
     content: |
       [[outputs.influxdb_v2]]
-        urls = ["{{ influx_url }}"]
-        token = "{{ influx_token }}"
-        organization = "{{ influx_org }}"
-        bucket = "{{ influx_bucket }}"
+        urls = [{{ influx_url | to_json }}]
+        token = {{ influx_token | to_json }}
+        organization = {{ influx_org | to_json }}
+        bucket = {{ influx_bucket | to_json }}
         timeout = "5s"
-  become: true
   when:
     - influx_url | default('') | length > 0
     - influx_token | default('') | length > 0
+  register: monitoring_output_influx2
+  notify: Restart telegraf
 
-- name: Warn when monitoring has no Influx credentials
+- name: Remove the output of the other InfluxDB version
+  ansible.builtin.file:
+    path: "{{ monitoring_conf_dir }}/99_output_influx{{ '1' if monitoring_output_influx2 is not skipped else '2' }}.conf"
+    state: absent
+  when: monitoring_output_influx1 is not skipped or monitoring_output_influx2 is not skipped
+  notify: Restart telegraf
+
+# Decided from the files on disk: a run without credentials keeps a working output.
+- name: Find the configured outputs
+  ansible.builtin.find:
+    paths: "{{ monitoring_conf_dir }}"
+    patterns: "99_output_*.conf"
+  register: monitoring_outputs
+
+- name: Read the telegraf service environment
+  ansible.builtin.slurp:
+    src: "{{ monitoring_default_file }}"
+  register: monitoring_default_content
+  failed_when: false
+
+- name: Decide whether telegraf has an output
+  ansible.builtin.set_fact:
+    monitoring_has_output: >-
+      {{ monitoring_outputs.matched > 0
+         or (monitoring_default_content.content | default('') | b64decode)
+            is search('^TELEGRAF_OPTS="[^"]+"', multiline=True) }}
+
+- name: Warn when telegraf has no output
   ansible.builtin.debug:
     msg: >-
-      Telegraf configs are in place but INFLUX_URL / credentials are empty.
-      Agent will start without shipping metrics until Bitwarden env is pulled.
-  when:
-    - _monitoring_names | length > 0
-    - influx_url | default('') | length == 0
+      Telegraf has no output: the Bitwarden item influxdb-telegraf-write
+      (INFLUX_URL, INFLUX_TOKEN, …) was not available. Telegraf stays stopped;
+      run `machine apply` again once the item can be read.
+  when: not monitoring_has_output | bool
 
-- name: Enable telegraf when binary exists
+# Restart for changed configs now, so the check below sees the new process.
+- name: Apply pending telegraf restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Start telegraf with an output
   ansible.builtin.service:
     name: telegraf
     state: started
     enabled: true
-  become: true
+  when:
+    - machine_manage_services | bool
+    - ansible_facts.os_family == "Debian"
+    - monitoring_has_output | bool
+
+# telegraf exits right after a successful start when a config or input fails.
+- name: Check that telegraf keeps running
+  ansible.builtin.command: systemctl is-active telegraf
+  register: monitoring_active
+  changed_when: false
   failed_when: false
-  when: ansible_facts.os_family == "Debian"
+  until: monitoring_active.stdout == "active"
+  retries: 3
+  delay: 5
+  when:
+    - machine_manage_services | bool
+    - ansible_facts.os_family == "Debian"
+    - monitoring_has_output | bool
+
+- name: Fail when telegraf does not keep running
+  ansible.builtin.fail:
+    msg: >-
+      telegraf stopped right after the start ({{ monitoring_active.stdout }});
+      see `journalctl -u telegraf -n 20`.
+  when:
+    - monitoring_active is not skipped
+    - monitoring_active.stdout != "active"
+
+# Without an output telegraf exits at once and would restart in a loop.
+- name: Stop telegraf without an output
+  ansible.builtin.service:
+    name: telegraf
+    state: stopped
+    enabled: false
+  when:
+    - machine_manage_services | bool
+    - ansible_facts.os_family == "Debian"
+    - not monitoring_has_output | bool

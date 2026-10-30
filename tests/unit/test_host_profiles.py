@@ -5,19 +5,19 @@ import subprocess
 import os
 import re
 import textwrap
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 import yaml
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():
-    return SourceFileLoader("machine_cli_hosts", str(MACHINE)).load_module()
+    return load_machine_module("machine_cli_hosts", MACHINE)
 
 
 def test_format_and_fingerprint_roundtrip(tmp_path: Path):
@@ -206,6 +206,49 @@ def test_apply_syncs_then_runs_ansible(tmp_path: Path, monkeypatch):
     assert machine.cmd_apply(args) == 0
     assert machine.current_host() == ("private", "server")
     assert calls == ["ansible"]
+
+
+def test_apply_skip_ansible_syncs_profile_without_system_provisioning(
+    tmp_path: Path, monkeypatch
+):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/testhost.yml").write_text(
+        "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n"
+    )
+    monkeypatch.setattr(
+        machine,
+        "ensure_bootstrap_tools",
+        lambda *_a, **_k: pytest.fail("skip must not bootstrap system tools"),
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must be skipped")
+    )
+
+    args = argparse.Namespace(
+        limit="", playbook="workstation", no_become=True, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
+    assert machine.current_host() == ("private", "server")
+    assert machine.applied_host()["ansible"] is True
+
+
+def test_remote_apply_skip_ansible_does_not_connect(tmp_path: Path, monkeypatch):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/remote.yml").write_text(
+        "---\ncontext: work\ndevice: server\nfeatures:\n  - zsh-full\n"
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must be skipped")
+    )
+
+    args = argparse.Namespace(
+        limit="remote", playbook="workstation", no_become=True, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
 
 
 def test_apply_reverts_profile_on_ansible_failure(tmp_path: Path, monkeypatch):
@@ -705,6 +748,22 @@ def test_setup_writes_the_repo_host_file_without_asking(tmp_path, monkeypatch, y
     )
 
 
+def test_setup_commit_uses_the_private_identity_of_the_repo(tmp_path, monkeypatch):
+    """On a new host ~/.gitconfig is not linked yet, so the commit brings its identity."""
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli_mod.system, "prompt_yes_no", lambda q, d: True)
+    ran = []
+    monkeypatch.setattr(cli_mod.system, "run", lambda cmd, **kw: ran.append(cmd))
+
+    machine.persist_host_config("work", "desktop", ["zsh-full"], [], yes=False)
+
+    commit = next(cmd for cmd in ran if "commit" in cmd)
+    identity = Path(repo) / "home/core/.config/git/private.gitconfig"
+    assert commit[commit.index("-c") + 1] == f"include.path={identity}"
+
+
 def test_setup_writes_no_repo_host_file_in_a_container(tmp_path, monkeypatch):
     cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
     machine.persist_host_config("", "container", ["zsh-full"], [], yes=True)
@@ -816,6 +875,73 @@ def test_checklist_uses_arrows_and_space(monkeypatch):
     choices = {"x": "", "y": "", "z": ""}
 
     assert system.choose_many("t", choices, ["x", "y"]) == ["x", "y", "z"]
+
+
+def _fresh_setup(tmp_path, monkeypatch, repo_config: str, **args):
+    """Run `machine setup --yes` on a host without an applied host config."""
+    import types
+
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    (repo / "machine/hosts/testhost.yml").write_text(repo_config)
+    written = {}
+    for name in (
+        "ensure_bootstrap_tools",
+        "setup_bitwarden",
+        "write_dotfile_groups",
+        "switch_origin_to_ssh",
+        "maybe_tailscale_login",
+    ):
+        monkeypatch.setattr(machine, name, lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        machine,
+        "persist_host_config",
+        lambda context, device, features, allow_from, yes: written.update(
+            device=device, features=features, allow_from=allow_from
+        ),
+    )
+    setup_args = dict(
+        yes=True,
+        context="",
+        device="",
+        skip_ansible=True,
+        no_become=True,
+        features=None,
+        skip_dotfiles=True,
+        playbook="workstation",
+        limit="",
+        local=True,
+    )
+    setup_args.update(args)
+    assert machine.cmd_setup(types.SimpleNamespace(**setup_args)) == 0
+    return written
+
+
+SERVER_CONFIG = (
+    "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n  - docker\n"
+    "ssh_allow_from:\n  - laptop1\n"
+)
+
+
+def test_first_setup_takes_features_and_allowed_hosts_from_the_repo(
+    tmp_path, monkeypatch
+):
+    written = _fresh_setup(tmp_path, monkeypatch, SERVER_CONFIG)
+    assert written == {
+        "device": "server",
+        "features": ["zsh-full", "docker"],
+        "allow_from": ["laptop1"],
+    }
+
+
+def test_first_setup_uses_defaults_when_the_repo_config_is_for_another_device(
+    tmp_path, monkeypatch
+):
+    written = _fresh_setup(tmp_path, monkeypatch, SERVER_CONFIG, device="desktop")
+    assert written["device"] == "desktop"
+    assert "monitoring" in written["features"]  # private desktop defaults
+    assert written["allow_from"] == ["laptop1"]
 
 
 DISK_SPACE = [

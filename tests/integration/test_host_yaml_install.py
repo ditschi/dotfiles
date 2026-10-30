@@ -97,6 +97,16 @@ def test_clean_install_from_versioned_host_yaml_container(host_yaml_container):
     assert host.file("/home/tester/.config/starship.toml").is_symlink
 
 
+def assert_telegraf_installed_without_output(host):
+    """Telegraf from the InfluxData source; no Bitwarden in CI, so no output."""
+    assert host.package("telegraf").is_installed
+    assert host.file("/etc/apt/sources.list.d/influxdata.sources").exists
+    default = host.file("/etc/default/telegraf")
+    assert default.exists and default.mode == 0o600
+    assert not host.file("/etc/telegraf/telegraf.d/00_remote_urls.conf").exists
+    assert not host.run("sudo ls /etc/telegraf/telegraf.d/99_output_*.conf").rc == 0
+
+
 @pytest.mark.docker
 @pytest.mark.apt
 @pytest.mark.parametrize("host_yaml_container", ["ci-rpi-zero"], indirect=True)
@@ -113,7 +123,6 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert host.package("unattended-upgrades").is_installed
     assert host.package("etckeeper").is_installed
     assert host.file("/etc/.git").is_directory
-    assert not host.package("guake").is_installed
     assert not host.package("ldap-utils").is_installed
     conf_dir = host.file("/etc/telegraf/telegraf.d")
     assert conf_dir.exists
@@ -122,6 +131,7 @@ def test_clean_install_from_versioned_host_yaml_rpi_zero(host_yaml_container):
     assert main_conf.exists
     pi_conf = host.file("/etc/telegraf/telegraf.d/machine_pi.conf")
     assert pi_conf.exists
+    assert_telegraf_installed_without_output(host)
     assert_second_apply_is_idempotent(host)
 
 
@@ -151,12 +161,12 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert "monitoring" in local.content_string
     assert "gnome" in local.content_string
     assert host.package("zsh").is_installed
-    assert host.package("guake").is_installed
     assert host.package("flameshot").is_installed
     assert not host.package("ldap-utils").is_installed
     assert host.file("/etc/telegraf/telegraf.conf").exists
     assert host.file("/etc/telegraf/telegraf.d/machine_laptop.conf").exists
     assert host.file("/etc/telegraf/telegraf.d/machine_base.conf").exists
+    assert_telegraf_installed_without_output(host)
     # Role installs files; systemd enable is skipped in containers
     assert host.file("/usr/local/lib/machine/stylus_touch_guard.py").exists
     assert host.file("/etc/systemd/system/stylus-touch-guard.service").exists
@@ -168,9 +178,5 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert not host.file("/usr/local/bin/thinkpad-charge").exists
     assert host.file("/etc/systemd/zram-generator.conf").exists
     assert host.file("/etc/systemd/user/tablet-osk.service").exists
-    assert host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
-    assert (
-        "Port 5115"
-        in host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").content_string
-    )
+    assert not host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
     assert_second_apply_is_idempotent(host)

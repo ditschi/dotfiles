@@ -72,7 +72,7 @@ Short comparison for this repo (general knowledge, unverified against a prototyp
 ## 6. Remote updates
 
 **Findings**
-- Inventory (`ansible/inventory/hosts.example.yml`, verified): groups `laptops`, `servers` (`homeserver`, `netmaster` with port 5115), `rpis` (`netmaster`, `rpi-zero-1`), empty `work`. Real `hosts.yml` is vault-encrypted (`machine inventory encrypt`; vault password in Bitwarden); not read here. `netmaster` is in two groups. `inventory/local.yml` is the local default.
+- Inventory (`ansible/inventory/hosts.example.yml`, verified): groups `laptops`, `servers` (`homeserver`, `netmaster`), `rpis` (`netmaster`, `rpi-zero-1`), empty `work`. Real `hosts.yml` is vault-encrypted (`machine inventory encrypt`; vault password in Bitwarden); not read here. `netmaster` is in two groups. `inventory/local.yml` is the local default.
 - `machine apply --limit homeserver` runs `ansible-playbook` from the laptop over SSH using the host file `machine/hosts/<host>.yml` (`commands.py` remote path, Readme lines 169-180). Remote runs do no auto-revert on failure. `machine update` is local: pull, sync profile, apply on drift, and update marker/timer `dotfiles-update-check.timer` (`commands.py`). It does not update other hosts.
 - Remote apply covers system roles and `node_tools` (via SSH as `ansible_user`); the dotfiles on the remote host are not updated by `apply --limit` (unverified: whether the remote repo pull happens; the code shows only an Ansible run).
 - `become` on remote hosts needs sudo; the CLI uses `--ask-become-pass` only on a TTY (`tools.py`), so unattended remote runs need passwordless sudo (`passwordless_sudo()` exists). `unattended-upgrades` already handles OS package updates on servers and Pis.

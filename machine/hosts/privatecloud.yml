@@ -1,0 +1,16 @@
+---
+context: private
+device: server
+features:
+  - zsh-full
+  - docker
+  - claude-code
+  - unattended-upgrades
+  - etckeeper
+  - tailscale
+  - ssh-host-key
+ssh_allow_from:
+  - ditschi-ThinkPad-L13-Yoga-Gen-2
+  - ditschi-ThinkPad-T470
+  - homeserver
+  - netmaster

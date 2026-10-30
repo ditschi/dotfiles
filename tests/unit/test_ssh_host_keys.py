@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
@@ -15,8 +16,6 @@ ITEM = f"ssh/home/hosts/{HOST}"
 
 
 def ssh_machine(tmp_path, monkeypatch, fake_bw, context="private", session=True):
-    from importlib.machinery import SourceFileLoader
-
     bw, store = fake_bw
     repo = tmp_path / "dotfiles"
     (repo / "home").mkdir(parents=True)
@@ -35,7 +34,7 @@ def ssh_machine(tmp_path, monkeypatch, fake_bw, context="private", session=True)
         "MISE_LOCAL_CONFIG", str(home / ".config/mise/config.local.toml")
     )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
-    cli = SourceFileLoader("machine_ssh", str(MACHINE)).load_module()
+    cli = load_machine_module("machine_ssh", MACHINE)
     monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     monkeypatch.setattr(cli.system, "hostname_short", lambda: HOST)

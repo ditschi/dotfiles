@@ -184,9 +184,19 @@ def setup(
 @click.option(
     "--auto", is_flag=True, help="background mode: apply home-only changes unattended"
 )
-def update(apply_system, force, check, json_, auto) -> None:
+@click.option(
+    "--skip-ansible",
+    is_flag=True,
+    help="skip system provisioning for this run; keep system changes pending",
+)
+def update(apply_system, force, check, json_, auto, skip_ansible) -> None:
     args = types.SimpleNamespace(
-        system=apply_system, force=force, check=check, json=json_, auto=auto
+        system=apply_system,
+        force=force,
+        check=check,
+        json=json_,
+        auto=auto,
+        skip_ansible=skip_ansible,
     )
     _exit(Machine().cmd_update(args))
 
@@ -197,8 +207,18 @@ def update(apply_system, force, check, json_, auto) -> None:
 @click.option("--limit", default="", help="ansible host", shell_complete=_host_names)
 @click.option("--playbook", type=PLAYBOOK_CHOICE, default="workstation")
 @click.option("--no-become", is_flag=True)
-def apply(limit, playbook, no_become) -> None:
-    args = types.SimpleNamespace(limit=limit, playbook=playbook, no_become=no_become)
+@click.option(
+    "--skip-ansible",
+    is_flag=True,
+    help="skip system provisioning for this run; keep system changes pending",
+)
+def apply(limit, playbook, no_become, skip_ansible) -> None:
+    args = types.SimpleNamespace(
+        limit=limit,
+        playbook=playbook,
+        no_become=no_become,
+        skip_ansible=skip_ansible,
+    )
     _exit(Machine().cmd_apply(args))
 
 

@@ -1,8 +1,30 @@
 ---
-- name: Reload sshd
+# On socket-activated sshd (Ubuntu >= 22.10) the listening port comes from
+# ssh.socket, which systemd generates from sshd_config's Port lines; a reload of
+# the service does not change it.
+- name: Check for socket-activated sshd
+  ansible.builtin.command: systemctl is-active ssh.socket
+  register: sshd_home_socket
+  changed_when: false
+  failed_when: false
+  listen: Reload sshd
+  when:
+    - ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'
+
+- name: Restart ssh.socket
+  ansible.builtin.systemd:
+    name: ssh.socket
+    state: restarted
+    daemon_reload: true
+  listen: Reload sshd
+  when: (sshd_home_socket.stdout | default('')) == 'active'
+
+- name: Reload sshd service
   ansible.builtin.service:
     name: "{{ 'ssh' if ansible_facts.os_family == 'Debian' else 'sshd' }}"
     state: reloaded
+  listen: Reload sshd
   when:
     - ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
     - ansible_connection | default('') != 'docker'

@@ -85,3 +85,25 @@ A host config with `ansible: false` SHALL make `machine setup`, `apply` and `upd
 #### Scenario: Managed host without root
 - **WHEN** a host config has `ansible: false` and `machine update` runs
 - **THEN** the dotfile groups and user-space tools are applied, Ansible does not run, and no system update is reported as pending
+
+### Requirement: Ansible can be skipped for one invocation
+Users SHALL be able to skip Ansible and system provisioning for one apply or update invocation without changing persistent host policy. Update SHALL still merge repository changes and apply dotfiles and user-space tools; skipped system changes SHALL remain detectable as pending.
+
+#### Scenario: Apply explicitly skips Ansible
+- **WHEN** a user runs `machine apply --skip-ansible` for a host whose config allows Ansible
+- **THEN** host config synchronization completes, Ansible and bootstrap system provisioning do not run, and the saved `ansible` setting remains true
+
+#### Scenario: Update explicitly skips Ansible
+- **WHEN** a user runs `machine update --skip-ansible` while repository changes include dotfiles, user-space tools, and system files
+- **THEN** repository changes, dotfiles, and user-space tools are applied, Ansible does not run, and system changes remain detectable as pending
+
+#### Scenario: Skip is per invocation
+- **WHEN** the next `machine apply` or `machine update` runs without `--skip-ansible` and the host config allows Ansible
+- **THEN** normal Ansible behavior runs for applicable system changes
+
+### Requirement: First setup keeps the allowed SSH hosts
+Without an applied host config, `machine setup` SHALL use the `ssh_allow_from` entries of the host's repository config as the current selection: offered preselected on a terminal and kept unchanged without one.
+
+#### Scenario: Non-interactive first setup
+- **WHEN** `machine setup --yes` runs on a fresh host whose repository config lists `ssh_allow_from: [laptop1]`
+- **THEN** the written host config still lists `laptop1`

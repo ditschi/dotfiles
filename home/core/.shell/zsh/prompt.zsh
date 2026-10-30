@@ -1,8 +1,9 @@
 alias zshtheme="nano $0"
 
 # Prompt: Starship (~/.config/starship.toml, shared with bash) when installed, else a built-in one.
-# The update state (update-state.sh) reaches Starship through the exported
-# DOTFILES_UPDATE_SEGMENT (env_var module); reading the state file uses builtins only.
+# The update and disk state (update-state.sh) reach Starship through the exported
+# DOTFILES_UPDATE_SEGMENT and DOTFILES_DISK_SEGMENT (env_var modules); reading the
+# state files uses builtins only.
 function _dotfiles_update_segment() {
     dotfiles_update_prompt
 }

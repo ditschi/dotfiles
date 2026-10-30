@@ -22,12 +22,13 @@ feature_table:
     server: excluded
     container: excluded
   gnome:
-    help: GNOME tools (flameshot, guake, shell extensions, …)
+    help: GNOME tools (flameshot, shell extensions, …)
     groups: [gnome]
     server: excluded
     container: excluded
   cosmic:
-    help: Cosmic desktop packages (Pop OS)
+    help: COSMIC desktop session (Ubuntu 26.04+ via PPA; built into Pop!_OS)
+    groups: [cosmic]
     desktop: optional
     server: excluded
     container: excluded
@@ -114,7 +115,7 @@ feature_table:
     help: Compressed swap in RAM (not on Raspberry Pis)
     container: excluded
   sshd-home:
-    help: sshd Port 5115 + authorized_keys from machine/ssh_keys
+    help: authorized_keys from machine/ssh_keys
     work: excluded
     container: excluded
 

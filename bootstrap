@@ -34,7 +34,9 @@ if [[ ! -x $MACHINE ]]; then
 fi
 if ! command -v uv >/dev/null 2>&1; then
     echo "bootstrap: installing uv (https://astral.sh/uv)"
-    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh
+    # No PATH lines: ~/.bashrc and ~/.profile are links into the checkout.
+    curl -LsSf https://astral.sh/uv/install.sh |
+        env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
 

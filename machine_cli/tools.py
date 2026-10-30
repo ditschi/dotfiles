@@ -17,10 +17,12 @@ from typing import List, Optional
 
 
 from . import system
+from .bw_client import INFLUX_KEYS
 from .core import (
     debug_enabled,
     log,
     die,
+    parse_profile_file,
 )
 
 
@@ -35,16 +37,10 @@ class ToolsMixin:
         # "Validate sshd configuration"). Here as a normal user `sshd -t` always
         # fails (host keys unreadable) and `sudo -n` fails without cached
         # credentials, which rolled back every successful apply.
-        if "monitoring" in self.saved_features() and system.have("systemctl"):
-            result = system.run(
-                ["systemctl", "is-active", "telegraf"],
-                check=False,
-                capture=True,
-            )
-            status = (result.stdout or "").strip()
-            if status not in {"active", "activating"} and result.returncode != 0:
-                # telegraf may not be installed yet from apt — warn only
-                log(f"health check: telegraf status={status or 'unknown'} (warn)")
+        # Telegraf is reported, never reverted (spec system-provisioning).
+        problem = self.telegraf_problem()
+        if problem:
+            log(f"health check: {self.telegraf_problem_text(problem)} (warn)")
         return ok
 
     def passwordless_sudo(self) -> bool:
@@ -232,8 +228,18 @@ class ToolsMixin:
         cmd = ["ansible-playbook", str(playbook), *self.ansible_inventory_args()]
         extra: List[str] = []
         vars_file = extra_vars_file or self.applied_host_path
+        influx_file: Optional[Path] = None
         if vars_file.is_file():
             extra.extend(["--extra-vars", f"@{vars_file}"])
+            if "monitoring" in parse_profile_file(vars_file)["features"]:
+                # Only Ansible gets the token; it never goes to ~/.env*.
+                values = self.influx_credentials()
+                if values:
+                    influx_file = _private_file(
+                        json.dumps({INFLUX_KEYS[k]: v for k, v in values.items()}),
+                        prefix="machine-influx-",
+                    )
+                    extra.extend(["--extra-vars", f"@{influx_file}"])
         if force_local or not limit:
             cmd.extend(["--connection", "local", "--limit", "localhost"])
             extra.extend(["-e", "target_hosts=localhost"])
@@ -263,8 +269,9 @@ class ToolsMixin:
         try:
             system.run(cmd, cwd=self.ansible_dir)
         finally:
-            if password_file is not None:
-                password_file.unlink(missing_ok=True)
+            for path in (password_file, influx_file):
+                if path is not None:
+                    path.unlink(missing_ok=True)
         if force_local or not limit:
             self.record_ansible_applied()
 
@@ -299,10 +306,10 @@ class ToolsMixin:
         return None
 
 
-def _private_file(content: str) -> Path:
+def _private_file(content: str, prefix: str = "machine-become-") -> Path:
     """Write `content` to a new file only the user can read; the caller deletes it."""
     directory = os.environ.get("XDG_RUNTIME_DIR") or None
-    fd, name = tempfile.mkstemp(prefix="machine-become-", dir=directory)
+    fd, name = tempfile.mkstemp(prefix=prefix, dir=directory)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(content)
     return Path(name)

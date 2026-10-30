@@ -1,0 +1,4 @@
+---
+schema: spec-driven
+created: 2026-10-28
+goal: Let users apply dotfile and user-space updates when they cannot run Ansible, without changing the saved host policy

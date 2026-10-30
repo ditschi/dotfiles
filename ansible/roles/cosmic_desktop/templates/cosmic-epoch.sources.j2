@@ -1,0 +1,6 @@
+# Managed by ansible role cosmic_desktop — do not edit by hand
+Types: deb
+URIs: {{ cosmic_desktop_ppa_url }}/
+Suites: {{ ansible_facts.distribution_release }}
+Components: main
+Signed-By: {{ cosmic_desktop_keyring }}

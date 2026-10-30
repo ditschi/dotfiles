@@ -1,0 +1,9 @@
+# Managed by ansible role monitoring — do not edit by hand
+{% if influx_telegraf_config_base | default('') | length > 0 %}
+# Remote configs from Influx replace the local fragments.
+TELEGRAF_OPTS="{% for n in _monitoring_names %}--config {{ influx_telegraf_config_base }}/{{ n }}{{ ' ' if not loop.last }}{% endfor %}"
+INFLUX_TOKEN="{{ influx_token | default('') }}"
+{% else %}
+# Local fragments in {{ monitoring_conf_dir }}; no remote configs.
+TELEGRAF_OPTS=""
+{% endif %}

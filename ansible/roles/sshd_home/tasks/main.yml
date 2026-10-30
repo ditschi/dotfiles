@@ -1,27 +1,17 @@
 ---
-- name: Ensure sshd_config.d exists
+# sshd listens on the default port 22. Earlier versions of this role moved it to
+# 5115; remove what they wrote so those hosts go back to 22.
+- name: Remove legacy sshd port drop-in
   ansible.builtin.file:
-    path: /etc/ssh/sshd_config.d
-    state: directory
-    mode: "0755"
-
-- name: Deploy sshd port drop-in (5115)
-  ansible.builtin.copy:
-    dest: "{{ sshd_home_config_dropin }}"
-    mode: "0644"
-    content: |
-      # Managed by ansible role sshd_home — do not edit by hand
-      Port {{ sshd_home_port }}
-      {% if sshd_home_also_port_22 | bool %}
-      Port 22
-      {% endif %}
+    path: "{{ sshd_home_legacy_port_dropin }}"
+    state: absent
   notify: Reload sshd
 
-- name: Ensure Port line in main sshd_config matches
+- name: Remove legacy Port line from main sshd_config
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^Port\s+'
-    line: "Port {{ sshd_home_port }}"
+    regexp: '^Port\s+{{ sshd_home_legacy_port }}\s*$'
+    state: absent
     backup: true
   notify: Reload sshd
   when: ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']

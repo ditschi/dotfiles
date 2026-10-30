@@ -1,0 +1,8 @@
+---
+- name: Restart telegraf
+  ansible.builtin.service:
+    name: telegraf
+    state: restarted
+  when:
+    - machine_manage_services | bool
+    - monitoring_has_output | default(false) | bool

@@ -39,7 +39,6 @@ packages_by_feature:
     - flameshot
     - gnome-shell-extension-manager
     - gnome-shell-extension-prefs
-    - guake
   docker:
     - docker.io
     - docker-compose-v2
@@ -80,8 +79,10 @@ machine_manage_services: >-
 # Telegraf config names are resolved in tasks/resolve_monitoring.yml from the detected
 # hardware and the device; the CLI must not duplicate this.
 
-# Prefer Influx Telegraf config URLs when set (from ~/.env / Bitwarden).
-# Fallback: files under roles/monitoring/files/<name with / -> _>.conf
+# Influx values come from the Bitwarden item influxdb-telegraf-write: machine passes
+# them as extra vars, which override these environment lookups (fallback only).
+# Remote configs replace the local fragments when INFLUX_TELEGRAF_CONFIG_BASE is set;
+# otherwise files under roles/monitoring/files/<name with / -> _>.conf are used.
 influx_telegraf_config_base: "{{ lookup('env', 'INFLUX_TELEGRAF_CONFIG_BASE') | default('', true) }}"
 influx_url: "{{ lookup('env', 'INFLUX_URL') | default('', true) }}"
 influx_token: "{{ lookup('env', 'INFLUX_TOKEN') | default('', true) }}"

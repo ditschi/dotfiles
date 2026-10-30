@@ -6,6 +6,7 @@ features:
   - fonts
   - desktop
   - gnome
+  - cosmic
   - docker
   - monitoring
   - unattended-upgrades

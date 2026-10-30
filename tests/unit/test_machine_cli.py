@@ -4,18 +4,18 @@ import os
 import shutil
 import subprocess
 import textwrap
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
 
+from machine_loader import load_machine_module
 from package_sets import REPO
 
 MACHINE = REPO / "machine_cli/machine"
 
 
 def _cli():
-    return SourceFileLoader("machine_entry", str(MACHINE)).load_module()
+    return load_machine_module("machine_entry", MACHINE)
 
 
 def test_help_lists_setup_update_and_env():
@@ -40,6 +40,17 @@ def test_short_help_option(args):
         text=True,
     )
     assert result.stdout.startswith("Usage: machine")
+
+
+@pytest.mark.parametrize("command", ["apply", "update"])
+def test_apply_and_update_expose_skip_ansible(command):
+    result = subprocess.run(
+        ["python3", str(MACHINE), command, "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "--skip-ansible" in result.stdout
 
 
 def test_symlinked_entry_point_finds_the_checkout(tmp_path):

@@ -115,7 +115,7 @@ def sweep_dangling_links(home: Path, repo: Path) -> list[Path]:
             link = Path(current) / name
             if not link.is_symlink() or link.exists():
                 continue
-            target = Path(os.path.normpath(Path(current) / os.readlink(link)))
+            target = (link.parent / os.readlink(link)).resolve(strict=False)
             if target == repo or repo in target.parents:
                 link.unlink()
                 removed.append(link)
@@ -141,7 +141,8 @@ def clear_conflicting_targets(
 ) -> list[tuple[Path, str]]:
     """Make room for `mise dot apply`, which refuses to overwrite existing files.
 
-    A link pointing elsewhere into the checkout (an old layout) is removed; a regular
+    A link pointing elsewhere into the checkout (an old layout) is removed, also when
+    it stands for a parent directory such as `~/.zsh -> dotfiles/.zsh`; a regular
     file is deleted when its content equals the repository file, else moved aside to
     `<name>.pre-dotfiles`. Anything else that is
     already the right link, or a link outside the checkout, is left for mise to report.
@@ -149,8 +150,17 @@ def clear_conflicting_targets(
     repo = repo.resolve()
     changed: list[tuple[Path, str]] = []
     for source, target in group_targets(repo, home, groups):
+        for parent in reversed(target.relative_to(home).parents[:-1]):
+            link = home / parent
+            if not link.is_symlink():
+                continue
+            current = (link.parent / os.readlink(link)).resolve(strict=False)
+            if current == repo or repo in current.parents:
+                link.unlink()
+                changed.append((link, "removed stale link"))
+            break
         if target.is_symlink():
-            current = Path(os.path.normpath(target.parent / os.readlink(target)))
+            current = (target.parent / os.readlink(target)).resolve(strict=False)
             if current != source and (current == repo or repo in current.parents):
                 target.unlink()
                 changed.append((target, "removed stale link"))

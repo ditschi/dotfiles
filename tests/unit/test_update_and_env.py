@@ -1113,6 +1113,24 @@ def _sourced(env_file: Path) -> dict:
     return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
 
 
+def env_pull():
+    import machine_cli.env_pull as env_pull_module
+
+    return env_pull_module
+
+
+def _bw_set_item(fake_bw, name: str, item: dict) -> None:
+    _bw, store = fake_bw
+    data = json.loads(store.read_text())
+    data["items"][name] = item
+    store.write_text(json.dumps(data))
+
+
+def _bw_item(fake_bw, name: str) -> dict:
+    _bw, store = fake_bw
+    return json.loads(store.read_text())["items"][name]
+
+
 def _item(notes: str = "", **fields: str) -> dict:
     return {
         "notes": notes,
@@ -1166,14 +1184,15 @@ def test_env_pull_backs_up_hand_written_env_once(tmp_path, monkeypatch, fake_bw)
     backups = list((machine.state_dir / "env-backup").iterdir())
     assert len(backups) == 1 and backups[0].read_text() == "HANDMADE=1\n"
     assert backups[0].stat().st_mode & 0o777 == 0o600
-    assert (home / ".env.local").read_text() == "HANDMADE=1\n"
+    assert not (home / ".env.local").exists()
+    assert _sourced(home / ".env")["HANDMADE"] == "1"
 
     # a generated file is not backed up again
     assert machine.cmd_env_pull() == 0
     assert len(list((machine.state_dir / "env-backup").iterdir())) == 1
 
 
-def test_env_pull_warns_and_keeps_original_when_overlay_would_need_overwrite(
+def test_env_pull_carries_local_only_keys_over_without_touching_overlay(
     tmp_path, monkeypatch, fake_bw, capsys
 ):
     machine, home = _env_machine(
@@ -1183,17 +1202,45 @@ def test_env_pull_warns_and_keeps_original_when_overlay_would_need_overwrite(
         "work-machine",
         {"env/groups/work": _item("A=updated")},
     )
-    original = "A=old\nLOCAL_ONLY=preserve\n"
-    (home / ".env").write_text(original)
+    (home / ".env").write_text("A=old\nexport LOCAL_ONLY='secret value'\n")
     (home / ".env.local").write_text("OTHER=unchanged\n")
-    with pytest.raises(SystemExit):
-        machine.cmd_env_pull()
-    assert (home / ".env").read_text() == original
+
+    assert machine.cmd_env_pull() == 0
+    text = (home / ".env").read_text()
+    assert text.endswith(
+        f"{env_pull().LOCAL_ONLY_HEADER}\nexport LOCAL_ONLY='secret value'\n"
+    )
+    values = _sourced(home / ".env")
+    assert values["A"] == "updated" and values["LOCAL_ONLY"] == "secret value"
     assert (home / ".env.local").read_text() == "OTHER=unchanged\n"
     output = capsys.readouterr().out
-    assert "LOCAL_ONLY" in output and str(home / ".env.local") in output
+    assert "~/.env: LOCAL_ONLY not set by Bitwarden env/groups/work" in output
     assert str(machine.state_dir / "env-backup") in output
-    assert not (home / ".env.host").exists()
+    assert "run: machine attention" in output
+    assert "secret value" not in output
+
+    # still unresolved: the next sync keeps it in the section, unchanged
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env").read_text() == text
+
+
+def test_env_pull_remembers_keys_deleted_in_the_vault(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1\nGONE=x")},
+    )
+    assert machine.cmd_env_pull() == 0
+    _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
+
+    assert machine.cmd_env_pull() == 0
+    assert "# was in env/groups/work\nGONE=x\n" in (home / ".env").read_text()
+    [report] = machine.env_local_only(
+        {home / ".env": "A=1\n", home / ".env.host": ""}, ""
+    )
+    assert report.was_in == {"GONE": "env/groups/work"}
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -1361,8 +1408,8 @@ def test_env_pull_keeps_both_files_on_sync_failure(tmp_path, monkeypatch, fake_b
     assert (home / ".env.host").read_text() == "HOST=old\n"
 
 
-def test_env_pull_keeps_both_files_with_complex_host_content(
-    tmp_path, monkeypatch, fake_bw
+def test_env_pull_keeps_only_the_file_with_shell_code(
+    tmp_path, monkeypatch, fake_bw, capsys
 ):
     machine, home = _env_machine(
         tmp_path,
@@ -1373,11 +1420,261 @@ def test_env_pull_keeps_both_files_with_complex_host_content(
     )
     (home / ".env").write_text("A=old\n")
     (home / ".env.host").write_text("if true; then\nHOST=old\nfi\n")
-    with pytest.raises(SystemExit):
-        machine.cmd_env_pull()
-    assert (home / ".env").read_text() == "A=old\n"
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env")["A"] == "new"
     assert (home / ".env.host").read_text() == "if true; then\nHOST=old\nfi\n"
     assert not (home / ".env.local").exists()
+    backups = list((machine.state_dir / "env-backup").iterdir())
+    assert "if true; then\nHOST=old\nfi\n" in {p.read_text() for p in backups}
+    output = capsys.readouterr().out
+    assert "~/.env.host contains shell code" in output
+    assert "run: machine attention" in output
+
+
+def test_parse_env_file_hand_written():
+    parsed = env_pull().parse_env_file("# mine\nexport A=1\nB='x y'\n")
+    assert not parsed.generated
+    assert parsed.assignments == [("A", "export A=1", None), ("B", "B='x y'", None)]
+    assert parsed.shell_code == []
+
+
+def test_parse_env_file_generated_with_local_only_section():
+    module = env_pull()
+    text = (
+        f"{module.GENERATED_HEADER}\n# - env/groups/work\n\n"
+        "# --- env/groups/work ---\nA=1\n\n"
+        f"{module.LOCAL_ONLY_HEADER}\nMINE=1\n# was in env/groups/work\nGONE=1\n"
+    )
+    parsed = module.parse_env_file(text)
+    assert parsed.generated
+    assert parsed.assignments == [
+        ("A", "A=1", "env/groups/work"),
+        ("MINE", "MINE=1", module.LOCAL_ONLY),
+        ("GONE", "GONE=1", "env/groups/work"),
+    ]
+
+
+def test_parse_env_file_shell_code():
+    parsed = env_pull().parse_env_file("if true; then\nHOST=old\nfi\nBAD='open\n")
+    assert parsed.shell_code == ["if true; then", "fi", "BAD='open"]
+    assert parsed.keys() == {"HOST"}
+
+
+def _answer(monkeypatch, machine, *answers: str) -> list:
+    """Answer the env prompts in order by label prefix; return (choices, default)."""
+    asked = []
+    pending = list(answers)
+
+    def choose(_title, choices, default):
+        asked.append((list(choices), default))
+        want = pending.pop(0)
+        return next(c for c in choices if c.startswith(want))
+
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    monkeypatch.setattr(machine_system(), "choose", choose)
+    monkeypatch.setattr(machine, "offer_saving_bitwarden_session", lambda: None)
+    return asked
+
+
+def _local_key_machine(tmp_path, monkeypatch, fake_bw, items=None):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        items or {"env/groups/work": {"id": "work-id", **_item("A=1")}},
+    )
+    (home / ".env").write_text("A=1\nexport MINE=secret\n")
+    return machine, home
+
+
+def test_env_pull_asks_per_key_with_item_and_skip_preselected(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    asked = _answer(monkeypatch, machine, "skip")
+
+    assert machine.cmd_env_pull() == 0
+    [(choices, default)] = asked
+    assert choices == [
+        "add to Bitwarden env/groups/work",
+        "keep locally (~/.env.local)",
+        "remove",
+        "skip (decide later)",
+    ]
+    assert default == "skip (decide later)"
+    assert (home / ".env").read_text().endswith("export MINE=secret\n")
+
+
+def test_env_pull_hints_at_a_key_deleted_in_the_vault(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1\nGONE=x")},
+    )
+    assert machine.cmd_env_pull() == 0
+    _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
+    asked = _answer(monkeypatch, machine, "skip")
+
+    assert machine.cmd_env_pull() == 0
+    assert asked[0][1] == "skip (decide later)"
+    assert "(was in env/groups/work; deleted there?)" in capsys.readouterr().out
+
+
+def test_env_pull_keeps_a_key_locally(tmp_path, monkeypatch, fake_bw):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    (home / ".env.local").write_text("export BW_SESSION=keep")
+    _answer(monkeypatch, machine, "keep locally")
+
+    assert machine.cmd_env_pull() == 0
+    local = (home / ".env.local").read_text()
+    assert local.startswith("export BW_SESSION=keep\n# kept from ~/.env on ")
+    assert local.endswith("\nexport MINE=secret\n")
+    assert (home / ".env.local").stat().st_mode & 0o777 == 0o600
+    assert "MINE" not in (home / ".env").read_text()
+
+
+def test_env_pull_removes_a_key(tmp_path, monkeypatch, fake_bw):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    _answer(monkeypatch, machine, "remove")
+
+    assert machine.cmd_env_pull() == 0
+    assert "MINE" not in (home / ".env").read_text()
+    assert not (home / ".env.local").exists()
+    backups = (machine.state_dir / "env-backup").iterdir()
+    assert any("export MINE=secret" in p.read_text() for p in backups)
+
+
+def test_env_pull_adds_a_key_to_bitwarden_notes(tmp_path, monkeypatch, fake_bw):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    _answer(monkeypatch, machine, "add to Bitwarden")
+
+    assert machine.cmd_env_pull() == 0
+    notes = _bw_item(fake_bw, "env/groups/work")["notes"]
+    assert notes.startswith("A=1\n\n# added from testhost on ")
+    assert notes.endswith("\nexport MINE=secret")
+    text = (home / ".env").read_text()
+    assert env_pull().LOCAL_ONLY_HEADER not in text
+    assert _sourced(home / ".env")["MINE"] == "secret"
+
+
+def test_env_pull_creates_a_missing_host_item(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1")},
+    )
+    (home / ".env.host").write_text("HOST_ONLY=1\n")
+    _answer(monkeypatch, machine, "add to Bitwarden env/hosts/testhost")
+
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env.host")["HOST_ONLY"] == "1"
+
+
+def test_env_pull_keeps_the_key_local_only_when_bitwarden_fails(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    _answer(monkeypatch, machine, "add to Bitwarden")
+    monkeypatch.setattr(machine, "bw_edit_item", lambda item: False)
+
+    assert machine.cmd_env_pull() == 0
+    assert (
+        (home / ".env")
+        .read_text()
+        .endswith(f"{env_pull().LOCAL_ONLY_HEADER}\nexport MINE=secret\n")
+    )
+    assert "could not write Bitwarden env/groups/work" in capsys.readouterr().out
+
+
+def test_env_pull_does_not_ask_with_yes(tmp_path, monkeypatch, fake_bw):
+    machine, home = _local_key_machine(tmp_path, monkeypatch, fake_bw)
+    asked = _answer(monkeypatch, machine)
+    machine.unattended = True
+
+    assert machine.cmd_env_pull() == 0
+    assert asked == []
+    assert (home / ".env").read_text().endswith("export MINE=secret\n")
+    assert not (home / ".env.local").exists()
+
+
+def test_env_pull_keeps_shell_code_locally(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/hosts/testhost": _item("B=1")},
+    )
+    (home / ".env.host").write_text("if true; then\nHOST=old\nfi\n")
+    asked = _answer(monkeypatch, machine, "keep locally")
+
+    assert machine.cmd_env_pull() == 0
+    [(choices, default)] = asked
+    assert default.startswith("skip") and not any("Bitwarden" in c for c in choices)
+    assert (home / ".env.local").read_text().endswith("\nif true; then\nHOST=old\nfi\n")
+    assert _sourced(home / ".env.host")["B"] == "1"
+
+
+def _real_env_pull(update_env, monkeypatch, fake_bw, items):
+    machine, _repo, _other, home, calls = update_env
+    bw, store = fake_bw
+    store.write_text(json.dumps({"_session": "s", "items": items}))
+    monkeypatch.setenv("PATH", f"{bw.parent}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("BW_SESSION", "fake-session")
+    monkeypatch.setattr(
+        machine, "cmd_env_pull", type(machine).cmd_env_pull.__get__(machine)
+    )
+    monkeypatch.setattr(machine, "check_ssh_key_backup", lambda: calls.append("ssh"))
+    return machine, home, calls
+
+
+def test_update_continues_after_local_only_env_keys(update_env, monkeypatch, fake_bw):
+    machine, home, calls = _real_env_pull(
+        update_env, monkeypatch, fake_bw, {"env/groups/private": _item("A=1")}
+    )
+    (home / ".env").write_text("A=1\nMINE=x\n")
+
+    assert _update(machine) == 0
+    assert "ssh" in calls
+    assert machine.read_update_state()["state"] == "updated"
+    assert _sourced(home / ".env")["MINE"] == "x"
+
+
+def test_attention_lists_and_resolves_local_only_env_keys(
+    update_env, monkeypatch, fake_bw, capsys
+):
+    machine, home, _calls = _real_env_pull(
+        update_env,
+        monkeypatch,
+        fake_bw,
+        {"env/groups/private": {"id": "p", **_item("A=1")}},
+    )
+    (home / ".env").write_text("A=1\nMINE=x\n")
+    assert machine.cmd_env_pull() == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        machine_system(), "prompt_yes_no", lambda *a, **k: pytest.fail("prompted")
+    )
+    assert machine.cmd_attention() == 0
+    assert (
+        "[env] local-only env content: ~/.env: MINE not in Bitwarden "
+        "env/groups/private or ~/.env.local"
+    ) in capsys.readouterr().out
+
+    _answer(monkeypatch, machine, "remove")
+    monkeypatch.setattr(machine_system(), "prompt_yes_no", lambda *a, **k: True)
+    monkeypatch.setattr(machine, "cmd_update", lambda args: 0)
+    assert machine.cmd_attention() == 0
+    assert "MINE" not in (home / ".env").read_text()
+    assert not [i for i in machine.attention_items() if i.kind == "env"]
 
 
 def test_env_pull_skips_container_profile(tmp_path, monkeypatch, fake_bw):

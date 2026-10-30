@@ -355,7 +355,7 @@ The shell loads exactly these files, in order (later assignments win):
 | --- | --- | --- |
 | `~/.env` | The context's Bitwarden group item | Generated |
 | `~/.env.host` | This host's Bitwarden item | Generated |
-| `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local, never overwritten |
+| `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local; only appended to when you choose "keep locally" |
 
 The arrows distinguish fetching from shell loading. The shell loads the three files in order; later assignments win.
 
@@ -397,13 +397,27 @@ are not loaded automatically.
 
 Keep `BW_SESSION` local: it is needed to unlock the vault before fetching items,
 and may expire. Pull refuses vault items containing a `BW_SESSION` assignment.
-Existing local override files are left byte-for-byte unchanged.
+`~/.env.local` is never rewritten; it only gets lines appended when you choose
+"keep locally" below.
 
-Local-only keys are retained in a new `~/.env.local` when safe. If that overlay
-already exists and lacks the keys, or the old file contains complex shell
-content, the pull leaves both generated files unchanged, exits with an error, and prints the live and backup paths
-for manual review. Existing overlays are never overwritten; secret values are
-not printed in warnings.
+A key in `~/.env` or `~/.env.host` that neither its Bitwarden item nor
+`~/.env.local` sets is *local-only*. The pull never stops because of it and never
+moves it without asking:
+
+- In a terminal (`machine env pull`, `machine update`, `machine setup`, without
+  `--yes`) it asks per key: add to the Bitwarden item of that file
+  (`~/.env` → `env/groups/<group>`, `~/.env.host` → `env/hosts/<hostname>`;
+  the line is appended to the item's notes under `# added from <host> on <date>`),
+  keep locally (append to `~/.env.local`), remove, or skip. "Skip" is
+  preselected. A key that its item no longer sets is shown with that item
+  ("was in …; deleted there?").
+- Skipped keys, and all keys without a terminal, stay set: they are written
+  unchanged into a section `# --- local only: … ---` at the end of the generated
+  file, and `machine attention` offers the same choices until they are resolved.
+- A file with shell code (lines that are not `KEY=value`) is left unchanged; its
+  choices are keep locally, remove or skip.
+
+Warnings name the keys, the file, the item and the backup, never the values.
 
 The group follows the context (`ENV_GROUPS` in `machine_cli/core.py`): `private` → `private`, `work` → `work`, a container without context → none.
 

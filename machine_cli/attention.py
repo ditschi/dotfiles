@@ -169,6 +169,16 @@ class AttentionMixin:
                     self.resolve_ssh_key_difference,
                 )
             )
+        env = self.env_attention()
+        if env:
+            items.append(
+                AttentionItem(
+                    "env",
+                    "local-only env content: " + "; ".join(env),
+                    "Resolve it now (machine env pull)?",
+                    lambda: self.cmd_env_pull(interactive=True),
+                )
+            )
         monitoring = self.monitoring_item()
         if monitoring:
             items.append(monitoring)

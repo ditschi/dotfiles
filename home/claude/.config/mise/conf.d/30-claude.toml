@@ -1,3 +1,4 @@
 # Claude Code (feature `claude-code`, which also selects the `openspec` group).
+# aube skips install scripts by default; the postinstall puts the native binary in place.
 [tools]
-"npm:@anthropic-ai/claude-code" = "latest"
+"npm:@anthropic-ai/claude-code" = { version = "latest", allow_builds = ["@anthropic-ai/claude-code"] }

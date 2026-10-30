@@ -41,10 +41,15 @@
 
 # --- Touchpad and TrackPoint reset -------------------------------------
 
-- name: Install touchpad-reset
+- name: Remove the former touchpad-reset
+  ansible.builtin.file:
+    path: /usr/local/bin/touchpad-reset
+    state: absent
+
+- name: Install mouse-reset
   ansible.builtin.copy:
-    src: touchpad-reset
-    dest: /usr/local/bin/touchpad-reset
+    src: mouse-reset
+    dest: /usr/local/bin/mouse-reset
     mode: "0755"
 
 # --- Tablet mode on-screen keyboard --------------------------------------

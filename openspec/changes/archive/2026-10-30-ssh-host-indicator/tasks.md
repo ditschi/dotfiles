@@ -8,4 +8,4 @@
 ## 2. Validation
 
 - [x] 2.1 Run `pre-commit run --files` on the changed paths and `pytest tests/unit/test_starship_prompt.py tests/unit/test_zsh_handoff.py tests/unit/test_command_prefix.py -q` (the prompt tests that read `starship.toml`). Result: pre-commit passes; `test_starship_prompt.py` and `test_zsh_handoff.py` 52 passed. `test_command_prefix.py` has 18 failures (`starship_precmd: command not found` in the Starship bash variants), identical on unchanged `main`, so not caused by this change.
-- [ ] 2.2 After merging: `ssh` into a host and check the prompt in zsh and bash.
+- [x] 2.2 After merging: `ssh` into a host and check the prompt in zsh and bash. Result: the owner confirmed the host is shown.

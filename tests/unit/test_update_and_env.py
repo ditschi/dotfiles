@@ -188,6 +188,19 @@ def test_status_verbose_shows_configs_and_files(update_env, capsys):
     assert "local changes" in out and "wip.txt" in out
 
 
+def test_status_notes_a_symlinked_home(update_env, monkeypatch, capsys):
+    machine, _repo, _other, home, _calls = update_env
+    alias = home.parent / "home-alias"
+    alias.symlink_to(home)
+    monkeypatch.setenv("HOME", str(alias))
+    assert machine.cmd_status() == 0
+    assert f"home is {home.resolve()}" in capsys.readouterr().out
+
+    monkeypatch.setenv("HOME", str(home.resolve()))
+    assert machine.cmd_status() == 0
+    assert "home is" not in capsys.readouterr().out
+
+
 def _auto(machine) -> int:
     return machine.cmd_update(argparse.Namespace(auto=True))
 

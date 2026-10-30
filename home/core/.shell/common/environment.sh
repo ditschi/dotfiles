@@ -1,6 +1,24 @@
 # shellcheck shell=bash
 export PATH="$PATH:$HOME/.local/bin"
 
+# VS Code's copilotCLIShim drops its dir from PATH by literal match on its realpath;
+# a symlinked $HOME would otherwise make it start itself recursively.
+if [[ $PATH == */github.copilot-chat/copilotCli* ]]; then
+    _dotfiles_rest=$PATH: _dotfiles_path=
+    while [[ -n $_dotfiles_rest ]]; do
+        _dotfiles_dir=${_dotfiles_rest%%:*}
+        _dotfiles_rest=${_dotfiles_rest#*:}
+        if [[ $_dotfiles_dir == /*/github.copilot-chat/copilotCli && -d $_dotfiles_dir ]]; then
+            # shellcheck disable=SC2034 # Keeps zsh chpwd hooks (zoxide) quiet in the subshell.
+            _dotfiles_real=$(chpwd_functions=() && cd -P -- "$_dotfiles_dir" && pwd -P) &&
+                _dotfiles_dir=$_dotfiles_real
+        fi
+        _dotfiles_path+=:$_dotfiles_dir
+    done
+    export PATH=${_dotfiles_path#:}
+    unset _dotfiles_rest _dotfiles_path _dotfiles_dir _dotfiles_real
+fi
+
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 

@@ -309,6 +309,9 @@ class CommandsMixin:
             host.append(" · config in sync", style="green")
         else:
             host.append(" · config differs from the repo", style="yellow")
+        home = os.environ.get("HOME", "")
+        if home and os.path.realpath(home) != os.path.normpath(home):
+            host.append(f" · home is {os.path.realpath(home)}", style="dim")
         grid.add_row("host", host)
         if self.applied_host_path.is_file():
             features = self.saved_features()

@@ -49,3 +49,27 @@ def test_tool_that_is_also_an_apt_package_fails(tmp_path):
     )
     errors = mise_check.check(repo)
     assert sorted(e.split("'")[1] for e in errors) == ["fd", "git"]
+
+
+def test_pipx_tool_without_python_minor_fails(tmp_path):
+    repo = _repo(
+        tmp_path,
+        {
+            "60.toml": '[tools]\n"pipx:gnome-extensions-cli" = "latest"\n',
+            "70.toml": '[tools]\n"pipx:other" = { version = "1.0" }\n',
+        },
+        ["curl"],
+    )
+    errors = mise_check.check(repo)
+    assert len(errors) == 2
+    assert "pipx:gnome-extensions-cli" in errors[0] and "60.toml" in errors[0]
+    assert "pipx:other" in errors[1] and "70.toml" in errors[1]
+
+
+def test_pipx_tool_with_python_minor_passes(tmp_path):
+    repo = _repo(
+        tmp_path,
+        {"60.toml": '[tools]\n"pipx:x" = { version = "latest", python = "3.14" }\n'},
+        ["curl"],
+    )
+    assert mise_check.check(repo) == []

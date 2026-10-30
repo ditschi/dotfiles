@@ -590,7 +590,11 @@ User-space tools for every host (`fzf`, `zoxide`, `eza`, `fd`, `starship`, `jq`,
 OpenSpec and the fonts come from the feature groups (`home/<group>/.config/mise/conf.d/`). Versions are pinned in `home/core/.config/mise/mise.lock`
 and `locks/` next to it; regenerate them with
 `mise lock --global --platform linux-x64,linux-arm64` after a fragment change.
+A `pipx:` tool names one Python minor (`{ version = "latest", python = "3.14" }`), so
+its uv lock pins dependencies only for that Python; mise installs its own CPython for
+it, and `python3` on `PATH` stays the system one.
 A tool declared in two fragments, or in a fragment and an Ansible package list,
+or a `pipx:` tool without a Python minor,
 fails `python3 -m machine_cli.mise_check` (pre-commit and CI).
 
 ## Tests

@@ -1,7 +1,8 @@
 """Repository checks for the mise tool fragments.
 
 A tool is declared once: not in two fragments, and not in an Ansible package list
-(a tool that mise installs without root must not also be an apt package).
+(a tool that mise installs without root must not also be an apt package). A `pipx:`
+tool names one Python minor, so its uv lock pins no dependencies for other Pythons.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ SKIP_DIRS = {".git", "openspec", "tests", "node_modules"}
 APT_NAMES = {"fd": "fd-find", "node": "nodejs", "tmux-builds": "tmux"}
 
 _SECTION = re.compile(r"^\s*\[(.+?)\]\s*$")
+_PYTHON = re.compile(r"""[{,]\s*python\s*=\s*["'][0-9]+\.[0-9]+""")
 _KEY = re.compile(r"""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.:/@-]+))\s*=""")
 
 
@@ -58,9 +60,10 @@ def fragments(repo: Path = REPO) -> List[Path]:
     return sorted(found)
 
 
-def tools_of(path: Path) -> List[str]:
-    """Names in the [tools] table; a stdlib reader, as tomllib needs Python 3.11."""
-    names: List[str] = []
+def tool_lines(path: Path) -> Dict[str, str]:
+    """Name -> declaration line in the [tools] table; a stdlib reader, as tomllib
+    needs Python 3.11."""
+    lines: Dict[str, str] = {}
     in_tools = False
     for line in path.read_text().splitlines():
         section = _SECTION.match(line)
@@ -69,8 +72,8 @@ def tools_of(path: Path) -> List[str]:
             continue
         key = _KEY.match(line)
         if in_tools and key:
-            names.append(next(g for g in key.groups() if g))
-    return names
+            lines[next(g for g in key.groups() if g)] = line
+    return lines
 
 
 def short_name(tool: str) -> str:
@@ -104,8 +107,13 @@ def check(repo: Path = REPO) -> List[str]:
     errors: List[str] = []
     declared: Dict[str, List[str]] = defaultdict(list)
     for path in fragments(repo):
-        for tool in tools_of(path):
+        for tool, line in tool_lines(path).items():
             declared[tool].append(str(path.relative_to(repo)))
+            if tool.startswith("pipx:") and not _PYTHON.search(line):
+                errors.append(
+                    f"pipx tool {tool!r} in {path.relative_to(repo)} names no Python "
+                    'minor; declare it as { version = "...", python = "3.14" }'
+                )
     for tool, paths in sorted(declared.items()):
         if len(paths) > 1:
             errors.append(

@@ -9,7 +9,7 @@ function _dotfiles_update_segment() {
 }
 precmd_functions+=(_dotfiles_update_segment)
 
-dotfiles_cache_eval starship starship init zsh --print-full-init
+dotfiles_cache_eval starship-init starship init zsh --print-full-init
 # Prompt character colour: shell + last exit status (env_var.prompt_* in starship.toml).
 # Runs after Starship's precmd, which has set STARSHIP_CMD_STATUS.
 function _dotfiles_prompt_state() {

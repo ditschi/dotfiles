@@ -101,7 +101,7 @@ dotfiles_cli_completions() {
   dotfiles_cache_eval mise mise completion zsh
   dotfiles_cache_eval lazygit lazygit completion zsh
   dotfiles_cache_eval openspec openspec completion generate zsh
-  dotfiles_cache_eval starship starship completions zsh
+  dotfiles_cache_eval starship-completion starship completions zsh
   dotfiles_cache_eval git-lfs git-lfs completion zsh
 }
 

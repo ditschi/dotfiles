@@ -2,6 +2,7 @@
 # Cached tool init output, sourced by the explicit zsh and Bash loaders.
 # `dotfiles_cache_eval <name> <cmd> [args...]` sources the output of the command, which is
 # regenerated only when the tool binary is newer than the cache file. A missing tool is skipped.
+# `<name>` is the cache file key: use a distinct one per command of the same tool.
 dotfiles_cache_eval() {
     local name="$1" bin file shell_ext=bash
     shift

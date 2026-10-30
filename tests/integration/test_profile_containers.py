@@ -92,7 +92,12 @@ def test_shells_start_cleanly(profile_env):
 
     bash = host.run(
         "TERM=xterm bash -i -c "
-        '\'echo "${STARSHIP_SHELL:-none}|$(command -v starship || echo none)"; '
+        "'if command -v starship >/dev/null 2>&1; then "
+        "[[ ${PROMPT_COMMAND:-} == *starship_precmd* ]] || "
+        '{ echo "Starship prompt hook was overwritten during Bash startup" >&2; exit 1; }; '
+        "PS1=; starship_precmd || exit; "
+        '[[ -n $PS1 ]] || { echo "Starship did not render a Bash prompt" >&2; exit 1; }; '
+        'fi; echo "${STARSHIP_SHELL:-none}|$(command -v starship || echo none)"; '
         'echo "${MACHINE_CONTEXT:-}|$MACHINE_DEVICE|${WORK_SETUP:-}|$(alias g)"\''
     )
     assert bash.rc == 0, bash.stderr

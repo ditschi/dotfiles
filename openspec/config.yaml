@@ -21,6 +21,18 @@ context: |
   outcome, propose the most plausible motivation in clean prose, and have the owner
   confirm or reword it before it is written as fact.
 
+  Where to work: the main clone (the checkout whose path has no `/.worktrees/`) is
+  live - files in $HOME are symlinks into it and the host's shell, `machine` and mise
+  read it directly. A worktree under `.worktrees/` is not live; if the current
+  checkout is one, keep working there and never create a nested worktree. Work in the
+  main clone only when the change definitely cannot affect the host's shell or tools,
+  not even in a new session (e.g. only openspec/, docs/, tests/, Readme.md).
+  Everything else (home/, machine_cli/, bootstrap, mise.toml, ansible/, ...) is made
+  in a git worktree at `<main clone>/.worktrees/<change-name>` on branch
+  `<change-name>`; `.worktrees/` is gitignored. When in doubt, use a worktree. Decide
+  before the first artifact is written, so the change directory lives in the same
+  checkout as its implementation.
+
   Open questions (every artifact and explore/propose/update conversations): ask
   unresolved questions and history-derived motivations with the ask_user form, not
   prose - one selectable option per answer (confirm / reword / reject for proposed
@@ -32,6 +44,7 @@ rules:
   proposal:
     - The Why states only motivation confirmed by the owner, in clean prose. For motivation inferred from history, propose a wording and ask before writing it; otherwise list it as an assumption.
     - Name the affected capabilities and profiles.
+    - State where the change is made - main clone or worktree `.worktrees/<change-name>` - and why.
   design:
     - List alternatives that were considered and why they were rejected, as stated by the owner.
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
@@ -42,6 +55,10 @@ rules:
     - Record validation commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
 
 operations:
+  apply:
+    guidance:
+      - Before editing, check the proposal's stated checkout. For a worktree, work only inside `.worktrees/<change-name>` (create it with `git worktree add .worktrees/<change-name> -b <change-name>` if missing) and never edit the same files in the main clone.
   archive:
     guidance:
+      - For a worktree change, archive inside the worktree, then ask the owner before merging the branch into the main clone and before removing the worktree.
       - If the change introduced or altered a lasting design decision, make sure the archived design.md states the decision and its rationale in plain prose.

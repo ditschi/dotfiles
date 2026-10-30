@@ -15,3 +15,5 @@ ansible/group_vars/**/vault.yml
 .nox/
 # Files `machine` downloads for manual steps (e.g. the thunderbird-cli extension)
 /downloads/
+# Git worktrees for changes that must not touch the live host shell
+/.worktrees/

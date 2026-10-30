@@ -30,6 +30,22 @@ style = "yellow"
 format = "[$env_value]($style) "
 style = "red"
 
+[env_var.prompt_zsh]
+variable = "DOTFILES_PROMPT_ZSH"
+format = "[❯](bold green) "
+
+[env_var.prompt_zsh_err]
+variable = "DOTFILES_PROMPT_ZSH_ERR"
+format = "[❯](bold red) "
+
+[env_var.prompt_bash]
+variable = "DOTFILES_PROMPT_BASH"
+format = "[❯](bold blue) "
+
+[env_var.prompt_bash_err]
+variable = "DOTFILES_PROMPT_BASH_ERR"
+format = "[❯](bold 208) "
+
 [fill]
 symbol = "─"
 
@@ -57,22 +73,6 @@ format = "[$time]($style) "
 [container]
 format = "[$symbol]($style)"
 symbol = "🐳 "
-
-[env_var.prompt_zsh]
-variable = "DOTFILES_PROMPT_ZSH"
-format = "[❯](bold green) "
-
-[env_var.prompt_zsh_err]
-variable = "DOTFILES_PROMPT_ZSH_ERR"
-format = "[❯](bold red) "
-
-[env_var.prompt_bash]
-variable = "DOTFILES_PROMPT_BASH"
-format = "[❯](bold blue) "
-
-[env_var.prompt_bash_err]
-variable = "DOTFILES_PROMPT_BASH_ERR"
-format = "[❯](bold 208) "
 
 # Only for shells without the hook; zsh and bash draw the character via env_var above.
 [shell]

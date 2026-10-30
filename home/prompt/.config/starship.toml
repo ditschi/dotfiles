@@ -3,9 +3,9 @@
 # the shells export one of the DOTFILES_PROMPT_* variables before each prompt (from
 # STARSHIP_CMD_STATUS) and one env_var module per state draws the character. Other shells
 # fall back to the shell module. 🐳 marks a container; a failed command also shows in the
-# status segment.
+# status segment. user@host appears only over SSH (and the user name in a root shell).
 format = """
-$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}$status$python$cmd_duration$time
+$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}$status$python$cmd_duration($username$hostname )$time
 $container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
 """
 
@@ -64,6 +64,17 @@ symbol = "Py "
 [cmd_duration]
 min_time = 0
 format = "[$duration]($style) "
+
+# Like the former p10k context segment: shown over SSH, and the user name also as root.
+[username]
+format = "[$user]($style)"
+style_user = "180"
+style_root = "bold 178"
+
+[hostname]
+ssh_only = true
+format = "[@$hostname]($style)"
+style = "180"
 
 [time]
 disabled = false

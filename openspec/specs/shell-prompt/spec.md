@@ -29,7 +29,7 @@ Interactive zsh SHALL use the Starship prompt when Starship is installed. The pr
 
 ### Requirement: One prompt configuration for both shells
 zsh and bash SHALL read the same Starship configuration, which is linked on every host, whatever its context and device. The prompt SHALL show:
-- on the first line: the directory, the Git branch and status, the dotfiles update segment, the status of the last command, the Python environment, the command duration and the time
+- on the first line: the directory, the Git branch and status, the dotfiles update segment, the status of the last command, the Python environment, the command duration, the remote context (`user@hostname`) and the time
 - on the second line: a container marker and the prompt character `❯`
 
 #### Scenario: Same layout in both shells
@@ -65,3 +65,18 @@ The prompt SHALL show 🐳 in front of the prompt character when the shell runs 
 #### Scenario: On a host
 - **WHEN** a shell runs directly on a host
 - **THEN** no container marker is shown
+
+### Requirement: Remote context
+The Starship prompt SHALL show `user@hostname` in front of the time when the shell runs over SSH, in zsh and in bash. In a root shell it SHALL show the user name also without SSH. Otherwise it SHALL show neither.
+
+#### Scenario: SSH session
+- **WHEN** an interactive zsh or bash runs over SSH
+- **THEN** the first prompt line shows `user@hostname` in front of the time
+
+#### Scenario: Local session
+- **WHEN** a non-root shell runs locally
+- **THEN** neither user name nor hostname is shown
+
+#### Scenario: Local root shell
+- **WHEN** a root shell runs locally
+- **THEN** the user name is shown, without the hostname

@@ -255,7 +255,7 @@ The update SHALL report a pending system update only when the files changed sinc
 - **THEN** no system update is reported for it
 
 ### Requirement: Attention entry point
-`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
+`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`, a filesystem low on space or inodes) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
 
 #### Scenario: Open items exist
 - **WHEN** a user runs `machine attention` and items are open
@@ -304,6 +304,10 @@ The update SHALL report a pending system update only when the files changed sinc
 #### Scenario: Telegraf working
 - **WHEN** the host has `monitoring` and `telegraf` is active with an output, or the host does not have `monitoring`
 - **THEN** no monitoring item is listed
+
+#### Scenario: Low disk space
+- **WHEN** a watched filesystem is low on space or inodes (see the capability `disk-space`)
+- **THEN** a disk item names the mount point and its usage and offers the guided cleanup
 
 ### Requirement: Update ends converged
 `machine update` SHALL end with a converge check, also when nothing was incoming: the user-space tools declared in the `mise` configuration are installed (missing ones are added) and the dotfile groups of the host are applied (missing links created, removed ones pruned). The checks SHALL be idempotent and cheap when nothing is missing.

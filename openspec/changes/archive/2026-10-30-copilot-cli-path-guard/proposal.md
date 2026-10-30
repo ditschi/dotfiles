@@ -8,7 +8,7 @@ On hosts whose home is reachable by two paths, VS Code's Copilot CLI wrapper cal
 
 - Shell startup rewrites the `PATH` entry of VS Code's Copilot CLI wrapper directory (`…/github.copilot-chat/copilotCli`) to its canonical path. The wrapper's own `PATH` filter then matches, and `copilot` resolves to the real CLI instead of the wrapper. Other `PATH` entries and their order stay unchanged.
 - `machine status` shows an informational note in the host row when `$HOME` differs from its canonical path, so hosts with this layout are visible.
-- An upstream issue is filed at `microsoft/vscode-copilot-chat` asking the shim to compare canonical paths and to guard against recursion. The agent files it after the owner reviews the text.
+- An upstream issue for `microsoft/vscode-copilot-chat` was drafted, asking the shim to compare canonical paths and to guard against recursion; the owner decided not to file it in this change.
 
 ## Capabilities
 

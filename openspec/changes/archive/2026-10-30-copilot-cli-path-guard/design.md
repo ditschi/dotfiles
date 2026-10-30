@@ -36,7 +36,7 @@ Alternatives considered:
 
 **Informational note in `machine status`.** The host row gets a note such as `· home is /mnt/data/home/u` when `Path(os.environ["HOME"])` differs from its `resolve()`. It is information, not an attention item: with the shell fix nothing needs manual action.
 
-**Upstream report.** The agent drafts an issue for `microsoft/vscode-copilot-chat` (canonicalise both sides before filtering, plus a recursion guard such as an environment marker) and files it after the owner approves the text. The local fix stays even when upstream fixes the bug, because older extension versions remain installed on hosts.
+**Upstream report.** An issue for `microsoft/vscode-copilot-chat` was drafted (canonicalise both sides before filtering, plus a recursion guard such as an environment marker); the owner decided not to file it as part of this change. The local fix does not depend on an upstream fix, and it stays useful while older extension versions remain installed on hosts.
 
 ## Risks / Trade-offs
 

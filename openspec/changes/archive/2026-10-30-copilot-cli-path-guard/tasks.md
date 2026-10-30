@@ -12,7 +12,7 @@
 
 ## 3. Upstream report
 
-- [ ] 3.1 Draft the issue text for `microsoft/vscode-copilot-chat` (symptom, shim version 0.0.394, the literal `replaceAll` filter vs canonical `__dirname`, reproduction without running copilot, suggested fix: compare `realpath` of each `PATH` entry and add a recursion guard env marker), show it to the owner, and file it only after approval. Verify by recording the issue URL in this task.
+- [ ] 3.1 Draft the issue text for `microsoft/vscode-copilot-chat` (symptom, shim version 0.0.394, the literal `replaceAll` filter vs canonical `__dirname`, reproduction without running copilot, suggested fix: compare `realpath` of each `PATH` entry and add a recursion guard env marker), show it to the owner, and file it only after approval. Verify by recording the issue URL in this task. Skipped by the owner at archive time; not filed.
 
 ## 4. Validation
 

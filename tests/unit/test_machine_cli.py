@@ -190,7 +190,7 @@ def test_apply_reverts_profile_synced_by_update(tmp_path, monkeypatch, passed_st
 def test_sde_prefers_repository_script_and_uses_shared_fallback(tmp_path, shell):
     if not shutil.which(shell):
         pytest.skip(f"{shell} unavailable")
-    source = (REPO / "home/work/.zsh/config/01_work.zsh").read_text()
+    source = (REPO / "home/work/.shell/work/common/environment.sh").read_text()
     body = source.split("sde() {", 1)[1].split("\n}\n", 1)[0]
     tools = tmp_path / "bin"
     tools.mkdir()

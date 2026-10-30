@@ -46,14 +46,14 @@ The handoff SHALL NOT depend on changing the account's login shell. Changing it 
 - **THEN** zsh is reached through the bash handoff
 
 ### Requirement: Handoff health check
-Before handing an interactive bash session over to zsh, the system SHALL verify that zsh is executable, that `~/.zshrc` and the zsh loader are present and readable, and that a login interactive zsh starts without error output. The trial start SHALL also run the deferred plugin part, so that an error in a deferred plugin is detected.
+Before handing an interactive bash session over to zsh, the system SHALL verify that zsh is executable, that `~/.zshrc` and `~/.shell/zsh/init.zsh` are present and readable, and that a login interactive zsh starts without error output. The trial start SHALL also run the deferred plugin part, so that an error in a deferred plugin is detected.
 
 #### Scenario: zsh is not installed
 - **WHEN** the handoff is about to run and no zsh executable is found
 - **THEN** the session stays in bash and a one-line diagnostic names the missing zsh
 
 #### Scenario: Loader is missing
-- **WHEN** `~/.zsh/config/00_LOADER.zsh` does not exist
+- **WHEN** `~/.shell/zsh/init.zsh` does not exist
 - **THEN** the session stays in bash and the diagnostic names the missing loader
 
 #### Scenario: zsh fails to start
@@ -84,17 +84,14 @@ The system SHALL store the check outcome (pass or fail, and the failing check) i
 - **THEN** the session stays in bash and the diagnostic is shown again without re-running the trial start
 
 ### Requirement: Cache invalidation
-The system SHALL discard the cached outcome and re-run the checks when any of the following happens:
-- the zsh binary path or version changes;
-- `~/.zshenv`, `~/.zshrc`, `~/.zsh/config/*.zsh`, the zsh plugin list, `~/.zsh/machine-profile.sh` or `~/.preferred-shell` changes;
-- the dotfiles are updated.
+The system SHALL discard the cached outcome and re-run checks when the zsh binary path/version, shell preference, zsh entry points/local override, health-check helper, or startup inputs under `~/.shell/common`, `~/.shell/zsh` and `~/.shell/work` change, including the plugin list and file removal/rename. Dotfile updates SHALL invalidate the outcome. Changes to Bash-only modules other than the health-check helper SHALL NOT require a new zsh check.
 
 #### Scenario: Config edited after failure
 - **WHEN** a zsh config file is modified after a cached failure
 - **THEN** the next interactive bash start re-runs the checks
 
 #### Scenario: Plugin list edited
-- **WHEN** the zsh plugin list is modified after a cached pass
+- **WHEN** `~/.shell/zsh/plugins.txt` is modified after a cached pass
 - **THEN** the next interactive bash start re-runs the checks
 
 #### Scenario: Config file removed or renamed
@@ -108,6 +105,26 @@ The system SHALL discard the cached outcome and re-run the checks when any of th
 #### Scenario: Manual reset
 - **WHEN** the user runs the documented reset command
 - **THEN** the cache is removed and the next start re-runs the checks
+
+#### Scenario: Shared helper changed
+- **WHEN** a shared startup helper under `~/.shell/common` changes after a cached outcome
+- **THEN** the next eligible Bash handoff re-runs the zsh checks
+
+#### Scenario: Work startup input changed
+- **WHEN** a work startup module changes, is removed or is renamed after a cached outcome on a work host
+- **THEN** the next eligible Bash handoff re-runs the zsh checks
+
+#### Scenario: Host-local override changed
+- **WHEN** `~/.zshrc-local` changes after a cached outcome
+- **THEN** the next eligible Bash handoff re-runs the zsh checks
+
+#### Scenario: Health-check implementation changed
+- **WHEN** `~/.shell/bash/zsh-health.bash` changes after a cached outcome
+- **THEN** the next eligible Bash handoff re-runs the zsh checks
+
+#### Scenario: Bash-only integration changed
+- **WHEN** only a Bash editor, history or prompt module changes locally without a dotfile update
+- **THEN** that edit alone does not invalidate the zsh health outcome
 
 ### Requirement: Health check does not change who is handed over
 The health check SHALL run only for sessions that would hand over to zsh anyway, and SHALL NOT change which sessions are handed over.

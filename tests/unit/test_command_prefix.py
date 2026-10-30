@@ -14,7 +14,7 @@ import pytest
 
 from package_sets import REPO
 
-HELPER = REPO / "home/core/.zsh/command-prefix.sh"
+HELPER = REPO / "home/core/.shell/common/command-prefix.sh"
 SHELLS = [shell for shell in ("bash", "zsh") if shutil.which(shell)]
 
 
@@ -146,7 +146,7 @@ def zsh_session(request, tmp_path: Path):
         pytest.skip("zsh is not installed")
     tmp_path = tmp_path / "zsh-home"
     tmp_path.mkdir()
-    (tmp_path / ".zsh").symlink_to(REPO / "home/core/.zsh")
+    (tmp_path / ".shell").symlink_to(REPO / "home/core/.shell")
     prompt_setup = ""
     if request.param == "starship":
         starship = shutil.which("starship")
@@ -173,7 +173,7 @@ def zsh_session(request, tmp_path: Path):
         'probe() { printf "%s\\n" "$*" >> "$CALLS"; '
         'case "$*" in "probe "* | "remote probe "*) return 7;; esac; }; '
         + prompt_setup
-        + 'source "$HOME/.zsh/config/04_keybindings.zsh"; '
+        + 'source "$HOME/.shell/zsh/keybindings.zsh"; '
         "PROMPT='READY:%? '; RPROMPT=''; printf '\\nSETUP_DONE\\n'\n"
     )
     session.send(setup)
@@ -195,8 +195,7 @@ def bash_session(request, tmp_path: Path):
         pytest.skip("bash is not installed")
     tmp_path = tmp_path / "bash-home"
     tmp_path.mkdir()
-    (tmp_path / ".zsh").mkdir()
-    (tmp_path / ".zsh/command-prefix.sh").symlink_to(HELPER)
+    (tmp_path / ".shell").symlink_to(REPO / "home/core/.shell")
     (tmp_path / ".preferred-shell").write_text("bash")
     editing_mode, prompt = request.param
     if prompt == "starship":
@@ -205,9 +204,6 @@ def bash_session(request, tmp_path: Path):
             pytest.skip("Starship is not installed")
         (tmp_path / ".local/bin").mkdir(parents=True)
         (tmp_path / ".local/bin/starship").symlink_to(starship)
-        (tmp_path / ".zsh/cache-eval.sh").symlink_to(
-            REPO / "home/core/.zsh/cache-eval.sh"
-        )
     session = ShellSession("bash", tmp_path)
     request.addfinalizer(session.close)
     prompt_setup = "PS1='READY:${_dotfiles_prefix_status:-0} '; "
@@ -372,11 +368,11 @@ def test_original_history_and_no_stale_suggestion(zsh_session, bash_session):
 
 @pytest.mark.parametrize("shell", SHELLS)
 def test_noninteractive_has_no_recovery_hooks(shell: str, tmp_path: Path):
-    (tmp_path / ".zsh").symlink_to(REPO / "home/core/.zsh")
+    (tmp_path / ".shell").symlink_to(REPO / "home/core/.shell")
     config = (
         REPO / "home/core/.bashrc"
         if shell == "bash"
-        else REPO / "home/core/.zsh/config/04_keybindings.zsh"
+        else REPO / "home/core/.shell/zsh/keybindings.zsh"
     )
     result = subprocess.run(
         [

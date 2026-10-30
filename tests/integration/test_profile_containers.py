@@ -36,10 +36,15 @@ def test_host_dotfiles(profile_env):
     zshrc = host.file("/home/tester/.zshrc")
     assert zshrc.exists
     assert zshrc.is_symlink
+    assert host.file("/home/tester/.shell/common/machine-profile.sh").exists
+    assert host.file("/home/tester/.shell/common/environment.sh").exists
+    assert host.file("/home/tester/.shell/bash/init.bash").exists
+    assert host.file("/home/tester/.shell/zsh/init.zsh").exists
+    assert host.file("/home/tester/.shell/zsh/plugins.txt").exists
 
-    work_zsh = host.file("/home/tester/.zsh/config/01_work.zsh")
-    work_tools = host.file("/home/tester/.zsh/config/01_work_tools.zsh")
-    work_ldap = host.file("/home/tester/.zsh/config/01_work_ldap_helpers.zsh")
+    work_zsh = host.file("/home/tester/.shell/work/common/environment.sh")
+    work_tools = host.file("/home/tester/.shell/work/common/tools.sh")
+    work_ldap = host.file("/home/tester/.shell/work/zsh/ldap-helpers.zsh")
     if context == "work":
         assert work_zsh.exists
         assert work_tools.exists
@@ -53,11 +58,12 @@ def test_host_dotfiles(profile_env):
     assert not host.file("/home/tester/.p10k.zsh").exists
     assert host.file("/home/tester/.config/starship.toml").is_symlink
 
-    timer = host.file("/home/tester/.config/systemd/user/dotfiles-update-check.timer")
-    if device == "container":
-        assert not timer.exists
-    else:
-        assert timer.exists
+    for name in ("dotfiles-update-check.timer", "machine-disk-check.timer"):
+        timer = host.file(f"/home/tester/.config/systemd/user/{name}")
+        if device == "container":
+            assert not timer.exists
+        else:
+            assert timer.exists
 
     applied = host.file("/home/tester/.local/share/machine/applied-host.yml")
     assert applied.exists
@@ -71,6 +77,30 @@ def test_host_dotfiles(profile_env):
         "christian.ditscher@de.bosch.com" if context == "work" else "chris@ditscher.me"
     )
     assert host.check_output("git -C /tmp config user.email") == expected
+
+
+@pytest.mark.docker
+@pytest.mark.parametrize("profile_env", ["work-desktop"], indirect=True)
+def test_work_shell_links_are_pruned_on_private_group_switch(profile_env):
+    host, _name = profile_env
+    work_file = host.file("/home/tester/.shell/work/common/environment.sh")
+    assert work_file.is_symlink
+    created = host.run(
+        "mkdir -p ~/.shell/work && "
+        "printf 'host-local\\n' > ~/.shell/work/local-shell-override"
+    )
+    assert created.rc == 0, created.stderr
+    local_file = host.file("/home/tester/.shell/work/local-shell-override")
+
+    result = host.run(
+        "cd /dotfiles && ./bootstrap --context private --device desktop "
+        "--yes --skip-ansible --no-become"
+    )
+    assert result.rc == 0, result.stderr
+    assert not work_file.exists
+    assert local_file.exists and local_file.content_string == "host-local\n"
+    assert host.file("/home/tester/.shell/bash/init.bash").exists
+    assert host.file("/home/tester/.shell/zsh/init.zsh").exists
 
 
 @pytest.mark.docker
@@ -112,6 +142,15 @@ def test_shells_start_cleanly(profile_env):
     # Starship drives the bash prompt when installed; without it bash starts cleanly anyway.
     starship_shell, starship_bin = prompt.split("|")
     assert starship_shell == ("none" if starship_bin == "none" else "bash")
+
+    zsh_ldap = host.run(f"{STUB_ENV} TERM=xterm zsh -i -c 'whence -w ldapsearch-bosch'")
+    bash_ldap = host.run("TERM=xterm bash -i -c 'declare -F ldapsearch-bosch'")
+    if context == "work":
+        assert zsh_ldap.stdout.strip().endswith("function")
+        assert bash_ldap.stdout == ""
+    else:
+        assert zsh_ldap.stdout.strip().endswith("none")
+        assert bash_ldap.stdout == ""
 
 
 @pytest.mark.docker

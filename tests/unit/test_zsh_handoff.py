@@ -10,7 +10,7 @@ import pytest
 
 from package_sets import REPO
 
-HELPER = REPO / "home/core/.zsh/zsh-handoff-check.sh"
+HELPER = REPO / "home/core/.shell/bash/zsh-health.bash"
 BASHRC = REPO / "home/core/.bashrc"
 TOOLS = ("mktemp", "head", "rm", "mkdir", "timeout", "ps", "tr", "cat", "sleep", "grep")
 
@@ -36,11 +36,51 @@ esac
 @pytest.fixture
 def env(tmp_path: Path):
     home = tmp_path / "home"
-    (home / ".zsh/config").mkdir(parents=True)
-    (home / ".zsh/config/00_LOADER.zsh").write_text("")
+    (home / ".shell/zsh").mkdir(parents=True)
+    (home / ".shell/zsh/init.zsh").write_text("")
     (home / ".zshrc").write_text("")
     (home / "mode").write_text("ok")
-    (home / ".zsh/plugins.txt").write_text("")
+    (home / ".shell/zsh/plugins.txt").write_text("")
+    (home / ".shell/common").mkdir()
+    (home / ".shell/work/common").mkdir(parents=True)
+    (home / ".shell/work/zsh").mkdir(parents=True)
+    (home / ".shell/bash").mkdir()
+    shutil.copy(HELPER, home / ".shell/bash/zsh-health.bash")
+    for path in (
+        home / ".shell/common/environment.sh",
+        home / ".shell/work/common/environment.sh",
+        home / ".shell/work/zsh/ldap-helpers.zsh",
+    ):
+        path.write_text("")
+    for name in (
+        "aliases.sh",
+        "environment.sh",
+        "machine-profile.sh",
+        "cache-eval.sh",
+        "update-state.sh",
+        "command-prefix.sh",
+    ):
+        if name in {"environment.sh", "readline.bash"}:
+            continue
+        (home / ".shell/common" / name).symlink_to(
+            REPO / "home/core/.shell/common" / name
+        )
+    for name in (
+        "init.bash",
+        "options.bash",
+        "history.bash",
+        "tools.bash",
+        "readline.bash",
+        "prompt.bash",
+        "handoff.bash",
+    ):
+        if name == "readline.bash":
+            continue
+        (home / ".shell/bash" / name).symlink_to(REPO / "home/core/.shell/bash" / name)
+    shutil.copy(
+        REPO / "home/core/.shell/bash/readline.bash",
+        home / ".shell/bash/readline.bash",
+    )
     (home / ".local/share/antidote/mattmc3/antidote").mkdir(parents=True)
     (home / ".cache/zsh").mkdir(parents=True)
     (home / ".cache/zsh/plugins.zsh").write_text("# generated")
@@ -56,8 +96,8 @@ def env(tmp_path: Path):
     old = time.time() - 100
     for path in (
         home / ".zshrc",
-        home / ".zsh/config/00_LOADER.zsh",
-        home / ".zsh/plugins.txt",
+        home / ".shell/zsh/init.zsh",
+        home / ".shell/zsh/plugins.txt",
         zsh,
     ):
         os.utime(path, (old, old))
@@ -71,7 +111,7 @@ def env(tmp_path: Path):
 
 
 def check(environ: dict, snippet: str = "dotfiles_zsh_handoff_ok"):
-    script = f'. "{HELPER}"; {snippet}; echo "rc=$?"'
+    script = f'. "$HOME/.shell/bash/zsh-health.bash"; {snippet}; echo "rc=$?"'
     return subprocess.run(
         [shutil.which("bash"), "-c", script],
         env=environ,
@@ -89,6 +129,132 @@ def touch_later(path: Path):
 def trial_calls(home: Path) -> int:
     calls = home / "zsh-calls"
     return len(calls.read_text().splitlines()) if calls.exists() else 0
+
+
+def test_zsh_loader_ignores_unregistered_module(tmp_path: Path):
+    zsh = shutil.which("zsh")
+    if not zsh:
+        pytest.skip("zsh is not installed")
+
+    home = tmp_path / "zsh-home"
+    shell_root = home / ".shell"
+    plugin_module = REPO / "home/core/.shell/zsh/plugins.zsh"
+    plugin_source = plugin_module.read_text()
+    (shell_root / "common").mkdir(parents=True)
+    shutil.copytree(
+        REPO / "home/core/.shell/common", shell_root / "common", dirs_exist_ok=True
+    )
+    shutil.copytree(REPO / "home/core/.shell/zsh", shell_root / "zsh")
+    shutil.copy(REPO / "home/core/.zshrc", home / ".zshrc")
+    shutil.copy(REPO / "home/core/.zshenv", home / ".zshenv")
+    (home / ".zshrc-local").write_text(
+        '[[ $DOTFILES_ZSH_LOADED == 1 ]] && print -r -- local > "$HOME/local-order"\n'
+    )
+    (shell_root / "zsh/unregistered.zsh").write_text(
+        'print -r -- ran > "$HOME/unregistered-module"\n'
+    )
+
+    antidote = home / ".local/share/antidote/mattmc3/antidote"
+    antidote.mkdir(parents=True)
+    (antidote / "antidote.zsh").write_text(
+        "antidote() {\n"
+        "  [[ $1 == bundle ]] || return 0\n"
+        "  cat >/dev/null\n"
+        "  print -r -- 'dotfiles_check_mode_defer\n"
+        'run-compinit() { autoload -Uz compinit && compinit -u -d "$HOME/.cache/zcompdump"; }\n'
+        "dotfiles_defer_init\n"
+        "zsh-defer -dmpr dotfiles_deferred_done'\n"
+        "}\n"
+    )
+    generated = home / ".cache/zsh/plugins.zsh"
+    generated.parent.mkdir(parents=True)
+    generated.write_text('source "$HOME/.zsh/config/old.zsh"\n')
+    os.utime(generated, (1, 1))
+    bin_dir = home / "bin"
+    bin_dir.mkdir()
+    machine = bin_dir / "machine"
+    machine.write_text(
+        '#!/bin/sh\nprintf called >> "$HOME/machine-completion-calls"\n'
+        "printf '# machine completion test\\n'\n"
+    )
+    machine.chmod(0o755)
+    result = subprocess.run(
+        [
+            zsh,
+            "-i",
+            "-c",
+            'print -r -- "LOADED:$DOTFILES_ZSH_LOADED DEFERRED:$DOTFILES_ZSH_DEFERRED_LOADED"',
+        ],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ZDOTDIR": str(home),
+            "XDG_DATA_HOME": str(home / ".local/share"),
+            "XDG_CACHE_HOME": str(home / ".cache"),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "TERM": "xterm",
+            "DOTFILES_ZSH_CHECK": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert "LOADED:1 DEFERRED:1" in result.stdout
+    assert not (home / "unregistered-module").exists()
+    assert (home / "local-order").read_text() == "local\n"
+    assert (home / "machine-completion-calls").read_text() == "called"
+    assert ".zsh/config" not in generated.read_text()
+    assert "compinit" in generated.read_text()
+    assert plugin_module.read_text() == plugin_source
+
+
+def test_zsh_loader_starts_offline_and_registers_completion(tmp_path: Path):
+    zsh = shutil.which("zsh")
+    if not zsh:
+        pytest.skip("zsh is not installed")
+
+    home = tmp_path / "zsh-home"
+    shell_root = home / ".shell"
+    (shell_root / "common").mkdir(parents=True)
+    shutil.copytree(
+        REPO / "home/core/.shell/common", shell_root / "common", dirs_exist_ok=True
+    )
+    shutil.copytree(REPO / "home/core/.shell/zsh", shell_root / "zsh")
+    shutil.copy(REPO / "home/core/.zshrc", home / ".zshrc")
+    shutil.copy(REPO / "home/core/.zshenv", home / ".zshenv")
+    cache = home / ".cache"
+    cache.mkdir()
+    bin_dir = home / "bin"
+    bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text('#!/bin/sh\n[ "$1" = clone ] && exit 1\nexec /usr/bin/git "$@"\n')
+    git.chmod(0o755)
+    machine = bin_dir / "machine"
+    machine.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/machine-calls"\n'
+        "printf '# machine completion test\\n'\n"
+    )
+    machine.chmod(0o755)
+    result = subprocess.run(
+        [zsh, "-i", "-c", 'print -r -- "LOADED:$DOTFILES_ZSH_LOADED"'],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ZDOTDIR": str(home),
+            "XDG_CACHE_HOME": str(cache),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "TERM": "xterm",
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert "LOADED:1" in result.stdout
+    assert (home / "machine-calls").read_text().splitlines() == ["completion zsh"]
 
 
 def test_healthy_zsh_passes(env):
@@ -117,8 +283,8 @@ def test_startup_failures_are_reported(env, mode, expected):
 
 def test_missing_loader_and_missing_zsh(env):
     home, bin_dir, environ = env
-    (home / ".zsh/config/00_LOADER.zsh").unlink()
-    assert "00_LOADER.zsh is missing" in check(environ).stderr
+    (home / ".shell/zsh/init.zsh").unlink()
+    assert ".shell/zsh/init.zsh is missing" in check(environ).stderr
     (bin_dir / "zsh").unlink()
     assert "zsh is not installed" in check(environ).stderr
 
@@ -185,8 +351,13 @@ def test_cached_pass_and_failure_skip_trial_start(env):
     "watched",
     [
         ".zshrc",
-        ".zsh/config/00_LOADER.zsh",
-        ".zsh/plugins.txt",
+        ".shell/zsh/init.zsh",
+        ".shell/zsh/plugins.txt",
+        ".shell/bash/zsh-health.bash",
+        ".shell/common/environment.sh",
+        ".shell/work/common/environment.sh",
+        ".shell/work/zsh/ldap-helpers.zsh",
+        ".zshrc-local",
         ".preferred-shell",
         "bin/zsh",
     ],
@@ -202,13 +373,34 @@ def test_watched_file_change_triggers_recheck(env, watched):
 
 def test_removed_config_file_triggers_recheck(env):
     home, _, environ = env
-    extra = home / ".zsh/config/09_extra.zsh"
+    extra = home / ".shell/zsh/extra.zsh"
     extra.write_text("")
     check(environ)
     time.sleep(0.05)
     extra.unlink()
     check(environ)
     assert trial_calls(home) == 2
+
+
+def test_renamed_config_file_triggers_recheck(env):
+    home, _, environ = env
+    original = home / ".shell/zsh/extra.zsh"
+    original.write_text("")
+    check(environ)
+    touch_later(original)
+    original.rename(home / ".shell/zsh/renamed.zsh")
+    check(environ)
+    assert trial_calls(home) == 2
+
+
+def test_bash_only_edit_does_not_invalidate_zsh_health(env):
+    home, _, environ = env
+    bash_only = home / ".shell/bash/readline.bash"
+    bash_only.write_text("# bash-only editor configuration\n")
+    check(environ)
+    touch_later(bash_only)
+    check(environ)
+    assert trial_calls(home) == 1
 
 
 def test_pending_update_flag_and_reset(env):
@@ -234,7 +426,7 @@ def run_bashrc(environ: dict) -> subprocess.CompletedProcess:
 
 
 def install_helper(home: Path):
-    shutil.copy(HELPER, home / ".zsh/zsh-handoff-check.sh")
+    shutil.copy(HELPER, home / ".shell/bash/zsh-health.bash")
 
 
 def test_bashrc_hands_off_when_healthy(env):
@@ -278,7 +470,48 @@ def test_bash_has_no_generic_update_hint(env):
     assert "Hint: Dotfiles update available" not in run_bashrc(environ).stdout
 
 
-STATE_SH = REPO / "home/core/.zsh/update-state.sh"
+def test_bash_loader_ignores_unregistered_modules_and_loads_local_last(env):
+    home, _, environ = env
+    (home / "mode").write_text("plain")
+    modules = [
+        (".shell/bash/handoff.bash", "handoff", "prefix"),
+        (".shell/bash/init.bash", "init", "prefix"),
+        (".shell/common/machine-profile.sh", "machine-profile", "suffix"),
+        (".shell/common/cache-eval.sh", "cache-eval", "suffix"),
+        (".shell/common/update-state.sh", "update-state", "suffix"),
+        (".shell/bash/options.bash", "options", "suffix"),
+        (".shell/bash/tools.bash", "tools", "suffix"),
+        (".shell/common/environment.sh", "environment", "suffix"),
+        (".shell/common/aliases.sh", "aliases", "suffix"),
+        (".shell/bash/history.bash", "history", "suffix"),
+        (".shell/bash/readline.bash", "readline", "suffix"),
+        (".shell/bash/prompt.bash", "prompt", "suffix"),
+    ]
+    expected_order = []
+    for relative, label, position in modules:
+        target = home / relative
+        if target.is_symlink():
+            target.unlink()
+        source = REPO / "home/core" / relative
+        shutil.copy(source, target)
+        marker = f'printf "{label}\\n" >> "$HOME/load-order"\n'
+        target.write_text(
+            marker + target.read_text()
+            if position == "prefix"
+            else target.read_text() + marker
+        )
+        expected_order.append(label)
+    extra = home / ".shell/bash/unregistered.bash"
+    extra.write_text('printf ran > "$HOME/unregistered-ran"\n')
+    (home / ".bashrc-local").write_text('printf "local\\n" >> "$HOME/load-order"\n')
+    result = run_bashrc(environ)
+    assert result.returncode == 0
+    assert not (home / "unregistered-ran").exists()
+    expected_order.append("local")
+    assert (home / "load-order").read_text().splitlines() == expected_order
+
+
+STATE_SH = REPO / "home/core/.shell/common/update-state.sh"
 
 
 def write_state(home: Path, state: str, reason: str = "", revision: str = "r1") -> None:
@@ -389,3 +622,66 @@ def test_machine_update_reloads_the_interactive_shell_only_on_success(shell, tmp
     )
     out = run_machine_function(shell, tmp_path, 0, "update", tty=False)
     assert "RELOADED" not in out and "RC=0" in out
+
+
+def disk_segment(shell: str, home: Path, steps: str = "") -> str:
+    """Evaluate both segments with no PATH, so an external command would fail."""
+    script = (
+        f'. "{STATE_SH}"; dotfiles_update_startup; {steps}\n'
+        "PATH=/nonexistent; dotfiles_update_prompt\n"
+        'echo "UPD=$DOTFILES_UPDATE_SEGMENT_KIND"; echo "DISK=$DOTFILES_DISK_SEGMENT"'
+    )
+    result = subprocess.run(
+        [shutil.which(shell), "-c", script],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "not found" not in result.stderr
+    return result.stdout
+
+
+def write_disk_state(home: Path, segment: str) -> Path:
+    path = home / ".local/share/machine/disk-state"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"segment={segment}\nmounts=\n", encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_disk_segment(shell, tmp_path):
+    # missing file: nothing
+    assert "DISK=\n" in disk_segment(shell, tmp_path)
+    write_disk_state(tmp_path, "⚠ disk /mnt/data 97%")
+    out = disk_segment(shell, tmp_path)
+    assert "DISK=⚠ disk /mnt/data 97%" in out and "UPD=\n" in out
+    # nothing printed at shell start for a low disk
+    assert out.splitlines()[0].startswith("UPD=")
+    # both segments together
+    write_state(tmp_path, "available")
+    out = disk_segment(shell, tmp_path)
+    assert "UPD=available" in out and "DISK=⚠ disk /mnt/data 97%" in out
+    # empty state: nothing
+    write_disk_state(tmp_path, "")
+    assert "DISK=\n" in disk_segment(shell, tmp_path)
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_disk_segment_follows_state_in_open_shell(shell, tmp_path):
+    path = write_disk_state(tmp_path, "⚠ disk / 98%")
+    freed = f"printf 'segment=\\nmounts=\\n' > \"{path}\""
+    assert "DISK=\n" in disk_segment(shell, tmp_path, freed)
+
+
+def test_prompts_show_the_disk_segment():
+    starship = (REPO / "home/prompt/.config/starship.toml").read_text(encoding="utf-8")
+    assert "${env_var.DOTFILES_DISK_SEGMENT}" in starship
+    assert "[env_var.DOTFILES_DISK_SEGMENT]" in starship
+    zsh_prompt = (REPO / "home/core/.shell/zsh/prompt.zsh").read_text(encoding="utf-8")
+    assert "DOTFILES_DISK_SEGMENT" in zsh_prompt
+    bash_prompt = (REPO / "home/core/.shell/bash/prompt.bash").read_text(
+        encoding="utf-8"
+    )
+    assert "${DOTFILES_DISK_SEGMENT:+$DOTFILES_DISK_SEGMENT }" in bash_prompt

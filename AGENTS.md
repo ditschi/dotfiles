@@ -12,7 +12,14 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 
 - Dotfiles live under `home/<group>/` (`core`, `work`, `prompt`, `systemd`) with their real file names (e.g. `home/core/.zshrc`); files in `$HOME` are symlinks into it.
 - Never commit secrets or host-only Git settings; secrets come from `~/.env*` (Bitwarden) or the keyring (see the specs `env-files`, `secret-tools`, `git-config`).
-- Validate with `pre-commit run --all-files` and `pytest tests/unit -q`; for Ansible changes also `ansible-lint ansible/*.yml`. See Readme "Tests" for Docker/APT tests.
+
+## Validation
+
+- Run `pre-commit run --files <changed paths>`, including untracked additions. Use `--all-files` when hook configuration changes or repository-wide checks are needed.
+- Run the smallest test selection that covers the changed behavior and its known consumers. A focused subset is sufficient for a bounded change with clear coverage; documentation-only edits need no pytest run unless they affect executable examples or test configuration.
+- Run `pytest tests/unit -q` when impact is broad or uncertain, shared infrastructure or cross-module contracts change, test configuration changes, or focused failures suggest wider effects. If suitable coverage cannot be identified confidently, default to the full unit suite.
+- Run affected integration tests when behavior crosses deployment or system boundaries; for Ansible changes also run `ansible-lint ansible/*.yml`. See Readme "Tests" for Docker/APT tests.
+- Record commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
 
 ## Design decisions
 

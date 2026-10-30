@@ -3,11 +3,13 @@ from __future__ import annotations
 import getpass
 import subprocess
 import os
+import re
 import textwrap
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 import pytest
+import yaml
 
 from package_sets import REPO
 
@@ -814,3 +816,99 @@ def test_checklist_uses_arrows_and_space(monkeypatch):
     choices = {"x": "", "y": "", "z": ""}
 
     assert system.choose_many("t", choices, ["x", "y"]) == ["x", "y", "z"]
+
+
+DISK_SPACE = [
+    {"path": "/mnt/data", "min_free": "100G"},
+    {"path": "/mnt/scratch", "ignore": True},
+]
+
+
+def test_disk_space_roundtrip_and_fingerprint(tmp_path: Path):
+    cli = _cli()
+    path = tmp_path / "h.yml"
+    path.write_text(
+        cli.format_profile_yaml("work", "desktop", ["zsh-full"], [], True, DISK_SPACE),
+        encoding="utf-8",
+    )
+    assert cli.parse_profile_file(path)["disk_space"] == DISK_SPACE
+    with_key = cli.profile_fingerprint(path)
+    path.write_text(
+        cli.format_profile_yaml("work", "desktop", ["zsh-full"], []), encoding="utf-8"
+    )
+    assert "disk_space" not in path.read_text(encoding="utf-8")
+    assert cli.parse_profile_file(path)["disk_space"] == []
+    assert cli.profile_fingerprint(path) != with_key
+
+
+def test_rewrites_keep_disk_space(tmp_path: Path, monkeypatch):
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    host_file = repo / "machine/hosts/testhost.yml"
+    host_file.write_text(
+        textwrap.dedent(
+            """\
+            ---
+            context: work
+            device: desktop
+            features:
+              - zsh-full
+            ssh_allow_from: []
+            disk_space:
+              - path: /mnt/data
+                min_free: 100G
+            """
+        ),
+        encoding="utf-8",
+    )
+    assert machine.sync_host_config_from_repo() is True
+    entry = [{"path": "/mnt/data", "min_free": "100G"}]
+    assert machine.applied_host()["disk_space"] == entry
+    # setup: features change, the applied copy and the repository file keep the key
+    machine.write_profile("work", "desktop", ["zsh-full", "docker"], [])
+    assert machine.applied_host()["disk_space"] == entry
+    machine.persist_host_config("work", "desktop", ["zsh-full", "docker"], [], yes=True)
+    text = host_file.read_text(encoding="utf-8")
+    assert "docker" in text and "/mnt/data" in text
+    # host save from the applied copy
+    machine.save_host_config_to_repo("work", "desktop", ["zsh-full"], [])
+    assert "/mnt/data" in host_file.read_text(encoding="utf-8")
+
+
+def test_disk_space_change_is_taken_over_with_notice(
+    tmp_path: Path, monkeypatch, capsys
+):
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    host_file = repo / "machine/hosts/testhost.yml"
+    base = "---\ncontext: work\ndevice: desktop\nfeatures:\n  - zsh-full\nssh_allow_from: []\n"
+    host_file.write_text(base, encoding="utf-8")
+    machine.sync_host_config_from_repo()
+    host_file.write_text(
+        base + "disk_space:\n  - path: /mnt/data\n    min_free_percent: 3\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert machine.sync_host_config_from_repo() is True
+    assert machine.applied_host()["disk_space"] == [
+        {"path": "/mnt/data", "min_free_percent": 3}
+    ]
+    assert "disk_space changed" in capsys.readouterr().out
+
+
+def test_hosts_readme_disk_space_example_parses():
+    lines = (REPO / "machine/hosts/README.md").read_text(encoding="utf-8").splitlines()
+    start = next(
+        i for i, line in enumerate(lines) if line.startswith("#   disk_space:")
+    )
+    block = []
+    for line in lines[start:]:
+        if not line.startswith("#   ") or (block and not line.startswith("#     ")):
+            break
+        content = line[4:]
+        body = content.lstrip()
+        # the explanation follows after a run of spaces
+        block.append(" " * (len(content) - len(body)) + re.split(r"\s{2,}", body)[0])
+    data = yaml.safe_load("\n".join(block))
+    assert data["disk_space"] == [
+        {"path": "/mnt/data", "min_free": "100G", "min_free_percent": 3},
+        {"path": "/mnt/scratch", "ignore": True},
+    ]

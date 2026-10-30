@@ -409,9 +409,9 @@ def test_credentials_come_from_env_and_are_never_stored(git_home):
 
 def test_credential_helper_reads_dotenv_when_env_is_empty(git_home):
     home, repo, env = git_home
-    (home / ".zsh/config").mkdir(parents=True)
-    (home / ".zsh/config/01_env.zsh").symlink_to(
-        REPO / "home/core/.zsh/config/01_env.zsh"
+    (home / ".shell/common").mkdir(parents=True)
+    (home / ".shell/common/environment.sh").symlink_to(
+        REPO / "home/core/.shell/common/environment.sh"
     )
     dotenv = home / ".env"
     dotenv.write_text(

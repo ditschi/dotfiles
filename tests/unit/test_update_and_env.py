@@ -192,6 +192,31 @@ def _auto(machine) -> int:
     return machine.cmd_update(argparse.Namespace(auto=True))
 
 
+def test_auto_update_health_check_uses_relocated_helper(update_env, monkeypatch):
+    machine, _repo, _other, home, _calls = update_env
+    shell_root = home / ".shell"
+    (shell_root / "bash").mkdir(parents=True)
+    (shell_root / "zsh").mkdir()
+    shutil.copy(
+        REPO / "home/core/.shell/bash/zsh-health.bash",
+        shell_root / "bash/zsh-health.bash",
+    )
+    (home / ".zshrc").write_text("")
+    (shell_root / "zsh/init.zsh").write_text("")
+    antidote = home / ".local/share/antidote/mattmc3/antidote"
+    antidote.mkdir(parents=True)
+    (home / ".cache/zsh").mkdir(parents=True)
+    (home / ".cache/zsh/plugins.zsh").write_text("# generated\n")
+    bin_dir = home / "bin"
+    bin_dir.mkdir()
+    zsh = bin_dir / "zsh"
+    zsh.write_text("#!/bin/sh\nexit 3\n")
+    zsh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    assert "zsh failed to start (exit 3)" in machine.zsh_health_failure()
+
+
 def test_attention_says_so_when_nothing_is_open(update_env, capsys):
     machine, *_ = update_env
 
@@ -1001,6 +1026,15 @@ def test_classify_incoming_paths():
 
     assert classify([("M", "home/core/.zshrc")]) == ["shell"]
     assert classify([("A", "home/core/.new")]) == ["dotfiles", "shell"]
+    assert classify([("M", "home/core/.shell/zsh/init.zsh")]) == ["shell"]
+    assert classify([("A", "home/core/.shell/common/environment.sh")]) == [
+        "dotfiles",
+        "shell",
+    ]
+    assert classify([("D", "home/work/.shell/work/zsh/ldap-helpers.zsh")]) == [
+        "dotfiles",
+        "shell",
+    ]
     assert classify([("M", "home/core/.config/mise/mise.lock")]) == ["tools"]
     assert classify([("M", "machine_cli/machine")]) == []
     assert classify([("A", "machine_cli/updates.py")]) == []
@@ -1161,7 +1195,7 @@ def test_env_pull_preserves_local_session_and_load_order(
             '. "$1" >/dev/null; printf "%s\\n" "$LAYER" "$HOST_ONLY" '
             '"$GITHUB_PRIVATE_TOKEN" "$BW_SESSION" "$NODE_USE_ENV_PROXY"',
             "_",
-            str(REPO / "home/core/.zsh/config/01_env.zsh"),
+            str(REPO / "home/core/.shell/common/environment.sh"),
         ],
         env={"HOME": str(home), "PATH": os.environ["PATH"]},
         check=True,
@@ -1500,3 +1534,36 @@ def test_fetching_records_the_time_of_the_check(update_env, monkeypatch, tmp_pat
     assert not stamp.exists()
     machine.update_plan(fetch=True)
     assert stamp.read_text().startswith("20")
+
+
+def test_status_shows_a_low_disk(update_env, capsys, tmp_path, monkeypatch):
+    machine, *_ = update_env
+    assert machine.cmd_status() == 0
+    assert "free space: machine attention" not in capsys.readouterr().out
+
+    info = tmp_path / "mountinfo"
+    info.write_text(
+        "20 1 253:1 / /mnt/data rw,relatime shared:1 - ext4 /dev/vdb rw\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MACHINE_MOUNTINFO", str(info))
+    gib = 1024**3
+    stat = os.statvfs_result(
+        (
+            4096,
+            4096,
+            500 * gib // 4096,
+            12 * gib // 4096,
+            12 * gib // 4096,
+            0,
+            0,
+            0,
+            0,
+            255,
+        )
+    )
+    monkeypatch.setattr(type(machine), "statvfs", staticmethod(lambda _p: stat))
+    assert machine.cmd_status() == 0
+    out = capsys.readouterr().out
+    assert "⚠ /mnt/data 98% full → free space: machine attention" in out
+    assert "\x1b[" not in out

@@ -341,7 +341,7 @@ def test_container_ignores_saved_host_config_unless_overridden(tmp_path, monkeyp
 
 def test_company_user_regex_is_identical_in_cli_and_shell():
     pattern = "[a-zA-Z]{3}[0-9]{1,2}[a-zA-Z]{2,3}"
-    assert pattern in (REPO / "home/core/.zsh/machine-profile.sh").read_text()
+    assert pattern in (REPO / "home/core/.shell/common/machine-profile.sh").read_text()
     assert pattern in (REPO / "machine_cli/profile.py").read_text()
 
 
@@ -382,7 +382,7 @@ def test_shell_values_follow_docker_rule(tmp_path, saved, env, user, expected):
         applied = tmp_path / ".config/machine/profile.yml"
     applied.parent.mkdir(parents=True)
     applied.write_text(f"---\n{saved}\n")
-    script = REPO / "home/core/.zsh/machine-profile.sh"
+    script = REPO / "home/core/.shell/common/machine-profile.sh"
     result = subprocess.run(
         [
             "sh",

@@ -5,7 +5,7 @@
 # fall back to the shell module. 🐳 marks a container; a failed command also shows in the
 # status segment.
 format = """
-$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}$status$python$cmd_duration$time
+$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}$status$python$cmd_duration$time
 $container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
 """
 
@@ -25,6 +25,10 @@ format = "([$all_status$ahead_behind]($style) )"
 [env_var.DOTFILES_UPDATE_SEGMENT]
 format = "[$env_value]($style) "
 style = "yellow"
+
+[env_var.DOTFILES_DISK_SEGMENT]
+format = "[$env_value]($style) "
+style = "red"
 
 [fill]
 symbol = "─"

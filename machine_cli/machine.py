@@ -19,6 +19,7 @@ from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
 from .attention import AttentionMixin
 from .local_work import LocalWorkMixin
+from .disk_space import DiskSpaceMixin
 
 
 class Machine(
@@ -34,6 +35,7 @@ class Machine(
     AutoUpdateMixin,
     AttentionMixin,
     LocalWorkMixin,
+    DiskSpaceMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()

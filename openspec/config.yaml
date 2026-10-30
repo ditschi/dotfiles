@@ -36,7 +36,10 @@ rules:
     - List alternatives that were considered and why they were rejected, as stated by the owner.
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
   tasks:
-    - Include validation - pre-commit run for changed files and pytest tests/unit -q; ansible-lint ansible/*.yml for Ansible changes.
+    - Include validation scoped to the changed behavior and known consumers. A focused test subset is sufficient for a bounded change with clear coverage; documentation-only edits need no pytest run unless they affect executable examples or test configuration.
+    - Require pytest tests/unit -q when impact is broad or uncertain, shared infrastructure or cross-module contracts change, test configuration changes, or focused failures suggest wider effects. If suitable coverage cannot be identified confidently, default to the full unit suite.
+    - Include pre-commit run --files for changed paths, including untracked additions; use --all-files when hook configuration changes or repository-wide checks are needed. Include affected integration tests for deployment or system boundaries and ansible-lint ansible/*.yml for Ansible changes.
+    - Record validation commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
 
 operations:
   archive:

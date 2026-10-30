@@ -93,6 +93,8 @@ add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name
 @click.pass_context
 def app(ctx: click.Context, debug: bool) -> None:
     core.set_debug(debug)
+    if ctx.invoked_subcommand not in ("completion", "disk"):
+        ctx.call_on_close(_record_disk_state)
     if ctx.invoked_subcommand is None:
         machine = Machine()
         if machine.attention_items():
@@ -102,6 +104,14 @@ def app(ctx: click.Context, debug: bool) -> None:
         ctx.exit(0)
     if ctx.invoked_subcommand not in (None, "update", "completion", "help"):
         Machine().event("usage", "invoked", ctx.invoked_subcommand)
+
+
+def _record_disk_state() -> None:
+    """Every command refreshes the low-disk state the prompt reads; best effort."""
+    try:
+        Machine().record_disk_state()
+    except (Exception, SystemExit):
+        pass
 
 
 def _exit(code: int) -> None:
@@ -263,6 +273,14 @@ def completion_cmd(shell) -> None:
 )
 def attention_cmd() -> None:
     _exit(Machine().cmd_attention())
+
+
+@app.command(
+    name="disk", help="filesystems low on space (--record: only update the prompt state)"
+)
+@click.option("--record", is_flag=True, help="no output; used by the user timer")
+def disk_cmd(record) -> None:
+    _exit(Machine().cmd_disk(record))
 
 
 @app.command(

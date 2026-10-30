@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -107,7 +108,7 @@ def parse_profile_file(path: Path) -> Dict[str, object]:
 
 
 def parse_profile_text(text: str) -> Dict[str, object]:
-    """context, device, features, ssh_allow_from and ansible of a host config.
+    """context, device, features, ssh_allow_from, ansible and disk_space of a host config.
 
     A former `profile:` key is mapped to context and device when they are missing."""
     data = yaml.safe_load(text) or {}
@@ -122,6 +123,8 @@ def parse_profile_text(text: str) -> Dict[str, object]:
         "features": [str(x) for x in (data.get("features") or [])],
         "ssh_allow_from": [str(x) for x in (data.get("ssh_allow_from") or [])],
         "ansible": data.get("ansible") is not False,
+        # Kept as written; machine_cli/disk_space.py checks the entries.
+        "disk_space": list(data.get("disk_space") or []),
     }
 
 
@@ -131,6 +134,7 @@ def format_profile_yaml(
     features: Sequence[str],
     ssh_allow_from: Optional[Sequence[str]] = None,
     ansible: bool = True,
+    disk_space: Optional[Sequence[object]] = None,
 ) -> str:
     data: Dict[str, object] = {}
     if context:
@@ -140,6 +144,8 @@ def format_profile_yaml(
         data["ansible"] = False
     data["features"] = list(features) or ["zsh-full"]
     data["ssh_allow_from"] = list(ssh_allow_from or [])
+    if disk_space:
+        data["disk_space"] = list(disk_space)
     return "---\n" + yaml.dump(
         data, Dumper=_IndentDumper, sort_keys=False, default_flow_style=False
     )
@@ -151,9 +157,10 @@ def profile_fingerprint(path: Path) -> str:
     data = parse_profile_file(path)
     feats = sorted(str(x) for x in (data.get("features") or []))
     allow = sorted(str(x) for x in (data.get("ssh_allow_from") or []))
+    disk = json.dumps(data.get("disk_space") or [], sort_keys=True, default=str)
     return (
         f"{data.get('context')}|{data.get('device')}|{data.get('ansible')}|"
-        f"{','.join(feats)}|{','.join(allow)}"
+        f"{','.join(feats)}|{','.join(allow)}|{disk}"
     )
 
 

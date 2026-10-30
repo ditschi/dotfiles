@@ -6,11 +6,11 @@ Improvement entries already have an investigation report in `openspec/investigat
 
 ## Improvements
 
-### Restructure `~/.zsh` by use
+### Shell layout (planned)
 
-Split the flat `home/core/.zsh/config/` into zsh-only modules, modules shared with bash (must stay bash-compatible) and a work folder, so that loading and the work-profile exclusion become simpler. Also check whether `07_machine.zsh` is sourced twice.
+Planned in `openspec/changes/restructure-shell-config`: `.shell/{common,bash,zsh}`, explicit source lists and separately deployed work modules. The assessment and implementation plan are consolidated in that change.
 
-Investigation: shell-and-prompt A3, A4. Draft change: `openspec/changes/investigate-shell-layout` (classification of the modules).
+Investigation input: shell-and-prompt A3, A4. The old zinit double-load question is obsolete; the plan preserves deferred completion dependencies.
 
 ### Shell startup, plugins and prompt
 

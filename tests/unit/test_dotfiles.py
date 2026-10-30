@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO))
 from machine_cli.dotfiles import (  # noqa: E402
     DotfilesMixin,
     dotfile_groups,
+    group_targets,
     render_github_token_config,
     render_local_config,
     sweep_dangling_links,
@@ -33,6 +34,36 @@ def test_groups_per_context_and_device(context, device, expected):
 def test_work_group_only_for_work_machine():
     hosts = [("private", "desktop"), ("private", "server"), ("", "container")]
     assert all("work" not in dotfile_groups(c, d) for c, d in hosts)
+
+
+def test_shell_layout_files_deploy_from_their_selected_groups(tmp_path):
+    repo = tmp_path / "checkout"
+    home = tmp_path / "home"
+    for relative in (
+        "home/core/.shell/common/environment.sh",
+        "home/core/.shell/bash/init.bash",
+        "home/core/.shell/zsh/init.zsh",
+        "home/work/.shell/work/common/environment.sh",
+        "home/work/.shell/work/zsh/ldap-helpers.zsh",
+    ):
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(relative)
+
+    targets = group_targets(repo, home, ["core", "work"])
+
+    assert {target.relative_to(home).as_posix() for _, target in targets} == {
+        ".shell/common/environment.sh",
+        ".shell/bash/init.bash",
+        ".shell/zsh/init.zsh",
+        ".shell/work/common/environment.sh",
+        ".shell/work/zsh/ldap-helpers.zsh",
+    }
+    work_targets = group_targets(repo, home, ["work"])
+    assert {target.relative_to(home).as_posix() for _, target in work_targets} == {
+        ".shell/work/common/environment.sh",
+        ".shell/work/zsh/ldap-helpers.zsh",
+    }
 
 
 def test_local_config_lists_groups():
@@ -99,6 +130,32 @@ def test_sweep_removes_only_dangling_links_into_the_checkout(tmp_path):
     assert sorted(p.name for p in removed) == [".zshrc", "gone"]
     assert (home / ".live").is_symlink() and (home / ".foreign").is_symlink()
     assert (home / ".plain").read_text() == "keep"
+
+
+def test_shell_layout_migration_removes_old_links_and_keeps_local_files(tmp_path):
+    repo = tmp_path / "checkout"
+    source = repo / "home/core/.shell/common/environment.sh"
+    source.parent.mkdir(parents=True)
+    source.write_text("export TEST=1\n")
+    home = tmp_path / "h"
+    old_link = home / ".zsh/config/00_LOADER.zsh"
+    old_link.parent.mkdir(parents=True)
+    old_link.symlink_to(repo / "home/core/.zsh/config/00_LOADER.zsh")
+    local_override = home / ".zshrc-local"
+    local_override.write_text("# host-only\n")
+    local_module = home / ".shell/bash/local.bash"
+    local_module.parent.mkdir(parents=True)
+    local_module.write_text("# unmanaged\n")
+    new_target = home / ".shell/common/environment.sh"
+    new_target.parent.mkdir(parents=True)
+    new_target.symlink_to(source)
+
+    removed = sweep_dangling_links(home, repo)
+
+    assert old_link in removed and not old_link.exists()
+    assert new_target.resolve() == source.resolve()
+    assert local_override.read_text() == "# host-only\n"
+    assert local_module.read_text() == "# unmanaged\n"
 
 
 def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):

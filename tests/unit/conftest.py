@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import stat
 import textwrap
 from pathlib import Path
@@ -20,8 +21,11 @@ def isolate_machine_environment(monkeypatch):
         "MISE_LOCAL_CONFIG",
         "BW_SESSION",
         "MACHINE_IN_DOCKER",
+        "MACHINE_DISK_STATE",
     ):
         monkeypatch.delenv(name, raising=False)
+    # no real filesystems: disk items only where a test supplies a mountinfo
+    monkeypatch.setenv("MACHINE_MOUNTINFO", os.devnull)
 
 
 @pytest.fixture

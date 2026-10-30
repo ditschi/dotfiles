@@ -146,7 +146,7 @@ class AutoUpdateMixin:
 
     def zsh_health_failure(self) -> str:
         """Reason why zsh no longer starts cleanly, or an empty string."""
-        helper = self.home / ".zsh/zsh-handoff-check.sh"
+        helper = self.home / ".shell/bash/zsh-health.bash"
         if not helper.is_file() or not system.have("zsh"):
             return ""
         result = subprocess.run(

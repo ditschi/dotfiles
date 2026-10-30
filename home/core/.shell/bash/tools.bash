@@ -37,4 +37,18 @@ export LS_COLORS
 if declare -F dotfiles_cache_eval >/dev/null; then
     dotfiles_cache_eval fzf fzf --bash
     dotfiles_cache_eval zoxide zoxide init bash
+    dotfiles_cache_eval copilot copilot completion bash
+    dotfiles_cache_eval zellij zellij setup --generate-completion bash
+    dotfiles_cache_eval opencode opencode --completions bash
+    dotfiles_cache_eval uv uv generate-shell-completion bash
+    dotfiles_cache_eval mise mise completion bash
+    dotfiles_cache_eval lazygit lazygit completion bash
+    dotfiles_cache_eval openspec openspec completion generate bash
+    dotfiles_cache_eval starship starship completions bash
+    if declare -F _get_comp_words_by_ref >/dev/null 2>&1; then
+        if ! complete -p gh >/dev/null 2>&1; then
+            dotfiles_cache_eval gh gh completion -s bash
+        fi
+        dotfiles_cache_eval git-lfs git-lfs completion bash
+    fi
 fi

@@ -11,6 +11,12 @@ context: |
   hardware is detected by Ansible. Changes must keep work and private hosts working.
   Root is assumed on every host; a host config with `ansible: false` skips Ansible.
 
+  When adding a command-line tool in a feature or group, check whether it provides
+  Bash or Zsh completion and whether that completion has shell-framework
+  prerequisites. Include enabling and testing it in the change; document optional
+  prerequisites and handle their absence without shell startup errors. If the tool
+  provides neither completion, note that no supported completion is available.
+
   Artifacts are self-contained and read as the lasting record of intent. Content in
   proposal Why, design Decisions and specs is owner-confirmed because the owner was
   asked; do not tag it. Anything unconfirmed goes only under an explicit Open Questions

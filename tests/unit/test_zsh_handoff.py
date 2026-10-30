@@ -237,24 +237,181 @@ def test_zsh_loader_starts_offline_and_registers_completion(tmp_path: Path):
         "printf '# machine completion test\\n'\n"
     )
     machine.chmod(0o755)
+    copilot = bin_dir / "copilot"
+    copilot.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/copilot-calls"\n'
+        'if [ "$1" = completion ] && [ "$2" = zsh ]; then\n'
+        "  printf '%s\\n' '_copilot() { compadd -- generated; }' 'compdef _copilot copilot'\n"
+        "fi\n"
+    )
+    copilot.chmod(0o755)
+    shell_command = [
+        zsh,
+        "-i",
+        "-c",
+        'print -r -- "LOADED:$DOTFILES_ZSH_LOADED COPILOT:${_comps[copilot]-none}"',
+    ]
+    shell_env = {
+        **os.environ,
+        "HOME": str(home),
+        "ZDOTDIR": str(home),
+        "XDG_CACHE_HOME": str(cache),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "TERM": "xterm",
+    }
+
+    def start_zsh():
+        return subprocess.run(
+            shell_command,
+            env=shell_env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    result = start_zsh()
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert "LOADED:1 COPILOT:_copilot" in result.stdout
+    assert (home / "machine-calls").read_text().splitlines() == ["completion zsh"]
+    assert (home / "copilot-calls").read_text().splitlines() == ["completion zsh"]
+    assert (cache / "zsh/copilot.zsh").read_text().splitlines() == [
+        "_copilot() { compadd -- generated; }",
+        "compdef _copilot copilot",
+    ]
+    assert start_zsh().returncode == 0
+    assert (home / "copilot-calls").read_text().splitlines() == ["completion zsh"]
+    touch_later(copilot)
+    assert start_zsh().returncode == 0
+    assert (home / "copilot-calls").read_text().splitlines() == [
+        "completion zsh",
+        "completion zsh",
+    ]
+
+
+def test_bash_native_completion_loads_without_system_framework(tmp_path: Path):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+
+    home = tmp_path / "bash-home"
+    bin_dir = home / "bin"
+    bin_dir.mkdir(parents=True)
+    copilot = bin_dir / "copilot"
+    copilot.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/copilot-calls"\n'
+        "printf '%s\\n' '_copilot() { COMPREPLY=(generated); }' 'complete -F _copilot copilot'\n"
+    )
+    copilot.chmod(0o755)
     result = subprocess.run(
-        [zsh, "-i", "-c", 'print -r -- "LOADED:$DOTFILES_ZSH_LOADED"'],
+        [
+            bash,
+            "-c",
+            f'source "{REPO}/home/core/.shell/common/cache-eval.sh"; '
+            f'source "{REPO}/home/core/.shell/bash/tools.bash"; complete -p copilot',
+        ],
         env={
-            **os.environ,
             "HOME": str(home),
-            "ZDOTDIR": str(home),
-            "XDG_CACHE_HOME": str(cache),
             "PATH": f"{bin_dir}:/usr/bin:/bin",
-            "TERM": "xterm",
+            "XDG_CACHE_HOME": str(home / ".cache"),
         },
         capture_output=True,
         text=True,
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stderr == ""
-    assert "LOADED:1" in result.stdout
-    assert (home / "machine-calls").read_text().splitlines() == ["completion zsh"]
+    assert "complete -F _copilot copilot" in result.stdout
+    assert (home / "copilot-calls").read_text().splitlines() == ["completion bash"]
+
+
+def test_git_lfs_bash_completion_requires_completion_helper(tmp_path: Path):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+
+    home = tmp_path / "bash-home"
+    bin_dir = home / "bin"
+    bin_dir.mkdir(parents=True)
+    git_lfs = bin_dir / "git-lfs"
+    git_lfs.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/git-lfs-calls"\n'
+        "printf '%s\\n' '_git_lfs() { COMPREPLY=(); }' 'complete -F _git_lfs git-lfs'\n"
+    )
+    git_lfs.chmod(0o755)
+    tool_modules = (
+        f'source "{REPO}/home/core/.shell/common/cache-eval.sh"; '
+        f'source "{REPO}/home/core/.shell/bash/tools.bash"; complete -p git-lfs'
+    )
+    env = {
+        "HOME": str(home),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "XDG_CACHE_HOME": str(home / ".cache"),
+    }
+    missing_framework = subprocess.run(
+        [bash, "-c", tool_modules], env=env, capture_output=True, text=True, timeout=15
+    )
+    assert missing_framework.returncode != 0
+    assert not (home / "git-lfs-calls").exists()
+
+    with_framework = subprocess.run(
+        [
+            bash,
+            "-c",
+            "function _get_comp_words_by_ref() { :; }; " + tool_modules,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert with_framework.returncode == 0, with_framework.stderr
+    assert "complete -F _git_lfs git-lfs" in with_framework.stdout
+    assert (home / "git-lfs-calls").read_text().splitlines() == ["completion bash"]
+
+
+def test_gh_bash_completion_requires_completion_helper(tmp_path: Path):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+
+    home = tmp_path / "bash-home"
+    bin_dir = home / "bin"
+    bin_dir.mkdir(parents=True)
+    gh = bin_dir / "gh"
+    gh.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/gh-calls"\n'
+        "printf '%s\\n' '_gh() { COMPREPLY=(); }' 'complete -F _gh gh'\n"
+    )
+    gh.chmod(0o755)
+    tool_modules = (
+        f'source "{REPO}/home/core/.shell/common/cache-eval.sh"; '
+        f'source "{REPO}/home/core/.shell/bash/tools.bash"; complete -p gh'
+    )
+    env = {
+        "HOME": str(home),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "XDG_CACHE_HOME": str(home / ".cache"),
+    }
+    missing_framework = subprocess.run(
+        [bash, "-c", tool_modules], env=env, capture_output=True, text=True, timeout=15
+    )
+    assert missing_framework.returncode != 0
+    assert not (home / "gh-calls").exists()
+
+    with_framework = subprocess.run(
+        [
+            bash,
+            "-c",
+            "function _get_comp_words_by_ref() { :; }; " + tool_modules,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert with_framework.returncode == 0, with_framework.stderr
+    assert "complete -F _gh gh" in with_framework.stdout
+    assert (home / "gh-calls").read_text().splitlines() == ["completion -s bash"]
 
 
 def test_healthy_zsh_passes(env):

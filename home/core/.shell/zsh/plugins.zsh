@@ -92,10 +92,24 @@ dotfiles_fzf_init() {
   dotfiles_cache_eval fzf fzf --zsh
 }
 
+dotfiles_cli_completions() {
+  dotfiles_cache_eval copilot copilot completion zsh
+  dotfiles_cache_eval zellij zellij setup --generate-completion zsh
+  dotfiles_cache_eval gh gh completion -s zsh
+  dotfiles_cache_eval opencode opencode --completions zsh
+  dotfiles_cache_eval uv uv generate-shell-completion zsh
+  dotfiles_cache_eval mise mise completion zsh
+  dotfiles_cache_eval lazygit lazygit completion zsh
+  dotfiles_cache_eval openspec openspec completion generate zsh
+  dotfiles_cache_eval starship starship completions zsh
+  dotfiles_cache_eval git-lfs git-lfs completion zsh
+}
+
 dotfiles_deferred_init() {
   dotfiles_lscolors
   run-compinit
   source "$DOTFILES_SHELL/zsh/machine-completion.zsh"
+  dotfiles_cli_completions
   dotfiles_fzf_init
   dotfiles_cache_eval zoxide zoxide init zsh
 }
@@ -143,6 +157,7 @@ else
   # Offline first start: built-in completion and the tool init, no plugins.
   autoload -Uz compinit && compinit -d ${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump
   source "$DOTFILES_SHELL/zsh/machine-completion.zsh"
+  dotfiles_cli_completions
   dotfiles_fzf_init
   dotfiles_cache_eval zoxide zoxide init zsh
 fi

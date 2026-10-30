@@ -150,6 +150,12 @@ zsh plugins are managed by [antidote](https://antidote.sh): edit `~/.shell/zsh/p
 
 bash is a fallback with the same tools: Starship, fzf (Ctrl+R), zoxide (`z`), LS_COLORS and the git helpers (`git open`, `git recent`, `git recall`) from the antidote checkouts, Up/Down prefix search, Esc Esc for `sudo`, and pasting commands with a leading `$ ` or `❯ `.
 
+#### Command completion
+
+Native Bash and Zsh completion generators are available for Copilot CLI, Zellij, GitHub CLI, OpenCode, uv, mise, lazygit, OpenSpec, Starship and Git LFS. Bash registrations live in `~/.shell/bash/tools.bash`; Zsh registrations live in `~/.shell/zsh/plugins.zsh` and run after `compinit`, before `fzf-tab`. Both use `~/.shell/common/cache-eval.sh` to cache generated scripts under `~/.cache/zsh` and refresh them when the executable changes. The native Bash completions for GitHub CLI and Git LFS are loaded only when `bash-completion` provides their required helper. fzf and zoxide already include completion in their shell initialization, and `machine` has its own generated completion.
+
+The system Bash and Zsh completion providers also supply common commands such as Git, jq and npm; provider coverage varies by host. The current Bash provider additionally covers gh, eza and Yazi, while the current Zsh provider covers tmux. Upstream static completions not supplied by the configured providers are not bundled by this change: eza (Zsh), fd (Zsh; its Bash file is for the `fdfind` alias), delta (Bash and Zsh) and tealdeer (Bash and Zsh). No native completion generator was found for Claude Code, `gext`, Node.js, Yazi or the Thunderbird CLI/bridge.
+
 Data of the former zinit/Powerlevel10k setup is not removed automatically. After the switch it can be deleted with:
 
 ```bash

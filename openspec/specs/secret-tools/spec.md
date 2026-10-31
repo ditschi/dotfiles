@@ -6,18 +6,53 @@ Defines the Bitwarden CLI, session handling and the Ansible Vault password.
 ## Requirements
 
 ### Requirement: Bitwarden CLI installed for the user
-The Bitwarden CLI `bw` SHALL be installed to `~/.local/bin`.
+The Bitwarden CLI `bw` SHALL be installed for the user by `mise` on every host, as a tool of the `core` group, from the official Bitwarden release build for the host's CPU (x86_64 or aarch64). Its version and checksums SHALL be pinned in the repository's lockfile. When `machine` needs `bw` and it is missing, it SHALL install that pinned version, also before the dotfiles are linked.
 
 #### Scenario: Setup
 - **WHEN** the Bitwarden tooling is set up
-- **THEN** `bw` is available in `~/.local/bin`
+- **THEN** `bw` is available on `PATH` from `mise`, and not from a download to `~/.local/bin`
+
+#### Scenario: Raspberry Pi
+- **WHEN** `machine setup` or `machine update` installs the tools on an aarch64 host
+- **THEN** `bw` is the pinned arm64 build from the lockfile and `bw --version` prints the pinned version
+
+#### Scenario: Fresh host before the dotfiles are linked
+- **WHEN** `machine setup` runs on a host without `bw` and reaches the Bitwarden step before the dotfile groups are applied
+- **THEN** the pinned `bw` is installed and the Bitwarden step continues in the same run
+
+#### Scenario: Missing bw in env pull
+- **WHEN** `machine env pull` runs in a terminal on a host without `bw` and the user accepts the install offer
+- **THEN** the pinned `bw` is installed and the command continues with the Bitwarden login or unlock
+
+### Requirement: Old self-installed bw is removed
+When `mise` provides `bw`, `machine setup` and `machine update` SHALL remove a file `~/.local/bin/bw` and log its removal, so that it cannot take precedence over the pinned version. Other `bw` installations outside `~/.local/bin` SHALL be left unchanged.
+
+#### Scenario: Host with an old download
+- **WHEN** `~/.local/bin/bw` exists and `machine update` runs on a host where `mise` provides `bw`
+- **THEN** `~/.local/bin/bw` is removed, the removal is logged and `bw` resolves to the `mise` build
+
+#### Scenario: mise could not install bw
+- **WHEN** `~/.local/bin/bw` exists and `mise` does not provide `bw`
+- **THEN** `~/.local/bin/bw` is kept
 
 ### Requirement: Session storage is opt-in
-Storing `BW_SESSION` SHALL be opt-in with a default of no, and SHALL never be done non-interactively.
+Storing `BW_SESSION` SHALL be opt-in, and SHALL never be done non-interactively. The question SHALL default to no, and to yes when `~/.env.local` already holds a `BW_SESSION`. When a `BW_SESSION` is saved and the user answers no in `machine setup`, it SHALL be removed from `~/.env.local` and the other settings there SHALL be kept.
 
 #### Scenario: Non-interactive run
 - **WHEN** `machine env pull` runs without a terminal
 - **THEN** `BW_SESSION` is not written to any file
+
+#### Scenario: First save
+- **WHEN** a user unlocks Bitwarden in a terminal and `~/.env.local` holds no `BW_SESSION`
+- **THEN** the question whether to save the token defaults to no
+
+#### Scenario: Renewal of a saved token in setup
+- **WHEN** `~/.env.local` holds an expired `BW_SESSION` and a user renews it in `machine setup`
+- **THEN** the question whether to save the token defaults to yes
+
+#### Scenario: Saved token declined
+- **WHEN** `~/.env.local` holds a `BW_SESSION` and the user answers no to the save question in `machine setup`
+- **THEN** `BW_SESSION` is removed from `~/.env.local` and its CA/proxy settings stay
 
 ### Requirement: Ansible Vault password in Bitwarden
 The Ansible Vault password SHALL be kept in the Bitwarden item `ansible-vault`, and the real inventory SHALL be vault-encrypted.

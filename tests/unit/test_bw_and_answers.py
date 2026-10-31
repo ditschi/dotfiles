@@ -534,6 +534,65 @@ def test_bitwarden_setup_does_not_prompt_with_a_valid_saved_session(
     assert machine.setup_bitwarden()
 
 
+def _setup_with_renewal(tmp_path, monkeypatch, local: str, save_answer: bool):
+    """Run setup_bitwarden: saved token expired, unlock returns `fresh`."""
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    if local:
+        (tmp_path / ".env.local").write_text(local)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    defaults = {}
+
+    def prompt(question, default):
+        if question.startswith("Save the unlock token"):
+            defaults["save"] = default
+            return save_answer
+        return True
+
+    monkeypatch.setattr(cli.system, "prompt_yes_no", prompt)
+
+    def run(args, **_kw):
+        if args == ["bw", "unlock", "--raw"]:
+            return subprocess.CompletedProcess(args, 0, "fresh", "")
+        unlocked = os.environ.get("BW_SESSION") == "fresh"
+        status = {
+            "status": "unlocked" if unlocked else "locked",
+            "serverUrl": "https://vault.example",
+        }
+        return subprocess.CompletedProcess(args, 0, json.dumps(status), "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert machine.setup_bitwarden()
+    return defaults["save"]
+
+
+@pytest.mark.parametrize("answer", [True, False])
+def test_setup_save_question_defaults_to_yes_when_saved_before(
+    tmp_path, monkeypatch, answer
+):
+    local = "export OTHER=keep\nBW_SESSION=expired\nNODE_USE_ENV_PROXY=1\n"
+    default = _setup_with_renewal(tmp_path, monkeypatch, local, answer)
+
+    assert default is True
+    saved = (tmp_path / ".env.local").read_text()
+    assert "export OTHER=keep" in saved
+    assert "NODE_USE_ENV_PROXY=1" in saved
+    assert "expired" not in saved
+    assert ("BW_SESSION=fresh" in saved) is answer
+    if not answer:
+        assert "BW_SESSION" not in saved
+
+
+def test_setup_save_question_defaults_to_no_without_a_saved_token(
+    tmp_path, monkeypatch
+):
+    default = _setup_with_renewal(tmp_path, monkeypatch, "", False)
+
+    assert default is False
+    assert not (tmp_path / ".env.local").exists()
+
+
 @pytest.mark.parametrize("answer", [True, False])
 def test_unlock_offers_login_when_logged_out(tmp_path, monkeypatch, answer):
     cli, machine = isolated_machine(tmp_path, monkeypatch)

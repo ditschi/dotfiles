@@ -14,6 +14,7 @@
 #   ditschi-ThinkPad-L13-Yoga-Gen-2.yml  — this laptop (private desktop + laptop features + stylus + touch-device + sshd-home)
 #   homeserver.yml                       — M720q / K3s CP (private server + sshd-home)
 #   netmaster.yml                        — Pi edge (private server + sshd-home)
+#   contabo.yml                          — Contabo VPS, KVM (private server + sshd-home; no SMART: VM)
 #   machine/ssh_keys/ditschi-ThinkPad-T470.pub — pubkey recovered from netmaster
 #   A new host (e.g. the T470) gets its file from `machine setup` on that host.
 #

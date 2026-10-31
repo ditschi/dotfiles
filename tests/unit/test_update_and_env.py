@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -2089,3 +2090,248 @@ def test_status_shows_a_low_disk(update_env, capsys, tmp_path, monkeypatch):
     out = capsys.readouterr().out
     assert "⚠ /mnt/data 98% full → free space: machine attention" in out
     assert "\x1b[" not in out
+
+
+# --- handoff to the machine code of the new revision ------------------------
+
+
+def _resume_args(rest: list[str]) -> argparse.Namespace:
+    def value(option: str) -> str:
+        return rest[rest.index(option) + 1] if option in rest else ""
+
+    return argparse.Namespace(
+        auto="--auto" in rest,
+        system="--system" in rest,
+        skip_ansible="--skip-ansible" in rest,
+        force=False,
+        resume_from=value("--resume-from"),
+        resume_result=value("--resume-result"),
+    )
+
+
+def _new_code(monkeypatch, machine, child=None) -> list[list[str]]:
+    """Intercept the start of the new entry point; by default run it in-process.
+
+    Returns the argument lists after the entry command, one per start."""
+    system_module = machine_system()
+    original = system_module.run
+    entry = machine.machine_entry_command()
+    started: list[list[str]] = []
+
+    def run(args, **kwargs):
+        args = [str(arg) for arg in args]
+        size = len(entry)
+        if args[:size] != entry:
+            return original(args, **kwargs)
+        rest = args[size:]
+        started.append(rest)
+        if child is not None:
+            return child(rest)
+        try:
+            code = machine.cmd_update(_resume_args(rest[1:]))
+        except SystemExit as exc:
+            code = exc.code
+        return subprocess.CompletedProcess(args, code)
+
+    monkeypatch.setattr(system_module, "run", run)
+    return started
+
+
+def test_update_hands_remaining_steps_to_new_machine_code(update_env, monkeypatch):
+    machine, repo, other, _home, calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    started = _new_code(monkeypatch, machine)
+
+    assert _update(machine) == 0
+    assert started == [["update", "--resume-from", before]]
+    assert calls == ["env", "dotfiles", "tools"]
+    assert (repo / "machine_cli/new_step.py").is_file()
+    assert machine.read_update_state()["state"] == "updated"
+    (event,) = _events(machine)  # only the parent records the update
+    assert (event["event"], event["outcome"]) == ("update", "applied")
+
+
+def test_update_passes_system_options_to_new_machine_code(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    started = _new_code(monkeypatch, machine)
+
+    assert _update(machine, system=True, skip_ansible=True) == 0
+    assert "--system" in started[0] and "--skip-ansible" in started[0]
+
+
+def test_update_without_machine_code_change_runs_in_one_process(
+    update_env, monkeypatch
+):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_new", "x\n")
+    started = _new_code(monkeypatch, machine)
+
+    assert _update(machine) == 0
+    assert started == [] and calls == ["env", "dotfiles", "tools"]
+
+
+def test_resumed_update_takes_steps_from_the_previous_revision(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_change(other, "ansible/roles/base/tasks/main.yml", "- debug: {}\n")
+    _new_code(monkeypatch, machine)
+
+    assert _update(machine) == 0
+    assert calls == ["env", "dotfiles", "tools", "apply"]
+
+
+def test_update_records_attention_when_new_machine_code_stops(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _new_code(monkeypatch, machine, lambda rest: subprocess.CompletedProcess(rest, 1))
+
+    assert _update(machine) == 1
+    state = machine.read_update_state()
+    assert state["state"] == "attention"
+    assert "new machine code stopped (exit 1)" in state["reason"]
+    assert calls == []
+
+
+def test_update_keeps_the_reason_the_new_machine_code_recorded(update_env, monkeypatch):
+    machine, _repo, other, _home, _calls = update_env
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    monkeypatch.setattr(machine, "cmd_env_pull", lambda: 1)
+    _new_code(monkeypatch, machine)
+
+    assert _update(machine) == 1
+    assert "update failed: env pull" in machine.read_update_state()["reason"]
+
+
+def test_update_runs_steps_itself_when_new_machine_code_cannot_start(
+    update_env, monkeypatch, capsys
+):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+
+    def cannot_start(rest):
+        raise OSError("no such file")
+
+    _new_code(monkeypatch, machine, cannot_start)
+
+    assert _update(machine) == 0
+    assert calls == ["env", "dotfiles", "tools"]
+    assert "could not start the new machine code" in capsys.readouterr().out
+
+
+def test_auto_update_hands_steps_to_new_machine_code(update_env, monkeypatch):
+    machine, repo, other, _home, calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_change(other, "home/dot_new", "x\n")
+    started = _new_code(monkeypatch, machine)
+
+    assert _auto(machine) == 0
+    result_file = machine.state_dir / "update-resume-result.json"
+    assert started == [
+        [
+            "update",
+            "--auto",
+            "--resume-from",
+            before,
+            "--resume-result",
+            str(result_file),
+        ]
+    ]
+    assert calls == ["dotfiles"]
+    assert machine.read_update_state()["state"] == "updated"
+    assert not result_file.exists()
+    (event,) = _events(machine)
+    assert (event["event"], event["outcome"]) == ("update-auto", "applied")
+
+
+def test_auto_update_reverts_when_new_machine_code_reports_a_failure(
+    update_env, monkeypatch
+):
+    machine, repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    (repo / "home/dot_placeholder").write_text("edited\n")
+    monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
+    _new_code(monkeypatch, machine)
+
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    assert (repo / "home/dot_placeholder").read_text() == "edited\n"
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "zsh failed to start" in state["reason"]
+    (event,) = _events(machine)
+    assert event["outcome"] == "reverted" and event["reason"] == "zsh-unhealthy"
+
+
+@pytest.mark.parametrize("how", ["exit", "no-result", "cannot-start"])
+def test_auto_update_reverts_when_new_machine_code_stops(update_env, monkeypatch, how):
+    machine, _repo, other, _home, _calls = update_env
+    before = machine.repo_revision()
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+
+    def child(rest):
+        if how == "cannot-start":
+            raise OSError("no such file")
+        return subprocess.CompletedProcess(rest, 1 if how == "exit" else 0)
+
+    _new_code(monkeypatch, machine, child)
+
+    assert _auto(machine) == 0
+    assert machine.repo_revision() == before
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "new machine code" in state["reason"]
+    assert state["failed_revision"]
+    (event,) = _events(machine)
+    assert event["outcome"] == "reverted" and event["reason"] == "resume-failed"
+
+
+def test_machine_entry_command_runs_the_checkout_script(update_env, monkeypatch):
+    machine, repo, *_rest = update_env
+    script = repo / "machine_cli/machine"
+    script.parent.mkdir()
+    script.write_text("#!/bin/sh\n")
+    assert machine.machine_entry_command()[-1] == str(script)  # via the interpreter
+
+    script.chmod(0o755)
+    assert machine.machine_entry_command() == [str(script)]
+
+    import machine_cli.core as core_module
+
+    monkeypatch.setattr(core_module, "debug_enabled", lambda: True)
+    assert machine.machine_entry_command() == [str(script), "--debug"]
+
+
+def test_auto_update_starts_the_real_cli_of_the_new_revision(
+    update_env, monkeypatch, capsys
+):
+    """End to end: the parent starts the checkout's CLI, which reports through the file."""
+    machine, repo, other, _home, calls = update_env
+    shutil.copytree(
+        REPO / "machine_cli",
+        other / "machine_cli",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    table = "ansible/group_vars/all/features.yml"
+    (other / table).parent.mkdir(parents=True)
+    shutil.copy(REPO / table, other / table)  # the CLI reads it at import
+    # A host that never ran Ansible: the feature table is no system change here.
+    machine.write_update_state("none", ansible_applied_rev="")
+    marker = "# new revision of the machine code\n"
+    with open(other / "machine_cli/__init__.py", "a") as handle:
+        handle.write(marker)
+    _git("add", "-A", cwd=other)
+    _git("commit", "-q", "-m", "machine code", cwd=other)
+    _git("push", "-q", "origin", "HEAD:main", cwd=other)
+    script = repo / "machine_cli/machine"
+    monkeypatch.setattr(
+        machine, "machine_entry_command", lambda: [sys.executable, str(script)]
+    )
+
+    assert _auto(machine) == 0
+    assert marker in (repo / "machine_cli/__init__.py").read_text()
+    assert "running the remaining steps with the new code" in capsys.readouterr().out
+    assert machine.read_update_state()["state"] == "updated"
+    (event,) = _events(machine)
+    assert (event["event"], event["outcome"]) == ("update-auto", "applied")

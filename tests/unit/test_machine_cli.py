@@ -54,6 +54,39 @@ def test_apply_and_update_expose_skip_ansible(command):
     assert "--skip-ansible" in result.stdout
 
 
+def test_update_resume_options_are_hidden():
+    result = subprocess.run(
+        [sys.executable, str(MACHINE), "update", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "--resume" not in result.stdout
+
+
+def test_update_resume_options_reach_cmd_update(monkeypatch):
+    """Older revisions call these options; their names and meaning must stay."""
+    from click.testing import CliRunner
+
+    cli = _cli()
+    seen = []
+
+    class FakeMachine:
+        def cmd_update(self, args):
+            seen.append(args)
+            return 0
+
+    monkeypatch.setattr(cli, "Machine", FakeMachine)
+    result = CliRunner().invoke(
+        cli.app,
+        ["update", "--auto", "--resume-from", "abc123", "--resume-result", "/r.json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen[0].auto and seen[0].resume_from == "abc123"
+    assert seen[0].resume_result == "/r.json"
+
+
 def test_symlinked_entry_point_finds_the_checkout(tmp_path):
     link = tmp_path / "bin" / "machine"
     link.parent.mkdir()

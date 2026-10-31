@@ -56,6 +56,7 @@
 - [x] 8.3 `openspec validate ssh-client-config --strict`
   - 2026-10-31: valid
 - [ ] 8.4 Manual check on the laptop: `ssh homeserver` at home and with the LAN route blocked (jump), `ssh nas` without prompt, on Oracle `ssh homeserver` without jump; record results
+  - 2026-10-31, after merge and `ssh/home/config` created, on the laptop: `machine update` linked the base config, moved the old file to `config.pre-dotfiles` (7 hosts left in `90-legacy`), wrote `20-home` and `known_hosts.d/home`. With `BatchMode=yes` (no host key prompt possible) homeserver, netmaster, nas, homeassistant, ucg, oracle, contabo and octoprint log in through their aliases; nas-backup needed `IdentityFile ~/.ssh/id_rsa_nas` in the note (it only accepts that key, which the agent offered before `IdentitiesOnly`). With the home network marked away, `ssh homeserver` went through the Oracle tunnel (1.2 s). Still open: the local-tunnel shortcut on Oracle itself, after Oracle has updated
   - 2026-10-31, before rollout, with the worktree's `ssh-route` as explicit `ProxyCommand`: LAN route to homeserver ok (home gateway learned, 0.9 s), jump route through Oracle ok, `scp` over the LAN route ok. Open until merged and `ssh/home/config` exists: alias with managed known hosts without prompt, Oracle local-tunnel shortcut
 
 ## Workflow follow-up

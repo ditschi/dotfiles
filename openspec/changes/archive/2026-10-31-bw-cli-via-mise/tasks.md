@@ -24,7 +24,7 @@
 - [x] 4.1 Run `pytest tests/unit -q` (setup, update and Bitwarden paths share `ensure_bootstrap_tools` and the converge step, so the full unit suite is the safe selection); record the result.
 - [x] 4.2 Run `pre-commit run --files` on every changed and added path (including `mise.lock` and the new tests); record the result.
 - [x] 4.3 In a clean environment without `~/.config/mise` (scratch `HOME`, `MISE_DATA_DIR`), run the new `ensure_bitwarden_cli` path and verify `bw --version` prints the locked version; record the commands and output.
-- [ ] 4.4 On `netmaster` (aarch64), after merging: `machine update`, then `bw --version` prints the locked version and `machine env pull` gets past the install step to the Bitwarden login or unlock. Record the result (owner runs it, or over SSH with the owner's consent).
+- [x] 4.4 On `netmaster` (aarch64), after merging: `machine update`, then `bw --version` prints the locked version and `machine env pull` gets past the install step to the Bitwarden login or unlock. Record the result (owner runs it, or over SSH with the owner's consent).
 
 ## Workflow follow-up
 
@@ -39,3 +39,4 @@
 - zsh completion: with `bw` on `PATH`, `dotfiles_cli_completions` registers `_comps[bw]=_bw`; without `bw` it returns 0 and registers nothing. `bw <Tab>` was not tried in an interactive terminal.
 - `mise lock` also deleted the unrelated `home/core/.config/mise/locks/npm-anthropic-ai-claude-code/2.1.308/`; it was restored, so only the `bitwarden` entries changed in the lockfile.
 - 4.4 first run (netmaster, `bw` 2026.10.1 via mise shims): install worked (`bw --version` 2026.10.1), but `machine env pull` failed after login with `KeyIdBackfillError` (404 from Vaultwarden 2026.6.0) and wrote no env files; led to task 1.3. Lock after 1.3: sha256 367f618e… (linux-x64) and 74d822a5… (linux-arm64), equal to the GitHub digests.
+- 4.4 after 1.3 (netmaster, aarch64, at `0fd26b5`): `bw` resolves to the mise shim and prints `2026.8.0`; `machine update --skip-ansible` unlocked Bitwarden and wrote `~/.env` and `~/.env.host` (mode 600) from `env/groups/private`.

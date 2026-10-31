@@ -287,6 +287,8 @@ class BwClientMixin:
             return False
 
         self.load_local_bitwarden_settings()
+        # Saved before: the save question defaults to yes (spec secret-tools).
+        was_saved = self.saved_bitwarden_session()
         status = self.bitwarden_setup_status()
         if status.get("status") != "unlocked":
             os.environ.pop("BW_SESSION", None)
@@ -302,9 +304,12 @@ class BwClientMixin:
         if system.prompt_yes_no(
             "Save the unlock token and CA/proxy settings in ~/.env.local "
             "(mode 600)? The token grants vault access until invalidated.",
-            False,
+            was_saved,
         ):
             self.save_bitwarden_local_settings()
+        elif self.saved_bitwarden_session():
+            # The renewal already replaced the saved token; "no" means do not keep it.
+            self.forget_saved_bitwarden_session()
         return True
 
     def ask_bitwarden_server(self, current: str) -> None:
@@ -388,8 +393,9 @@ class BwClientMixin:
             return status
 
     def offer_saving_bitwarden_session(self) -> None:
-        """After a fresh interactive unlock: offer (default no) to keep the token in
-        ~/.env.local, so later setup/update runs need no master password."""
+        """After a fresh interactive unlock: offer to keep the token in ~/.env.local, so
+        later setup/update runs need no master password (default yes when saved before).
+        """
         if not getattr(self, "_bw_new_session", False):
             return
         self._bw_new_session = False
@@ -398,7 +404,7 @@ class BwClientMixin:
         if system.prompt_yes_no(
             "Save the Bitwarden unlock token in ~/.env.local (mode 600) so the next "
             "setup/update does not ask again? It grants vault access until locked.",
-            False,
+            self.saved_bitwarden_session(),
         ):
             self.save_bitwarden_local_settings()
 
@@ -428,6 +434,17 @@ class BwClientMixin:
         )
         write_private(path, content.encode())
         log(f"saved Bitwarden local settings to {path} (mode 600); token not printed")
+
+    def forget_saved_bitwarden_session(self) -> None:
+        """Remove BW_SESSION from ~/.env.local; other lines (CA/proxy) stay."""
+        path = self.home / ".env.local"
+        if not path.is_file():
+            return
+        assignment = re.compile(r"^\s*(?:export\s+)?BW_SESSION=")
+        lines = path.read_text().splitlines(keepends=True)
+        kept = "".join(line for line in lines if not assignment.match(line))
+        write_private(path, kept.encode())
+        log(f"removed the saved Bitwarden unlock token from {path}")
 
     def bw_get_item_raw(self, name: str) -> Optional[dict]:
         result = system.run(

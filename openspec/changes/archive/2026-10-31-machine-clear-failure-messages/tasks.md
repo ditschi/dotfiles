@@ -25,7 +25,8 @@ All work happens in the worktree `.worktrees/machine-clear-failure-messages`.
   - Result: `pytest tests/unit/test_update_and_env.py tests/unit/test_host_profiles.py -q` → 173 passed (rerun after the flake8/black fixes); `pytest tests/unit -q` → 743 passed (before those formatting-only fixes). The full suite covers the `PATH` change for every command.
 - [x] 4.2 Run `pre-commit run --files` on all changed and added paths, including this change directory; record the result
   - Result: `pre-commit run --files` on all changed and new paths → all hooks pass, after black reformatted `commands.py` and two flake8 findings were fixed (E402 import order in `local_work.py`, E203 in a test).
-- [ ] 4.3 Manual check over SSH on `homeserver` after merging: `ssh homeserver '~/.local/bin/machine update --check'` reports no "not set up"; record the result
+- [x] 4.3 Manual check over SSH on `homeserver` after merging: `ssh homeserver '~/.local/bin/machine update --check'` reports no "not set up"; record the result
+  - Result (2026-10-31, `homeserver` at `03a9e9a`): in a plain `ssh homeserver …` session `PATH` does not contain `~/.local/bin` and `command -v mise` finds nothing. `ssh homeserver '~/.local/bin/machine update --check'` → up-to-date, no blockers. `ssh homeserver '~/.local/bin/machine update'` without a terminal → the tool install found all 20 mise tools, the update finished, and "not set up" appeared 0 times. The Bitwarden lines ("not unlocked") are unrelated: the vault on `homeserver` is locked.
 
 ## Workflow follow-up
 

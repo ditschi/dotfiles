@@ -27,6 +27,10 @@ def isolate_machine_environment(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     # no real filesystems: disk items only where a test supplies a mountinfo
     monkeypatch.setenv("MACHINE_MOUNTINFO", os.devnull)
+    # no real sshd host key: SSH tests supply their own file
+    monkeypatch.setenv(
+        "MACHINE_SSH_HOST_KEY_FILE", "/nonexistent/ssh_host_ed25519_key.pub"
+    )
 
 
 @pytest.fixture

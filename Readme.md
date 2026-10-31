@@ -494,6 +494,42 @@ machine ssh sync              # host and Bitwarden differ: choose which key wins
 machine ssh rotate            # new key at ~/.ssh/id_ed25519_<hostname>, old one kept, item overwritten
 ```
 
+The manual `machine update` also keeps the repository files current without Bitwarden: `machine/ssh_keys/<hostname>.pub` holds only the selected key, and [`machine/ssh_host_keys/<hostname>.pub`](machine/ssh_host_keys/) the host's sshd key. Changed files that are not pushed yet show up in `machine attention`, which offers to commit and push them.
+
+### SSH client config
+
+`~/.ssh/config` links to [`home/core/.ssh/config`](home/core/.ssh/config). ssh takes the first value of each option, so the layers come in this order:
+
+1. `~/.ssh/config.local`: this host only, never versioned or overwritten (like `~/.gitconfig.local`).
+2. `~/.ssh/config.d/20-home` or `20-work`: the host list of the context, ready `ssh_config` text in the Bitwarden secure note `ssh/home/config` or `ssh/work/config`. Setup, the manual update and `machine ssh pull` write it after `ssh -G` accepts it; the background update leaves it alone. Addresses, users and ports never go into the repository.
+3. `~/.ssh/config.d/90-legacy`: hosts of the hand-written config the link replaced (kept as `~/.ssh/config.pre-dotfiles`) that neither layer above defines. `machine attention` walks through them.
+4. Shared defaults: keep-alive, connection sharing (`~/.ssh/cm`, 10 minutes; after a network change `ssh -O exit <host>`), `IdentitiesOnly`, readable known hosts.
+
+Host blocks added by hand to the generated list are kept in a "local only" section; `machine attention` offers to add them to Bitwarden, move them to `config.local`, remove or skip them.
+
+**Home hosts** use one alias everywhere. `ssh-route` (in `~/.local/bin`) is the `ProxyCommand` and tries `lan`, then `ts` (Tailscale, only when logged in and the peer is online), then `jump` (the reverse tunnel on the jump host; on the jump host itself the local port):
+
+```
+Host homeserver
+  User ditschi
+  HostKeyAlias homeserver
+  ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.4:22 jump=oracle:2223
+```
+
+The home network is learned, not configured: on an unknown network `ssh-route` compares the host key at the LAN address with the managed key of the alias and remembers the gateway in `~/.cache/ssh-route/networks`. A replaced home router is learned the same way; `machine attention` then offers to drop the old entry.
+
+**Managed host keys** (private hosts): `machine apply` writes `~/.ssh/known_hosts.d/home` from [`machine/ssh_host_keys/`](machine/ssh_host_keys/), so home hosts are trusted without a first-connection prompt on every route. Hosts with dotfiles write their own file; devices without dotfiles are added with `machine ssh known-hosts add <alias>`. Work hosts use the normal first-connection prompt.
+
+```bash
+machine ssh add [alias]              # guided: address, user, port, routes; list or config.local; login test
+machine ssh edit                     # host list in $EDITOR, checked by ssh before saving
+machine ssh remove <alias>           # host block and managed host key
+machine ssh pull                     # write the host list from Bitwarden now
+machine ssh known-hosts add <alias>  # fetch, confirm and store a device's host key
+```
+
+`machine setup` offers to add the host itself to the host list of its context.
+
 ## Context, device, hardware and features
 
 Every host has three levels:
@@ -508,7 +544,7 @@ The feature table [`ansible/group_vars/all/features.yml`](ansible/group_vars/all
 
 Adding a feature: one row in the feature table plus either apt packages (`packages_by_feature` in `group_vars/all/packages.yml`), a role with `when: "'<feature>' in machine_features"`, or a dotfile group (`home/<group>/` declared in `mise.toml`, named under `groups:`). The CLI needs no change. Tools for every host go into a `core` fragment instead.
 
-In Docker the device is `container` without context; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` set others (used by `machine testenv` and the tests). `MACHINE_HARDWARE=laptop,pi,pi-zero` replaces the hardware detection in tests.
+In Docker the device is `container` without context; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` set others (used by `machine testenv` and the tests). `MACHINE_HARDWARE=laptop,pi,pi-zero,vm` replaces the hardware detection in tests (`vm`: a virtual machine, which gets no SMART monitoring).
 
 Private hosts get `monitoring` (Telegraf) by default, installed from the InfluxData apt source. Config names are resolved **only** in `tasks/resolve_monitoring.yml` from the hardware and the device (not in the CLI). The inputs are the local files under `ansible/roles/monitoring/files/`; with `INFLUX_TELEGRAF_CONFIG_BASE` set, the remote Influx configs replace them. The output comes from the Bitwarden item `influxdb-telegraf-write` (see [Secrets / Bitwarden](#secrets--bitwarden)). Telegraf runs only with an output; otherwise it stays stopped and `machine attention` says why. See [ansible/roles/monitoring/README.md](ansible/roles/monitoring/README.md).
 

@@ -735,6 +735,7 @@ class UpdateMixin:
         not_set_up = ""
         if self.mise_local_config.is_file() and system.have("mise"):
             runner.run("dotfile apply", self.run_dotfiles_apply)
+            runner.run("ssh host list", self.pull_ssh_host_list)
             runner.run("tool install", self.run_tools_install, needs=["dotfile apply"])
         else:
             reason = (
@@ -751,7 +752,9 @@ class UpdateMixin:
             if system.is_tty() and self._confirm_bootstrap():
                 system.run([str(self.repo / "bootstrap")])
                 not_set_up = ""
+            runner.run("ssh host list", self.pull_ssh_host_list)
         self.check_ssh_key_backup()
+        runner.run("ssh key files", self.sync_repo_key_files)
         zsh_failure = ""
         if steps & {"dotfiles", "shell"} and not not_set_up:
 

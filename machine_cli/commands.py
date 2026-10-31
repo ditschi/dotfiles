@@ -108,6 +108,12 @@ class CommandsMixin:
         if not args.skip_dotfiles:
             runner.run("env pull", self.cmd_env_pull)
             runner.run("dotfile apply", self.run_dotfiles_apply)
+            # After the dotfile apply, which moves a hand-written ~/.ssh/config aside
+            # for the legacy hosts; its questions still come before the tool install.
+            runner.run("ssh host list", self.pull_ssh_host_list)
+            runner.run(
+                "ssh host list entry", lambda: self.offer_self_in_host_list(args.yes)
+            )
             if os.environ.get("MACHINE_SKIP_TOOLS") != "1":
                 runner.run(
                     "tool install", self.run_tools_install, needs=["dotfile apply"]
@@ -146,6 +152,7 @@ class CommandsMixin:
                 self.provision_host_ssh_key()
 
             runner.run("ssh host key", ssh_host_key)
+        runner.run("ssh key files", self.sync_repo_key_files)
 
         self.maybe_tailscale_login(features)
 

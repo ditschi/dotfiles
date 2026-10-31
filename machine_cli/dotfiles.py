@@ -245,6 +245,7 @@ class DotfilesMixin:
         system.run(["mise", "dot", "apply", "--prune", "--yes"], env=env, cwd=self.repo)
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")
+        self.apply_ssh_client()
         self.ensure_machine_link()
 
     def write_github_token_config(self, context: str) -> None:

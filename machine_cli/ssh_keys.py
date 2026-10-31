@@ -302,9 +302,11 @@ class SshKeysMixin:
             return
         path = self.repo / "machine" / "ssh_keys" / f"{system.hostname_short()}.pub"
         text = public.read_text(encoding="utf-8").strip() + "\n"
-        if path.is_file() and key_blob(path.read_text(encoding="utf-8")) == key_blob(
-            text
-        ):
+        if path.is_file() and [
+            key_blob(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ] == [key_blob(text)]:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")

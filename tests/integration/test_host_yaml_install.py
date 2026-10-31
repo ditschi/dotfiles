@@ -166,6 +166,9 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert host.file("/etc/telegraf/telegraf.conf").exists
     assert host.file("/etc/telegraf/telegraf.d/machine_laptop.conf").exists
     assert host.file("/etc/telegraf/telegraf.d/machine_base.conf").exists
+    # A container has no real disks: no SMART fragment, no smartctl sudo rule
+    assert not host.file("/etc/telegraf/telegraf.d/machine_smart.conf").exists
+    assert not host.file("/etc/sudoers.d/telegraf-smartctl").exists
     assert_telegraf_installed_without_output(host)
     # Role installs files; systemd enable is skipped in containers
     assert host.file("/usr/local/lib/machine/stylus_touch_guard.py").exists

@@ -4,9 +4,10 @@
 #   hw_pi       Raspberry Pi (device-tree model)
 #   hw_pi_zero  Raspberry Pi Zero, Zero W or Zero 2 W
 #   hw_model_l13_yoga_gen2  ThinkPad L13 Yoga Gen 2 (DMI vendor and version)
+#   hw_virtual  virtual machine (virtualization guest that is not a container)
 # Nothing is detected for the container device: a container sees the host's hardware.
-# Tests set MACHINE_HARDWARE (comma list of laptop, pi, pi-zero, l13-yoga-gen2) instead
-# of detecting.
+# Tests set MACHINE_HARDWARE (comma list of laptop, pi, pi-zero, l13-yoga-gen2, vm)
+# instead of detecting.
 
 - name: Hardware facts for containers
   ansible.builtin.set_fact:
@@ -14,6 +15,7 @@
     hw_pi: false
     hw_pi_zero: false
     hw_model_l13_yoga_gen2: false
+    hw_virtual: false
   when: device | default('') == 'container'
 
 - name: Hardware facts given by MACHINE_HARDWARE (tests)
@@ -22,6 +24,7 @@
     hw_pi: "{{ 'pi' in machine_hardware_override or 'pi-zero' in machine_hardware_override }}"
     hw_pi_zero: "{{ 'pi-zero' in machine_hardware_override }}"
     hw_model_l13_yoga_gen2: "{{ 'l13-yoga-gen2' in machine_hardware_override }}"
+    hw_virtual: "{{ 'vm' in machine_hardware_override }}"
   vars:
     machine_hardware_override: "{{ (lookup('env', 'MACHINE_HARDWARE') | default('', true)).split(',') | map('trim') | list }}"
   when:
@@ -62,8 +65,12 @@
         hw_model_l13_yoga_gen2: >-
           {{ (ansible_facts.system_vendor | default('')) == 'LENOVO'
              and (ansible_facts.product_version | default('')) == 'ThinkPad L13 Yoga Gen 2' }}
+        hw_virtual: >-
+          {{ (ansible_facts.virtualization_role | default('')) == 'guest'
+             and (ansible_facts.virtualization_type | default('')) not in hw_container_types }}
       vars:
         hw_model: "{{ (hw_model_file.content | default('')) | b64decode }}"
+        hw_container_types: [docker, container, podman, lxc]
         hw_portable_form_factors:
           - Notebook
           - Laptop

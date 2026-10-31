@@ -39,6 +39,14 @@ def have(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+def ensure_user_bin_on_path(home: Path) -> None:
+    """Prepend ~/.local/bin to PATH when missing (e.g. `ssh host command`, no login shell)."""
+    user_bin = str(home / ".local/bin")
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    if user_bin not in parts:
+        os.environ["PATH"] = os.pathsep.join([user_bin, *filter(None, parts)])
+
+
 def ansible_works() -> bool:
     """True when ansible-playbook exists and its interpreter can still import ansible."""
     if not have("ansible-playbook"):

@@ -326,6 +326,7 @@ def help_cmd(ctx) -> None:
 
 
 if __name__ == "__main__":
+    system.ensure_user_bin_on_path(Path.home())
     try:
         app(prog_name=MACHINE_PROG_NAME)
     except KeyboardInterrupt:

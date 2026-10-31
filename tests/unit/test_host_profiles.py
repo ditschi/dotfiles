@@ -347,6 +347,93 @@ def test_apply_reverts_on_health_check_failure(tmp_path: Path, monkeypatch):
     assert revert_runs["n"] == 2
 
 
+@pytest.mark.parametrize("step", ["ansible", "health"])
+def test_apply_failure_names_the_failed_step(tmp_path: Path, monkeypatch, capsys, step):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    machine.write_profile("private", "desktop", ["zsh-full"], [])
+    (repo / "machine/hosts/testhost.yml").write_bytes(
+        machine.applied_host_path.read_bytes()
+    )
+
+    def ansible(*_a, **_k):
+        if step == "ansible":
+            raise subprocess.CalledProcessError(2, ["ansible-playbook"])
+
+    monkeypatch.setattr(machine, "run_ansible", ansible)
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        machine,
+        "zsh_health_failure",
+        lambda: "zsh printed errors on startup: boom",
+    )
+    monkeypatch.setattr(machine, "dotfiles_health_failure", lambda: "")
+    monkeypatch.setattr(machine, "telegraf_problem", lambda: "")
+    args = argparse.Namespace(limit="", playbook="workstation", no_become=True)
+    with pytest.raises(SystemExit):
+        machine.cmd_apply(args)
+    out = capsys.readouterr().out
+    if step == "ansible":
+        assert "Review Ansible's error" in out
+        assert "health check failed" not in out
+    else:
+        assert "health check failed: zsh printed errors on startup: boom" in out
+        assert "Ansible" not in out and "sudo" not in out
+        assert "then run: machine apply" in out
+
+
+def _health_with_missing_tool(machine, monkeypatch, still_missing: bool):
+    missing = "zsh printed errors on startup: mise WARN  missing: npm:x@1"
+    state = {"installed": False}
+    runs = []
+
+    def zsh():
+        return missing if not state["installed"] or still_missing else ""
+
+    def run(args, **_kwargs):
+        runs.append(list(args))
+        state["installed"] = True
+
+    monkeypatch.setattr(machine, "zsh_health_failure", zsh)
+    monkeypatch.setattr(machine, "dotfiles_health_failure", lambda: "")
+    monkeypatch.setattr(machine, "telegraf_problem", lambda: "")
+    monkeypatch.setattr(machine, "dotfiles_env", lambda: {})
+    monkeypatch.setattr(_cli().system, "run", run)
+    return runs
+
+
+def test_health_check_installs_missing_mise_tools_once(tmp_path, monkeypatch, capsys):
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    runs = _health_with_missing_tool(machine, monkeypatch, still_missing=False)
+
+    assert machine.health_check_after_apply() is True
+    assert runs == [["mise", "install"]]
+    assert "running mise install once" in capsys.readouterr().out
+
+
+def test_health_check_names_mise_install_when_tools_stay_missing(
+    tmp_path, monkeypatch, capsys
+):
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    runs = _health_with_missing_tool(machine, monkeypatch, still_missing=True)
+
+    assert machine.health_check_after_apply() is False
+    assert runs == [["mise", "install"]]
+    assert "(run: mise install)" in capsys.readouterr().out
+
+
+def test_health_check_does_not_install_for_other_zsh_errors(tmp_path, monkeypatch):
+    _cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    runs = _health_with_missing_tool(machine, monkeypatch, still_missing=True)
+    monkeypatch.setattr(
+        machine, "zsh_health_failure", lambda: "zsh printed errors on startup: boom"
+    )
+
+    assert machine.health_check_after_apply() is False
+    assert runs == []
+
+
 def test_apply_remote_requires_host_file(tmp_path: Path, monkeypatch):
     import argparse
 

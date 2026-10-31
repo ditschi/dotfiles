@@ -7,6 +7,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import platform
 import shutil
 import subprocess
@@ -26,10 +27,23 @@ from .core import (
 )
 
 
+# The zsh check reports the first stderr line; this one only means a tool is not installed.
+MISE_MISSING = re.compile(r"^zsh printed errors on startup: mise WARN\s+missing: ")
+
+
 class ToolsMixin:
     def health_check_after_apply(self) -> bool:
         ok = True
-        for reason in (self.zsh_health_failure(), self.dotfiles_health_failure()):
+        zsh = self.zsh_health_failure()
+        if MISE_MISSING.match(zsh):
+            log("zsh reports missing mise tools; running mise install once")
+            system.run(
+                ["mise", "install"], env=self.dotfiles_env(), cwd=self.repo, check=False
+            )
+            zsh = self.zsh_health_failure()
+            if MISE_MISSING.match(zsh):
+                zsh += " (run: mise install)"
+        for reason in (zsh, self.dotfiles_health_failure()):
             if reason:
                 log(f"health check failed: {reason}")
                 ok = False

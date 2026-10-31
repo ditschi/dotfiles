@@ -41,7 +41,11 @@ class AttentionMixin:
             if self.pending_system_paths(plan["upstream"])
             else ""
         )
-        if plan["state"] == "diverged" and plan["rebase_blocker"]:
+        if (
+            plan["state"] == "diverged"
+            and plan["rebase_blocker"]
+            and not plan["conflicts"]
+        ):
 
             def show() -> None:
                 print(

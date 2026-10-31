@@ -13,6 +13,7 @@ from typing import Optional
 from . import system
 from .core import log, warn
 
+UNCOMMITTED_CONFLICT = "uncommitted local changes conflict with the incoming ones"
 STASH_PREFIX = "machine update"
 
 
@@ -193,42 +194,45 @@ class LocalWorkMixin:
                 return True
         return False
 
-    def rebase_blocker(self, upstream: str) -> str:
-        """Why the local commits cannot be rebased onto `upstream` unattended ('' if they can)."""
+    def rebase_blocker(self, upstream: str) -> tuple[str, list[str]]:
+        """Why the local commits cannot be rebased onto `upstream` unattended ('' if they can).
+
+        The list names the uncommitted files that conflict with the rebased commits; it is
+        only filled when they are the sole reason."""
         if self.operation_in_progress():
-            return "a rebase, merge or cherry-pick is in progress"
+            return "a rebase, merge or cherry-pick is in progress", []
         branch = (
             self._git("symbolic-ref", "--short", "-q", "HEAD").stdout or ""
         ).strip()
         if not branch:
-            return "no branch is checked out"
+            return "no branch is checked out", []
         local = (
             self._git("rev-list", "--reverse", f"{upstream}..HEAD").stdout or ""
         ).split()
         if not local:
-            return ""
+            return "", []
         if (
             self._git("rev-list", "--merges", f"{upstream}..HEAD").stdout or ""
         ).strip():
-            return "the local commits contain a merge commit"
+            return "the local commits contain a merge commit", []
         remote = self._git("branch", "-r", "--contains", local[0])
         if (remote.stdout or "").strip():
-            return "a local commit is already on a remote branch"
+            return "a local commit is already on a remote branch", []
         signing = self._git("config", "--type=bool", "--get", "commit.gpgsign")
         if (signing.stdout or "").strip() == "true":
-            return "commit signing is on"
+            return "commit signing is on", []
         replay = self._git(
             "replay", "--ref-action=print", "--onto", upstream, f"{upstream}..{branch}"
         )
         if replay.returncode != 0:
-            return "the local commits conflict with the incoming ones"
+            return "the local commits conflict with the incoming ones", []
         tip = ""
         for line in (replay.stdout or "").splitlines():
             parts = line.split()
             if len(parts) >= 3 and parts[0] == "update":
                 tip = parts[2]
         if not tip:
-            return "the trial rebase did not finish"
+            return "the trial rebase did not finish", []
         overlap = sorted(
             set(self.local_changes())
             & set(
@@ -237,9 +241,10 @@ class LocalWorkMixin:
                 ).splitlines()
             )
         )
-        if overlap and self.trial_conflicts(tip, overlap, set()):
-            return "uncommitted local changes conflict with the incoming ones"
-        return ""
+        conflicts = self.trial_conflicts(tip, overlap, set()) if overlap else []
+        if conflicts:
+            return UNCOMMITTED_CONFLICT, conflicts
+        return "", []
 
     def rebase_keeping_local(self, upstream: str) -> bool:
         """Rebase the local commits onto `upstream`, keeping uncommitted changes."""

@@ -800,6 +800,83 @@ def test_update_rebases_clean_diverged_history(update_env):
     assert not _git("stash", "list", cwd=repo).strip()
 
 
+def _diverged_with_conflict(repo: Path, other: Path) -> None:
+    """One local commit to rebase, an uncommitted change that conflicts, one that does not."""
+    _commit_local(repo, "home/dot_local", "l\n")
+    _conflict(repo, other)
+    (repo / "home/dot_local").write_text("wip\n")
+
+
+def test_diverged_plan_lists_conflicting_uncommitted_files(update_env):
+    machine, repo, other, _home, _calls = update_env
+    _diverged_with_conflict(repo, other)
+
+    plan = machine.update_plan(fetch=True)
+    assert plan["state"] == "diverged"
+    assert plan["conflicts"] == ["home/dot_placeholder"]
+
+
+def test_diverged_conflict_reason_names_files_without_a_terminal(update_env, capsys):
+    machine, repo, other, _home, calls = update_env
+    _diverged_with_conflict(repo, other)
+    head = machine.repo_revision()
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    err = capsys.readouterr().err.strip().splitlines()
+    assert "home/dot_placeholder" in err[-1]
+    assert "commit, stash or discard them, then run: machine update" in err[-1]
+    assert "git pull --rebase" not in err[-1]
+    assert machine.repo_revision() == head and calls == []
+    assert machine.read_update_state()["state"] == "attention"
+
+
+@pytest.mark.parametrize("how", ["choice", "force"])
+def test_diverged_conflict_stash_rebases_and_keeps_other_changes(
+    update_env, monkeypatch, how
+):
+    machine, repo, other, _home, _calls = update_env
+    _diverged_with_conflict(repo, other)
+    if how == "choice":
+        monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+        monkeypatch.setattr(
+            machine_system(), "choose", lambda title, choices, default: choices[1]
+        )
+
+    assert _update(machine, force=how == "force") == 0
+    assert _git("rev-list", "--count", "HEAD..origin/main", cwd=repo).strip() == "0"
+    assert _git("rev-list", "--count", "origin/main..HEAD", cwd=repo).strip() == "1"
+    assert (repo / "home/dot_placeholder").read_text() == "remote\n"
+    assert (repo / "home/dot_local").read_text() == "wip\n"
+    [entry] = machine.stash_entries()
+    shown = _git("stash", "show", "--name-only", entry[1], cwd=repo)
+    assert shown.split() == ["home/dot_placeholder"]
+    assert machine.stash_items()
+
+
+def test_diverged_conflict_defaults_to_manual_on_a_terminal(
+    update_env, capsys, monkeypatch
+):
+    machine, repo, other, _home, calls = update_env
+    _diverged_with_conflict(repo, other)
+    head = machine.repo_revision()
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    asked = []
+    monkeypatch.setattr(
+        machine_system(),
+        "choose",
+        lambda title, choices, default: asked.append(choices) or default,
+    )
+
+    with pytest.raises(SystemExit):
+        _update(machine)
+    assert asked and asked[0][0] == "resolve manually"
+    assert "git rebase origin/main" in capsys.readouterr().out
+    assert machine.repo_revision() == head and calls == []
+    assert (repo / "home/dot_placeholder").read_text() == "local\n"
+    assert machine.read_update_state()["state"] == "attention"
+
+
 def test_update_does_not_rebase_a_pushed_local_commit(update_env, capsys):
     machine, repo, other, _home, calls = update_env
     _push_change(other, "home/dot_remote", "r\n")
@@ -1759,6 +1836,27 @@ def test_update_warns_when_the_host_is_not_set_up(update_env, monkeypatch, capsy
     assert "dotfiles" not in calls
     assert "bootstrap" in capsys.readouterr().out
     assert machine.read_update_state()["state"] == "attention"
+
+
+def test_user_bin_is_added_to_path_without_a_login_shell(tmp_path, monkeypatch):
+    system = machine_system()
+    user_bin = tmp_path / ".local/bin"
+    user_bin.mkdir(parents=True)
+    (user_bin / "mise").write_text("#!/bin/sh\n")
+    (user_bin / "mise").chmod(0o755)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    assert not system.have("mise")
+
+    system.ensure_user_bin_on_path(tmp_path)
+    system.ensure_user_bin_on_path(tmp_path)
+    assert os.environ["PATH"] == f"{user_bin}:/usr/bin:/bin"
+    assert system.have("mise")
+
+
+def test_cli_puts_user_bin_on_path_before_running_a_command():
+    entry = (REPO / "machine_cli/machine").read_text()
+    _head, main = entry.split('if __name__ == "__main__":')
+    assert main.index("ensure_user_bin_on_path") < main.index("app(")
 
 
 @pytest.mark.parametrize("answer, ran", [("", True), ("n", False)], ids=["yes", "no"])

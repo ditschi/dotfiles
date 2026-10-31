@@ -201,6 +201,7 @@ class CommandsMixin:
             log("ansible skipped (--skip-ansible); system changes remain pending")
             return 0
 
+        failed_step = "Ansible"
         try:
             self.ensure_bootstrap_tools(
                 False,
@@ -208,8 +209,11 @@ class CommandsMixin:
                 not system.in_docker() and os.environ.get("MACHINE_SKIP_BW") != "1",
             )
             self.run_ansible_or_hint(playbook, "", True, ask_become=ask_become)
+            failed_step = "health check"
             if not self.health_check_after_apply():
-                raise RuntimeError("health check failed")
+                raise RuntimeError(
+                    "the health check after the apply failed (see above)"
+                )
         except (subprocess.CalledProcessError, RuntimeError) as exc:
             log(f"apply failed: {exc}")
             if backup:
@@ -222,11 +226,16 @@ class CommandsMixin:
                         )
                     except subprocess.CalledProcessError:
                         log("revert ansible also failed; check the host manually")
-                else:
+                elif failed_step == "Ansible":
                     log(
                         "host config was unchanged; not retrying the failed apply. "
                         "Review Ansible's error; sudo command restrictions require "
                         "administrator approval, not a different password."
+                    )
+                else:
+                    log(
+                        "host config was unchanged; not retrying the failed apply. "
+                        "Fix the health-check failure above, then run: machine apply"
                     )
             die("apply aborted and the applied host config restored where possible")
         log("apply finished")

@@ -346,7 +346,7 @@ class UpdateMixin:
                 "host_config_changes": [],
                 "blockers": [f"upstream {upstream} not found"],
             }
-        rebase_blocker = ""
+        rebase_blocker, rebase_conflicts = "", []
         if self._is_ancestor("HEAD", upstream):
             incoming = self.incoming_changes(upstream)
             state = "behind" if incoming else "up-to-date"
@@ -356,7 +356,7 @@ class UpdateMixin:
             state = "diverged"
             base = (self._git("merge-base", "HEAD", upstream).stdout or "").strip()
             incoming = self.incoming_changes(upstream, base) if base else []
-            rebase_blocker = self.rebase_blocker(upstream)
+            rebase_blocker, rebase_conflicts = self.rebase_blocker(upstream)
         resolvable = [
             path for _name, path, _run, pending in self.local_resolvers() if pending()
         ]
@@ -384,7 +384,7 @@ class UpdateMixin:
             "resolvable": resolvable,
             "overlap": overlap,
             "merged": [path for path in overlap if path not in conflicts],
-            "conflicts": conflicts if state == "behind" else [],
+            "conflicts": conflicts if state == "behind" else rebase_conflicts,
             "rebase_blocker": rebase_blocker,
         }
         plan["blockers"] = (
@@ -409,6 +409,13 @@ class UpdateMixin:
                 return (
                     f"history diverged: {local} local and {commits}; "
                     "they rebase cleanly → run: machine update"
+                )
+            if plan["conflicts"]:
+                return (
+                    f"history diverged: {local} local and {commits}; uncommitted "
+                    f"changes in {', '.join(plan['conflicts'])} conflict with the "
+                    "incoming ones → commit, stash or discard them, then run: "
+                    "machine update"
                 )
             return (
                 f"history diverged: {local} local and {commits} "
@@ -590,9 +597,14 @@ class UpdateMixin:
         )
 
     def print_conflict_commands(self, plan: dict) -> None:
+        update = (
+            f"git rebase {plan['upstream']}"
+            if plan["state"] == "diverged"
+            else f"git merge --ff-only {plan['upstream']}"
+        )
         print(
             "\nResolve the conflict outside machine, for example:\n"
-            f"  git stash && git merge --ff-only {plan['upstream']} && git stash pop\n"
+            f"  git stash && {update} && git stash pop\n"
             "  git mergetool            # or edit the conflict markers by hand\n"
             "  git stash drop           # once the files are resolved\n"
             "  machine\n"
@@ -692,6 +704,9 @@ class UpdateMixin:
             self.write_update_state("attention", plan["blockers"][0])
             die(plan["blockers"][0])
         if plan["state"] == "diverged":
+            if plan["conflicts"]:
+                # Only uncommitted changes block the rebase: same choices as when behind.
+                plan = self.resolve_conflicts(plan, args.force)
             if plan["rebase_blocker"] or not self.rebase_keeping_local(
                 plan["upstream"]
             ):

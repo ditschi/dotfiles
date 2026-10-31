@@ -146,6 +146,8 @@
       # Managed by ansible roles/monitoring (machine/smart)
       [Service]
       LogFilterPatterns=~COMMAND={{ monitoring_smartctl }}
+      # PAM opens and closes a session for each of those calls (telegraf runs no other sudo)
+      LogFilterPatterns=~pam_unix.sudo:session.
   when: "'machine/smart' in _monitoring_names"
   notify: Restart telegraf
 

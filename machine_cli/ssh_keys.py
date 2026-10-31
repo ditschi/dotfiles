@@ -171,11 +171,20 @@ class SshKeysMixin:
         return public
 
     def bitwarden_session_ready(self) -> bool:
-        """A session that works without a prompt (environment or ~/.env.local)."""
+        """A working session: from the environment or ~/.env.local, or, when
+        Bitwarden is expected and a terminal is there, renewed without a question."""
         if not system.have("bw"):
             return False
         self.load_local_bitwarden_settings()
-        return self.bitwarden_session_valid()
+        if self.bitwarden_session_valid():
+            self.clear_bitwarden_notice()
+            return True
+        if not os.environ.get("BW_SESSION"):
+            return False
+        if system.is_tty() and not getattr(self, "unattended", False):
+            return self.unlock_bitwarden(expected=True)
+        self.record_bitwarden_notice()
+        return False
 
     def host_ssh_item(self) -> Tuple[bool, Optional[dict]]:
         """(listed, SSH key item named like the host); secure notes are ignored."""

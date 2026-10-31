@@ -313,7 +313,8 @@ dotfiles, tools and environment management stay active.
 
 Every host gets the **CLI** (`bw`, not the GUI snap) from mise as the `core` tool
 `bitwarden`: the official Bitwarden release build for x86_64 and aarch64, with version and
-checksums pinned in `mise.lock`. When `machine` needs `bw` before the dotfiles are linked,
+checksums pinned in `mise.lock`. The version is fixed in the fragment (2026.10.1 fails
+against the own Vaultwarden 2026.6.0); raise it only after checking it against the server. When `machine` needs `bw` before the dotfiles are linked,
 it installs that pinned version from the repository's mise config. A `~/.local/bin/bw`
 left by older setups is removed once mise provides `bw`.
 Interactive `machine setup` offers Bitwarden configuration and login before
@@ -337,6 +338,14 @@ it is never uploaded to Bitwarden or printed. Unlock again after expiry.
 Declining storage keeps the session only for the setup process.
 `--yes` / non-interactive setup never prompts or persists unlock tokens.
 Without an unlocked vault, environment fetching and key uploads are skipped.
+
+A `BW_SESSION` in the environment or in `~/.env.local` means Bitwarden is set up
+and expected. When it has expired, an interactive run (terminal, no `--yes`)
+unlocks, or logs in when logged out, at once without a yes/no question, and a
+renewed session replaces the saved one. Without a terminal, and in the background
+update (which then calls only `bw status`), an expired session shows
+`⚠ bitwarden: log in (machine)` in the prompt and an item in `machine attention`
+that offers to log in.
 
 ### Inventory
 

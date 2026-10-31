@@ -244,6 +244,7 @@ def test_smart_fragment_brings_the_smartctl_rule_and_leaves_with_it(apply_role):
     assert "telegraf ALL=(root) NOPASSWD: /usr/sbin/smartctl\n" in rule.read_text()
     dropin = etc / "telegraf.service.d/smartctl-log.conf"
     assert "LogFilterPatterns=~COMMAND=/usr/sbin/smartctl\n" in dropin.read_text()
+    assert "LogFilterPatterns=~pam_unix.sudo:session.\n" in dropin.read_text()
 
     run(monitoring_configs=["machine/base", "machine/server"])
     assert "machine_smart.conf" not in _names(etc)

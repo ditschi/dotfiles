@@ -19,3 +19,11 @@
 - [x] 3.3 Readme: Bitwarden section
 - [x] 3.4 `pytest tests/unit -q`, `pre-commit run --files`, `openspec validate bitwarden-session-renewal --strict`; record results
   - 2026-10-31: `pytest tests/unit -q` 833 passed (shared Bitwarden helper used by env pull, SSH key check, host list and the background update); pre-commit passes after black; validate: valid
+
+## 4. Review fixes
+
+- [x] 4.1 A failed or cancelled renewal is not asked again in the same run (notice instead)
+- [x] 4.2 A session from `bw login` also replaces the saved one
+- [x] 4.3 Ctrl-C or EOF at login/unlock continues without Bitwarden
+- [x] 4.4 An unreadable `~/.env.local` does not stop the background update
+  - 2026-10-31: `pytest tests/unit -q` 836 passed; pre-commit passes after black

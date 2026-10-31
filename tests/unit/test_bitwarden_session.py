@@ -135,6 +135,8 @@ def test_interactive_logged_out_logs_in_at_once(tmp_path, monkeypatch, fake_bw):
     monkeypatch.delenv("BW_SESSION", raising=False)
     assert machine.unlock_bitwarden(expected=True) is True
     assert "login" in log.read_text().split()
+    # the session from the login replaces the saved one
+    assert "BW_SESSION=fake-session" in (_home / ".env.local").read_text()
 
 
 def test_require_bitwarden_renews_instead_of_setup_question(
@@ -152,3 +154,53 @@ def test_require_bitwarden_renews_instead_of_setup_question(
     monkeypatch.setattr(machine, "bitwarden_session_valid", lambda: next(states, True))
     assert machine.require_bitwarden() is True
     assert "BW_SESSION=fake-session" in (home / ".env.local").read_text()
+
+
+def failing_unlock(cli, monkeypatch, error=None):
+    real = cli.system.run
+    calls = []
+
+    def run(args, **kwargs):
+        if list(args[:2]) == ["bw", "unlock"]:
+            calls.append(args)
+            if error:
+                raise error
+            import subprocess
+
+            return subprocess.CompletedProcess(args, 1, "", "Invalid master password.")
+        return real(args, **kwargs)
+
+    monkeypatch.setattr(cli.system, "run", run)
+    return calls
+
+
+def test_failed_renewal_is_not_asked_again_in_the_same_run(
+    tmp_path, monkeypatch, fake_bw
+):
+    cli, machine, _home, store, _log = bw_machine(tmp_path, monkeypatch, fake_bw)
+    logged_in(store)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(machine, "bitwarden_session_valid", lambda: False)
+    calls = failing_unlock(cli, monkeypatch)
+    assert machine.bitwarden_session_ready() is False
+    assert machine.bitwarden_session_ready() is False
+    assert machine.require_bitwarden() is False
+    assert len(calls) == 1
+    assert machine.bitwarden_notice_path.exists()
+
+
+def test_ctrl_c_at_unlock_continues_without_bitwarden(tmp_path, monkeypatch, fake_bw):
+    cli, machine, _home, store, _log = bw_machine(tmp_path, monkeypatch, fake_bw)
+    logged_in(store)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(machine, "bitwarden_session_valid", lambda: False)
+    failing_unlock(cli, monkeypatch, KeyboardInterrupt())
+    assert machine.bitwarden_session_ready() is False
+    assert machine.bitwarden_notice_path.exists()
+
+
+def test_background_check_survives_unreadable_env_local(tmp_path, monkeypatch, fake_bw):
+    _cli, machine, home, _store, _log = bw_machine(tmp_path, monkeypatch, fake_bw)
+    (home / ".env.local").write_text("BW_SESSION='unbalanced\n")
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    machine.check_bitwarden_session_quietly()  # must not raise SystemExit

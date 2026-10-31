@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlsplit
@@ -59,62 +60,24 @@ class BwClientMixin:
             os.environ.pop("BW_SESSION")
         if not os.environ.get("BW_SESSION"):
             interactive = system.is_tty() and not getattr(self, "unattended", False)
-            if not system.is_tty() or (expected and not interactive):
+            if (
+                not system.is_tty()
+                or (expected and not interactive)
+                or (expected and getattr(self, "_bw_renewal_failed", False))
+            ):
+                # No terminal, or this run already tried: do not ask again.
                 if expected:
                     self.record_bitwarden_notice()
                 return False
-            status = system.run(["bw", "status"], capture=True, check=False)
-            status_text = status.stdout or ""
-            logged_out = "unauthenticated" in status_text.lower()
-            if logged_out and expected:
-                # Bitwarden was set up: log in at once, with the configured server.
-                allow_login = True
-            if logged_out and not allow_login:
-                # `bw unlock` cannot work without a login; ask instead of failing.
-                if getattr(self, "unattended", False) or not system.prompt_yes_no(
-                    "Bitwarden is not logged in. Log in now?", True
-                ):
-                    log(
-                        "WARNING: Bitwarden is not logged in; environment sync "
-                        "skipped (run machine env pull)"
-                    )
-                    return False
-                try:
-                    server = json.loads(status_text).get("serverUrl") or ""
-                except json.JSONDecodeError:
-                    server = ""
-                self.ask_bitwarden_server(server)
-                allow_login = True
-            if allow_login and logged_out:
-                log("Bitwarden login")
-                default_email = os.environ.get("BW_EMAIL") or DEFAULT_BW_EMAIL
-                email = input(f"Bitwarden account email [{default_email}]: ").strip()
-                result = system.run(
-                    ["bw", "login", email or default_email, "--raw"],
-                    interactive_stdout=True,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    log("WARNING: Bitwarden login failed; environment sync skipped")
-                    return False
-                session = (result.stdout or "").strip()
-                if session:
-                    os.environ["BW_SESSION"] = session
-                    return self.unlock_bitwarden(_fresh=True, expected=expected)
-            log("unlocking Bitwarden")
-            result = system.run(
-                ["bw", "unlock", "--raw"], interactive_stdout=True, check=False
-            )
-            session = (result.stdout or "").strip()
-            if result.returncode != 0 or not session:
-                log("WARNING: Bitwarden unlock failed; environment sync skipped")
+            try:
+                return self._login_or_unlock(allow_login, expected)
+            except (KeyboardInterrupt, EOFError):
+                print(file=sys.stderr)
+                log("Bitwarden login cancelled; continuing without Bitwarden")
+                self._bw_renewal_failed = True
+                if expected:
+                    self.record_bitwarden_notice()
                 return False
-            os.environ["BW_SESSION"] = session
-            self._bw_new_session = True
-            if self.saved_bitwarden_session():
-                # Opted in before: the renewed session replaces the saved one.
-                self.save_bitwarden_local_settings()
-                self._bw_new_session = False
         self.clear_bitwarden_notice()
         result = system.run(["bw", "sync"], check=False, capture=True)
         if result.returncode:
@@ -123,6 +86,71 @@ class BwClientMixin:
             )
             return False
         return True
+
+    def _renewed_session(self, session: str) -> None:
+        os.environ["BW_SESSION"] = session
+        self._bw_new_session = True
+        if self.saved_bitwarden_session():
+            # Opted in before: the renewed session replaces the saved one.
+            self.save_bitwarden_local_settings()
+            self._bw_new_session = False
+
+    def _failed_renewal(self, expected: bool) -> bool:
+        if expected:
+            self._bw_renewal_failed = True
+            self.record_bitwarden_notice()
+        return False
+
+    def _login_or_unlock(self, allow_login: bool, expected: bool) -> bool:
+        """Interactive: log in when needed, then unlock; True after a working sync."""
+        status = system.run(["bw", "status"], capture=True, check=False)
+        status_text = status.stdout or ""
+        logged_out = "unauthenticated" in status_text.lower()
+        if logged_out and expected:
+            # Bitwarden was set up: log in at once, with the configured server.
+            allow_login = True
+        if logged_out and not allow_login:
+            # `bw unlock` cannot work without a login; ask instead of failing.
+            if getattr(self, "unattended", False) or not system.prompt_yes_no(
+                "Bitwarden is not logged in. Log in now?", True
+            ):
+                log(
+                    "WARNING: Bitwarden is not logged in; environment sync "
+                    "skipped (run machine env pull)"
+                )
+                return False
+            try:
+                server = json.loads(status_text).get("serverUrl") or ""
+            except json.JSONDecodeError:
+                server = ""
+            self.ask_bitwarden_server(server)
+            allow_login = True
+        if allow_login and logged_out:
+            log("Bitwarden login")
+            default_email = os.environ.get("BW_EMAIL") or DEFAULT_BW_EMAIL
+            email = input(f"Bitwarden account email [{default_email}]: ").strip()
+            result = system.run(
+                ["bw", "login", email or default_email, "--raw"],
+                interactive_stdout=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                log("WARNING: Bitwarden login failed; environment sync skipped")
+                return self._failed_renewal(expected)
+            session = (result.stdout or "").strip()
+            if session:
+                self._renewed_session(session)
+                return self.unlock_bitwarden(_fresh=True, expected=expected)
+        log("unlocking Bitwarden")
+        result = system.run(
+            ["bw", "unlock", "--raw"], interactive_stdout=True, check=False
+        )
+        session = (result.stdout or "").strip()
+        if result.returncode != 0 or not session:
+            log("WARNING: Bitwarden unlock failed; environment sync skipped")
+            return self._failed_renewal(expected)
+        self._renewed_session(session)
+        return self.unlock_bitwarden(_fresh=True, expected=expected)
 
     def require_bitwarden(self) -> bool:
         """Explicit commands: report what is missing and offer to set it up."""
@@ -221,7 +249,11 @@ class BwClientMixin:
 
     def check_bitwarden_session_quietly(self) -> None:
         """Background: only `bw status`, and only when Bitwarden is expected."""
-        if not self.bitwarden_expected():
+        try:
+            expected = self.bitwarden_expected()
+        except SystemExit:
+            return  # ~/.env.local cannot be read; reported by interactive runs
+        if not expected:
             return
         if self.bitwarden_session_valid():
             self.clear_bitwarden_notice()

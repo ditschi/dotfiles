@@ -45,6 +45,7 @@ if declare -F dotfiles_cache_eval >/dev/null; then
     dotfiles_cache_eval lazygit lazygit completion bash
     dotfiles_cache_eval openspec openspec completion generate bash
     dotfiles_cache_eval starship-completion starship completions bash
+    # bw (Bitwarden CLI) generates zsh completion only; none for Bash.
     if declare -F _get_comp_words_by_ref >/dev/null 2>&1; then
         if ! complete -p gh >/dev/null 2>&1; then
             dotfiles_cache_eval gh gh completion -s bash

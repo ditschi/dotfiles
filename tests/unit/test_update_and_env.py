@@ -1947,6 +1947,21 @@ def test_user_bin_is_added_to_path_without_a_login_shell(tmp_path, monkeypatch):
     assert system.have("mise")
 
 
+def test_mise_shims_are_added_to_path_without_a_login_shell(tmp_path, monkeypatch):
+    system = machine_system()
+    shims = tmp_path / ".local/share/mise/shims"
+    shims.mkdir(parents=True)
+    (shims / "bw").write_text("#!/bin/sh\n")
+    (shims / "bw").chmod(0o755)
+    user_bin = tmp_path / ".local/bin"
+    monkeypatch.setenv("PATH", f"/usr/bin:{user_bin}:/bin")
+
+    system.ensure_user_bin_on_path(tmp_path)
+    system.ensure_user_bin_on_path(tmp_path)
+    assert os.environ["PATH"] == f"{shims}:/usr/bin:{user_bin}:/bin"
+    assert system.have("bw")
+
+
 def test_cli_puts_user_bin_on_path_before_running_a_command():
     entry = (REPO / "machine_cli/machine").read_text()
     _head, main = entry.split('if __name__ == "__main__":')

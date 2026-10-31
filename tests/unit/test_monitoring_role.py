@@ -63,6 +63,9 @@ def apply_role(tmp_path):
                         "monitoring_default_file": str(etc / "default-telegraf"),
                         "monitoring_service_group": grp.getgrgid(os.getgid()).gr_name,
                         "monitoring_sudoers_file": str(etc / "sudoers-telegraf"),
+                        "monitoring_smartctl_log_dropin": str(
+                            etc / "telegraf.service.d/smartctl-log.conf"
+                        ),
                         "influx_url": "",
                         "influx_token": "",
                         "influx_org": "home",
@@ -239,8 +242,11 @@ def test_smart_fragment_brings_the_smartctl_rule_and_leaves_with_it(apply_role):
     assert "machine_smart.conf" in _names(etc)
     assert _mode(rule) == "0o440"
     assert "telegraf ALL=(root) NOPASSWD: /usr/sbin/smartctl\n" in rule.read_text()
+    dropin = etc / "telegraf.service.d/smartctl-log.conf"
+    assert "LogFilterPatterns=~COMMAND=/usr/sbin/smartctl\n" in dropin.read_text()
 
     run(monitoring_configs=["machine/base", "machine/server"])
     assert "machine_smart.conf" not in _names(etc)
     assert {"machine_base.conf", "machine_server.conf"} <= _names(etc)
     assert not rule.exists()
+    assert not dropin.exists()

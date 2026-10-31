@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import atexit
 import getpass
-import hashlib
 import json
 import os
 import re
-import platform
-import shutil
 import subprocess
 import tempfile
-import urllib.request
 from pathlib import Path
 from typing import List, Optional
 
@@ -93,41 +89,52 @@ class ToolsMixin:
         return True
 
     def ensure_bitwarden_cli(self) -> bool:
+        """Install the `bw` pinned in the core mise config (spec secret-tools).
+
+        Reads the repository's config directly, so it also works in `machine setup`
+        before ~/.config/mise is linked."""
         if system.have("bw"):
             return True
-        arch = platform.machine()
-        # Bitwarden publishes a Linux CLI build for x86_64 only.
-        if arch != "x86_64":
-            log(f"no Bitwarden CLI build for {arch}")
+        if not system.have("mise"):
+            log("mise is not installed; cannot install the Bitwarden CLI")
             return False
-        local_bin = self.home / ".local/bin"
-        local_bin.mkdir(parents=True, exist_ok=True)
-        version = "2024.12.0"
-        base = f"https://github.com/bitwarden/clients/releases/download/cli-v{version}/"
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                archive = Path(tmp) / "bw.zip"
-                urllib.request.urlretrieve(f"{base}bw-linux-{version}.zip", archive)
-                with urllib.request.urlopen(
-                    f"{base}bw-linux-sha256-{version}.txt", timeout=30
-                ) as response:
-                    expected = response.read().decode().split()[0].lower()
-                if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
-                    log("Bitwarden CLI checksum mismatch; not installed")
-                    return False
-                system.run(["unzip", "-o", "-q", str(archive), "-d", tmp], check=True)
-                binary = Path(tmp) / "bw"
-                if not binary.is_file():
-                    return False
-                dest = local_bin / "bw"
-                shutil.copy2(binary, dest)
-                dest.chmod(0o755)
-                os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
-                log(f"installed bw to {dest}")
-                return True
-        except (OSError, subprocess.CalledProcessError, IndexError):
-            log("could not install Bitwarden CLI")
+        env = dict(os.environ)
+        env["MISE_CONFIG_DIR"] = str(self.repo / "home/core/.config/mise")
+        log("installing the Bitwarden CLI (bw) with mise")
+        install = system.run(["mise", "install", "bitwarden"], env=env, check=False)
+        where = (
+            system.run(
+                ["mise", "where", "bitwarden"], env=env, check=False, capture=True
+            )
+            if install.returncode == 0
+            else None
+        )
+        if where is None or where.returncode or not where.stdout.strip():
+            log("could not install the Bitwarden CLI with mise")
             return False
+        bin_dir = where.stdout.strip()
+        os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
+        if not system.have("bw"):
+            log(f"mise installed bitwarden, but {bin_dir} has no bw")
+            return False
+        log(f"installed bw to {bin_dir}")
+        return True
+
+    def remove_old_local_bw(self, env: dict) -> None:
+        """Remove the bw that older versions downloaded to ~/.local/bin once mise has one.
+
+        ~/.local/bin comes first on PATH, so the old binary would win over the pinned one.
+        """
+        old = self.home / ".local/bin/bw"
+        if not (old.is_file() or old.is_symlink()):
+            return
+        result = system.run(
+            ["mise", "which", "bw"], env=env, cwd=self.repo, check=False, capture=True
+        )
+        if result.returncode or not result.stdout.strip():
+            return
+        old.unlink()
+        log(f"removed old {old}; bw now comes from mise ({result.stdout.strip()})")
 
     def ensure_uv(self) -> bool:
         if system.have("uv"):
@@ -156,8 +163,6 @@ class ToolsMixin:
             die("python3 is required")
         if not system.have("curl"):
             self.install_pkg_if_missing("curl")
-        if not system.have("unzip"):
-            self.install_pkg_if_missing("unzip")
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True, exist_ok=True)
         os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"

@@ -40,11 +40,18 @@ def have(name: str) -> bool:
 
 
 def ensure_user_bin_on_path(home: Path) -> None:
-    """Prepend ~/.local/bin to PATH when missing (e.g. `ssh host command`, no login shell)."""
-    user_bin = str(home / ".local/bin")
-    parts = os.environ.get("PATH", "").split(os.pathsep)
-    if user_bin not in parts:
-        os.environ["PATH"] = os.pathsep.join([user_bin, *filter(None, parts)])
+    """Prepend ~/.local/bin and the mise shims to PATH when missing.
+
+    For `ssh host command` without a login shell; the shims make mise tools such as
+    `bw` reachable as in `.zshenv` and `.profile`."""
+    parts = [part for part in os.environ.get("PATH", "").split(os.pathsep) if part]
+    wanted = [str(home / ".local/bin")]
+    shims = home / ".local/share/mise/shims"
+    if shims.is_dir():
+        wanted.append(str(shims))
+    missing = [path for path in wanted if path not in parts]
+    if missing:
+        os.environ["PATH"] = os.pathsep.join([*missing, *parts])
 
 
 def ansible_works() -> bool:

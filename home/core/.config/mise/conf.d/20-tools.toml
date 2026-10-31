@@ -5,3 +5,6 @@ gh = "latest"
 yazi = "latest"
 node = "lts"
 uv = "latest"
+# Bitwarden CLI (bw), official release build for x64 and arm64; used by machine env pull,
+# the SSH key backup and the Influx credentials (spec secret-tools).
+bitwarden = "latest"

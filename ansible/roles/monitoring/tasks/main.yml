@@ -129,6 +129,33 @@
     state: absent
   when: "'machine/smart' not in _monitoring_names"
 
+# sudo logs every allowed call (three every interval) and sudo-rs has no option to stop
+# it; the lines belong to telegraf.service, so journald drops them for that unit only.
+- name: Ensure the telegraf unit drop-in directory
+  ansible.builtin.file:
+    path: "{{ monitoring_smartctl_log_dropin | dirname }}"
+    state: directory
+    mode: "0755"
+  when: "'machine/smart' in _monitoring_names"
+
+- name: Keep the smartctl sudo lines out of the journal
+  ansible.builtin.copy:
+    dest: "{{ monitoring_smartctl_log_dropin }}"
+    mode: "0644"
+    content: |
+      # Managed by ansible roles/monitoring (machine/smart)
+      [Service]
+      LogFilterPatterns=~COMMAND={{ monitoring_smartctl }}
+  when: "'machine/smart' in _monitoring_names"
+  notify: Restart telegraf
+
+- name: Remove the smartctl log filter without the SMART input
+  ansible.builtin.file:
+    path: "{{ monitoring_smartctl_log_dropin }}"
+    state: absent
+  when: "'machine/smart' not in _monitoring_names"
+  notify: Restart telegraf
+
 # inputs.docker reads /var/run/docker.sock; the docker group grants that (root-equivalent).
 - name: Check for the docker group
   ansible.builtin.getent:

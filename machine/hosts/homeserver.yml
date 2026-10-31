@@ -15,3 +15,4 @@ ssh_allow_from:
   - ditschi-ThinkPad-L13-Yoga-Gen-2
   - ditschi-ThinkPad-T470
   - netmaster
+  - privatecloud

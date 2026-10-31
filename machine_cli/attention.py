@@ -173,6 +173,15 @@ class AttentionMixin:
                     self.resolve_ssh_key_difference,
                 )
             )
+        if self.bitwarden_notice_path.is_file():
+            items.append(
+                AttentionItem(
+                    "bitwarden",
+                    "Bitwarden session expired or locked; log in again",
+                    "Log in now (machine env pull)?",
+                    lambda: self.cmd_env_pull(interactive=True),
+                )
+            )
         env = self.env_attention()
         if env:
             items.append(

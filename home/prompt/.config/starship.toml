@@ -5,7 +5,7 @@
 # fall back to the shell module. 🐳 marks a container; a failed command also shows in the
 # status segment. user@host appears only over SSH (and the user name in a root shell).
 format = """
-$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}$status$python$cmd_duration($username$hostname )$time
+$directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}${env_var.DOTFILES_BW_SEGMENT}$status$python$cmd_duration($username$hostname )$time
 $container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
 """
 
@@ -29,6 +29,10 @@ style = "yellow"
 [env_var.DOTFILES_DISK_SEGMENT]
 format = "[$env_value]($style) "
 style = "red"
+
+[env_var.DOTFILES_BW_SEGMENT]
+format = "[$env_value]($style) "
+style = "yellow"
 
 [env_var.prompt_zsh]
 variable = "DOTFILES_PROMPT_ZSH"

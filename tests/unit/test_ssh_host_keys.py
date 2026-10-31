@@ -304,7 +304,8 @@ def test_background_update_does_not_use_bitwarden(tmp_path, monkeypatch, fake_bw
         lambda **_k: {"state": "up-to-date", "steps": [], "blockers": []},
     )
     assert machine._update_auto_locked() == 0
-    assert not [c for c in calls if c and c[0] == "bw"]
+    # Bitwarden is expected here (BW_SESSION): only `bw status` is allowed
+    assert [c for c in calls if c and c[0] == "bw"] == [["bw", "status"]]
 
 
 def different_keys(tmp_path, monkeypatch, fake_bw, answer=None):

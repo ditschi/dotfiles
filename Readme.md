@@ -334,6 +334,14 @@ Declining storage keeps the session only for the setup process.
 `--yes` / non-interactive setup never prompts or persists unlock tokens.
 Without an unlocked vault, environment fetching and key uploads are skipped.
 
+A `BW_SESSION` in the environment or in `~/.env.local` means Bitwarden is set up
+and expected. When it has expired, an interactive run (terminal, no `--yes`)
+unlocks, or logs in when logged out, at once without a yes/no question, and a
+renewed session replaces the saved one. Without a terminal, and in the background
+update (which then calls only `bw status`), an expired session shows
+`⚠ bitwarden: log in (machine)` in the prompt and an item in `machine attention`
+that offers to log in.
+
 ### Inventory
 
 - Copy real hosts/IPs to `ansible/inventory/hosts.yml` and encrypt it with Ansible Vault.

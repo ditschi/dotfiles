@@ -65,6 +65,7 @@ class AutoUpdateMixin:
             return self._update_auto_locked()
 
     def _update_auto_locked(self) -> int:
+        self.check_bitwarden_session_quietly()
         self.run_local_resolvers()
         plan = self.update_plan(fetch=True)
         if plan["state"] == "no-upstream":

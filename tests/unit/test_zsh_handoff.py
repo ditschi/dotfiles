@@ -842,3 +842,29 @@ def test_prompts_show_the_disk_segment():
         encoding="utf-8"
     )
     assert "${DOTFILES_DISK_SEGMENT:+$DOTFILES_DISK_SEGMENT }" in bash_prompt
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_bitwarden_segment(shell, tmp_path):
+    script = (
+        f'. "{STATE_SH}"; dotfiles_update_startup\n'
+        "PATH=/nonexistent; dotfiles_update_prompt\n"
+        'echo "BW=$DOTFILES_BW_SEGMENT"'
+    )
+
+    def run() -> str:
+        result = subprocess.run(
+            [shutil.which(shell), "-c", script],
+            env={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0 and "not found" not in result.stderr
+        return result.stdout
+
+    assert "BW=\n" in run()
+    path = tmp_path / ".local/share/machine/bitwarden-state"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("segment=⚠ bitwarden: log in (machine)\n", encoding="utf-8")
+    assert "BW=⚠ bitwarden: log in (machine)" in run()

@@ -36,7 +36,11 @@ INFLUX_KEYS = {
 
 class BwClientMixin:
     def unlock_bitwarden(
-        self, *, allow_login: bool = False, _fresh: bool = False
+        self,
+        *,
+        allow_login: bool = False,
+        _fresh: bool = False,
+        expected: bool = False,
     ) -> bool:
         if not system.have("bw"):
             return False
@@ -45,6 +49,7 @@ class BwClientMixin:
         # when bw no longer accepts it.
         if not _fresh:
             self.load_local_bitwarden_settings()
+        expected = expected or (not _fresh and bool(os.environ.get("BW_SESSION")))
         if (
             not _fresh
             and os.environ.get("BW_SESSION")
@@ -53,11 +58,17 @@ class BwClientMixin:
             log("saved BW_SESSION is expired or invalid; unlocking again")
             os.environ.pop("BW_SESSION")
         if not os.environ.get("BW_SESSION"):
-            if not system.is_tty():
+            interactive = system.is_tty() and not getattr(self, "unattended", False)
+            if not system.is_tty() or (expected and not interactive):
+                if expected:
+                    self.record_bitwarden_notice()
                 return False
             status = system.run(["bw", "status"], capture=True, check=False)
             status_text = status.stdout or ""
             logged_out = "unauthenticated" in status_text.lower()
+            if logged_out and expected:
+                # Bitwarden was set up: log in at once, with the configured server.
+                allow_login = True
             if logged_out and not allow_login:
                 # `bw unlock` cannot work without a login; ask instead of failing.
                 if getattr(self, "unattended", False) or not system.prompt_yes_no(
@@ -89,7 +100,7 @@ class BwClientMixin:
                 session = (result.stdout or "").strip()
                 if session:
                     os.environ["BW_SESSION"] = session
-                    return self.unlock_bitwarden(_fresh=True)
+                    return self.unlock_bitwarden(_fresh=True, expected=expected)
             log("unlocking Bitwarden")
             result = system.run(
                 ["bw", "unlock", "--raw"], interactive_stdout=True, check=False
@@ -100,6 +111,11 @@ class BwClientMixin:
                 return False
             os.environ["BW_SESSION"] = session
             self._bw_new_session = True
+            if self.saved_bitwarden_session():
+                # Opted in before: the renewed session replaces the saved one.
+                self.save_bitwarden_local_settings()
+                self._bw_new_session = False
+        self.clear_bitwarden_notice()
         result = system.run(["bw", "sync"], check=False, capture=True)
         if result.returncode:
             log(
@@ -132,6 +148,9 @@ class BwClientMixin:
         if os.environ.get("BW_SESSION"):
             log("saved BW_SESSION is expired or invalid; log in again")
             os.environ.pop("BW_SESSION")
+            if interactive:
+                return self.unlock_bitwarden(_fresh=True, expected=True)
+            self.record_bitwarden_notice()
         if not interactive:
             log(
                 "Bitwarden is installed but not unlocked (no BW_SESSION); "
@@ -161,6 +180,53 @@ class BwClientMixin:
             if len(value) != 1:
                 die(f"expected one literal value for {match.group(1)} in {local}")
             os.environ.setdefault(match.group(1), value[0])
+
+    def saved_bitwarden_session(self) -> bool:
+        """True when ~/.env.local sets BW_SESSION."""
+        local = self.home / ".env.local"
+        return local.is_file() and bool(
+            re.search(r"^\s*(?:export\s+)?BW_SESSION=", local.read_text(), re.MULTILINE)
+        )
+
+    def bitwarden_expected(self) -> bool:
+        """Bitwarden is set up here: a session in the environment or ~/.env.local."""
+        if not system.have("bw"):
+            return False
+        self.load_local_bitwarden_settings()
+        return bool(os.environ.get("BW_SESSION"))
+
+    @property
+    def bitwarden_notice_path(self) -> Path:
+        return self.state_dir / "bitwarden-state"
+
+    def record_bitwarden_notice(self) -> None:
+        """Expected session not accepted: attention item and prompt segment."""
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            self.bitwarden_notice_path.write_text(
+                "segment=⚠ bitwarden: log in (machine)\n", encoding="utf-8"
+            )
+        except OSError:
+            pass
+        log(
+            "Bitwarden session expired or locked; log in with `machine env pull` "
+            "in a terminal (listed in machine attention)"
+        )
+
+    def clear_bitwarden_notice(self) -> None:
+        try:
+            self.bitwarden_notice_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def check_bitwarden_session_quietly(self) -> None:
+        """Background: only `bw status`, and only when Bitwarden is expected."""
+        if not self.bitwarden_expected():
+            return
+        if self.bitwarden_session_valid():
+            self.clear_bitwarden_notice()
+        else:
+            self.record_bitwarden_notice()
 
     def bitwarden_session_valid(self) -> bool:
         if not os.environ.get("BW_SESSION"):

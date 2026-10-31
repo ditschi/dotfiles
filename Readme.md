@@ -313,7 +313,8 @@ dotfiles, tools and environment management stay active.
 
 Every host gets the **CLI** (`bw`, not the GUI snap) from mise as the `core` tool
 `bitwarden`: the official Bitwarden release build for x86_64 and aarch64, with version and
-checksums pinned in `mise.lock`. When `machine` needs `bw` before the dotfiles are linked,
+checksums pinned in `mise.lock`. The version is fixed in the fragment (2026.10.1 fails
+against the own Vaultwarden 2026.6.0); raise it only after checking it against the server. When `machine` needs `bw` before the dotfiles are linked,
 it installs that pinned version from the repository's mise config. A `~/.local/bin/bw`
 left by older setups is removed once mise provides `bw`.
 Interactive `machine setup` offers Bitwarden configuration and login before

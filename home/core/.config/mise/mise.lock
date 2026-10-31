@@ -218,19 +218,19 @@ url = "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-lin
 url_api = "https://api.github.com/repos/tmux/tmux-builds/releases/assets/528734864"
 
 [[tools.bitwarden]]
-version = "2026.10.1"
+version = "2026.8.0"
 backend = "aqua:bitwarden/clients"
-specifiers = ["latest"]
+specifiers = ["2026.8.0"]
 
 [tools.bitwarden."platforms.linux-arm64"]
-checksum = "sha256:79ecb3293fb259660961c949d3e32fdab8682b2bcff0f6764ce38a411ca1ac5d"
-url = "https://github.com/bitwarden/clients/releases/download/cli-v2026.10.1/bw-linux-arm64-2026.10.1.zip"
-url_api = "https://api.github.com/repos/bitwarden/clients/releases/assets/688476446"
+checksum = "sha256:74d822a5dceda5896ed8fc07bc61925b29afd98d96a6a3e9e525ae556c3083a8"
+url = "https://github.com/bitwarden/clients/releases/download/cli-v2026.8.0/bw-linux-arm64-2026.8.0.zip"
+url_api = "https://api.github.com/repos/bitwarden/clients/releases/assets/522478224"
 
 [tools.bitwarden."platforms.linux-x64"]
-checksum = "sha256:eb09c3715291c21cf744819b873a255c1247b1b8b45bae138621a644ec7ad8f5"
-url = "https://github.com/bitwarden/clients/releases/download/cli-v2026.10.1/bw-linux-2026.10.1.zip"
-url_api = "https://api.github.com/repos/bitwarden/clients/releases/assets/688476344"
+checksum = "sha256:367f618e9fcccaac4980ec12c7bafd01df739b5f3cb1af31bc9045cf75eea1d6"
+url = "https://github.com/bitwarden/clients/releases/download/cli-v2026.8.0/bw-linux-2026.8.0.zip"
+url_api = "https://api.github.com/repos/bitwarden/clients/releases/assets/522478170"
 
 [[tools."conda:git"]]
 version = "2.56.0"

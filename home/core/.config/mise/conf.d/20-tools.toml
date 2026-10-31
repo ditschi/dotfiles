@@ -7,4 +7,6 @@ node = "lts"
 uv = "latest"
 # Bitwarden CLI (bw), official release build for x64 and arm64; used by machine env pull,
 # the SSH key backup and the Influx credentials (spec secret-tools).
-bitwarden = "latest"
+# Pinned: 2026.10.1 fails against Vaultwarden 2026.6.0 (404 on the user key id backfill
+# after login); 2026.8.0 works with it. Raise only after checking against the server.
+bitwarden = "2026.8.0"

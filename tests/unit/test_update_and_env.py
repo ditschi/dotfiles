@@ -482,8 +482,8 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
 
     assert _update(machine) == 0
     assert "device: server" in machine.applied_host_path.read_text()
-    # new local group config from the synced profile is applied before ansible
-    assert calls == ["dotfiles", "tools", "env", "apply"]
+    # new local group config from the synced profile is applied before ansible, after the env pull
+    assert calls == ["env", "dotfiles", "tools", "apply"]
 
 
 def _failing_ansible_env(machine, monkeypatch, calls):
@@ -510,8 +510,8 @@ def test_update_restores_profile_when_ansible_fails(update_env, monkeypatch):
         HOST_YAML.format(context="private", device="server"),
     )
 
-    with pytest.raises(SystemExit):
-        _update(machine)
+    assert _update(machine) == 1
+    assert "ansible apply" in machine.read_update_state()["reason"]
     assert "device: desktop" in machine.applied_host_path.read_text()
     assert ansible_calls == ["ansible", "ansible"]  # failed apply + revert run
 
@@ -531,8 +531,8 @@ def test_update_restores_profile_when_health_check_fails(update_env, monkeypatch
         HOST_YAML.format(context="private", device="server"),
     )
 
-    with pytest.raises(SystemExit):
-        _update(machine)
+    assert _update(machine) == 1
+    assert "ansible apply" in machine.read_update_state()["reason"]
     assert "device: desktop" in machine.applied_host_path.read_text()
     assert ansible_calls == ["ansible", "ansible"]
 
@@ -543,8 +543,7 @@ def test_update_keeps_unchanged_profile_when_ansible_fails(update_env, monkeypat
     _failing_ansible_env(machine, monkeypatch, ansible_calls)
     before = machine.applied_host_path.read_bytes()
 
-    with pytest.raises(SystemExit):
-        _update(machine, system=True)
+    assert _update(machine, system=True) == 1
     assert machine.applied_host_path.read_bytes() == before
     assert ansible_calls == ["ansible"]  # not retried
 
@@ -602,7 +601,7 @@ def test_update_skip_ansible_keeps_system_change_pending(update_env, capsys):
     _push_change(other, "ansible/roles/x.yml", "x\n")
 
     assert _update(machine, skip_ansible=True) == 0
-    assert calls == ["dotfiles", "tools", "env"]
+    assert calls == ["env", "dotfiles", "tools"]
     assert "system changes remain pending" in capsys.readouterr().out
     assert "ansible/roles/x.yml" in machine.pending_system_paths("HEAD")
 
@@ -612,7 +611,7 @@ def test_update_skip_ansible_overrides_system_flag(update_env):
     _push_change(other, "ansible/roles/x.yml", "x\n")
 
     assert _update(machine, system=True, skip_ansible=True) == 0
-    assert calls == ["dotfiles", "tools", "env"]
+    assert calls == ["env", "dotfiles", "tools"]
     assert "ansible/roles/x.yml" in machine.pending_system_paths("HEAD")
 
 
@@ -923,7 +922,101 @@ def test_update_reports_zsh_failure_without_reloading(update_env, monkeypatch):
     assert _update(machine) == 1
     state = machine.read_update_state()
     assert state["state"] == "attention" and "zsh" in state["reason"]
-    assert machine.update_failure_file.read_text() == "zsh: parse error\n"
+    details = machine.update_failure_file.read_text()
+    assert details.startswith("zsh health check failed")
+    assert details.endswith("zsh: parse error\n")
+
+
+def _failing(calls: list[str], name: str):
+    def run(*_a, **_k):
+        calls.append(name)
+        raise subprocess.CalledProcessError(1, [name])
+
+    return run
+
+
+def test_update_env_failure_still_applies_everything(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    monkeypatch.setattr(machine, "cmd_env_pull", _failing(calls, "env"))
+
+    assert _update(machine, system=True) == 1
+    assert calls == ["env", "dotfiles", "tools", "apply"]
+    state = machine.read_update_state()
+    assert state["state"] == "attention" and "env pull" in state["reason"]
+    assert "env pull failed" in machine.update_failure_file.read_text()
+
+
+def test_update_dotfile_failure_skips_tools_and_zsh_check(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _push_change(other, "home/dot_placeholder", "changed\n")
+    monkeypatch.setattr(machine, "run_dotfiles_apply", _failing(calls, "dotfiles"))
+    monkeypatch.setattr(
+        machine, "zsh_health_failure", lambda: calls.append("zsh") or ""
+    )
+
+    assert _update(machine, system=True) == 1
+    assert calls == ["env", "dotfiles", "apply"]
+    details = machine.update_failure_file.read_text()
+    assert "tool install skipped: needs dotfile apply" in details
+    assert "zsh health check skipped: needs dotfile apply" in details
+
+
+def test_update_tool_failure_still_runs_ansible(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    monkeypatch.setattr(machine, "run_tools_install", _failing(calls, "tools"))
+
+    assert _update(machine, system=True) == 1
+    assert calls == ["env", "dotfiles", "tools", "apply"]
+    assert "tool install" in machine.read_update_state()["reason"]
+
+
+def test_update_names_every_failed_step(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    monkeypatch.setattr(machine, "cmd_env_pull", _failing(calls, "env"))
+
+    def apply_fails(_args):
+        calls.append("apply")
+        machine_cli_core().die("apply aborted")
+
+    monkeypatch.setattr(machine, "cmd_apply", apply_fails)
+
+    assert _update(machine, system=True) == 1
+    reason = machine.read_update_state()["reason"]
+    assert "env pull" in reason and "ansible apply" in reason
+    assert "ansible apply failed: apply aborted" in (
+        machine.update_failure_file.read_text()
+    )
+
+
+def test_update_without_mise_still_pulls_env(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    monkeypatch.setattr(
+        machine_system(), "have", lambda name: name != "mise" and name != "zsh"
+    )
+
+    assert _update(machine) == 0
+    assert calls == ["env"]
+    assert "not set up" in machine.read_update_state()["reason"]
+
+
+def test_update_ctrl_c_stops_at_once(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+
+    def interrupted():
+        calls.append("dotfiles")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(machine, "run_dotfiles_apply", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        _update(machine, system=True)
+    assert calls == ["env", "dotfiles"]
+
+
+def machine_cli_core():
+    import machine_cli.core as core_module
+
+    return core_module
 
 
 def test_attention_shows_failed_check_output(update_env, capsys, monkeypatch):
@@ -954,14 +1047,14 @@ def test_update_content_change_runs_only_the_converge_check(update_env):
     _push_change(other, "home/dot_placeholder", "changed\n")
 
     assert _update(machine) == 0
-    assert calls == ["dotfiles", "tools", "env"]
+    assert calls == ["env", "dotfiles", "tools"]
 
 
 def test_update_converges_when_nothing_is_incoming(update_env):
     machine, *_rest, calls = update_env
 
     assert _update(machine) == 0
-    assert calls == ["dotfiles", "tools", "env"]
+    assert calls == ["env", "dotfiles", "tools"]
 
 
 def test_update_reports_no_system_change_for_a_host_without_ansible_runs(update_env):
@@ -990,7 +1083,7 @@ def test_update_runs_system_step_when_ansible_changed(update_env):
     _push_change(other, "ansible/roles/x.yml", "x\n")
 
     assert _update(machine) == 0
-    assert calls == ["dotfiles", "tools", "env", "apply"]
+    assert calls == ["env", "dotfiles", "tools", "apply"]
 
 
 def test_update_check_changes_nothing(update_env, capsys):

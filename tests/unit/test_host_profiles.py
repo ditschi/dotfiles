@@ -1032,6 +1032,138 @@ def test_first_setup_uses_defaults_when_the_repo_config_is_for_another_device(
     assert written["allow_from"] == ["laptop1"]
 
 
+SSH_KEY_CONFIG = (
+    "---\ncontext: private\ndevice: desktop\nfeatures:\n  - zsh-full\n"
+    "  - ssh-host-key\n"
+)
+
+
+def _ordered_setup(tmp_path, monkeypatch, fail=(), interrupt=(), calls=None, **args):
+    """`machine setup --yes` with every step recorded; steps named in `fail` raise."""
+    cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "in_docker", lambda: False)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    (repo / "machine/hosts/testhost.yml").write_text(SSH_KEY_CONFIG)
+    for name in (
+        "ensure_bootstrap_tools",
+        "setup_bitwarden",
+        "write_dotfile_groups",
+        "switch_origin_to_ssh",
+        "persist_host_config",
+    ):
+        monkeypatch.setattr(machine, name, lambda *_a, **_k: None)
+    calls = [] if calls is None else calls
+
+    def step(name):
+        def run(*_a, **_k):
+            calls.append(name)
+            if name in interrupt:
+                raise KeyboardInterrupt
+            if name in fail:
+                raise subprocess.CalledProcessError(1, [name])
+            return 0
+
+        return run
+
+    for attr, name in (
+        ("cmd_env_pull", "env"),
+        ("run_dotfiles_apply", "dotfiles"),
+        ("run_tools_install", "tools"),
+        ("run_ansible_or_hint", "ansible"),
+        ("provision_host_ssh_key", "ssh"),
+        ("maybe_tailscale_login", "tailscale"),
+        ("ensure_update_timer", "timer"),
+    ):
+        monkeypatch.setattr(machine, attr, step(name))
+    commands = sys.modules["machine_cli.commands"]
+    original_log = commands.log
+
+    def log(message):
+        if message.startswith("the shell is ready"):
+            calls.append("ready")
+        original_log(message)
+
+    monkeypatch.setattr(commands, "log", log)
+    import types
+
+    setup_args = dict(
+        yes=True,
+        context="",
+        device="",
+        skip_ansible=False,
+        no_become=True,
+        features=None,
+        skip_dotfiles=False,
+        playbook="workstation",
+        limit="",
+        local=True,
+    )
+    setup_args.update(args)
+    code = machine.cmd_setup(types.SimpleNamespace(**setup_args))
+    return code, calls
+
+
+def test_setup_applies_the_shell_before_ansible(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch)
+    assert code == 0
+    assert calls == [
+        "env",
+        "dotfiles",
+        "tools",
+        "ready",
+        "ansible",
+        "ssh",
+        "tailscale",
+        "timer",
+    ]
+
+
+def test_setup_env_pull_failure_still_applies_everything(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch, fail={"env"})
+    assert code == 1
+    assert calls == [
+        "env",
+        "dotfiles",
+        "tools",
+        "ready",
+        "ansible",
+        "ssh",
+        "tailscale",
+        "timer",
+    ]
+
+
+def test_setup_dotfile_failure_skips_tools_but_runs_ansible(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch, fail={"dotfiles"})
+    assert code == 1
+    assert calls == ["env", "dotfiles", "ansible", "ssh", "tailscale", "timer"]
+
+
+def test_setup_ansible_failure_still_handles_key_and_timers(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch, fail={"ansible"})
+    assert code == 1
+    assert calls[-4:] == ["ansible", "ssh", "tailscale", "timer"]
+
+
+def test_setup_skip_dotfiles_runs_only_ansible_and_later_steps(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch, skip_dotfiles=True)
+    assert code == 0
+    assert calls == ["ansible", "ssh", "tailscale"]
+
+
+def test_setup_without_ansible_prints_no_ready_line(tmp_path, monkeypatch):
+    code, calls = _ordered_setup(tmp_path, monkeypatch, skip_ansible=True)
+    assert code == 0
+    assert calls == ["env", "dotfiles", "tools", "ssh", "tailscale", "timer"]
+
+
+def test_setup_ctrl_c_stops_at_once(tmp_path, monkeypatch):
+    calls: list[str] = []
+    with pytest.raises(KeyboardInterrupt):
+        _ordered_setup(tmp_path, monkeypatch, interrupt={"dotfiles"}, calls=calls)
+    assert calls == ["env", "dotfiles"]
+
+
 DISK_SPACE = [
     {"path": "/mnt/data", "min_free": "100G"},
     {"path": "/mnt/scratch", "ignore": True},

@@ -14,6 +14,7 @@ from typing import Callable, Iterable, Iterator
 from . import events, local_overrides, system
 from .core import die, log, parse_profile_file, parse_profile_text, warn
 from .local_changes import classify_paths
+from .steps import Steps
 from .system_relevance import (
     FEATURE_TABLE_PATH,
     ansible_view_of_feature_table,
@@ -725,11 +726,16 @@ class UpdateMixin:
         profile_backup = self.backup_applied_host()
         profile_changed = self.sync_host_config_from_repo()
 
+        # From here a failing step does not stop the steps that do not need it; the
+        # env pull comes first so that its questions come before the tool install.
+        runner = Steps()
+        runner.run("env pull", self.cmd_env_pull)
+
         # Converge check: runs also when nothing was incoming; idempotent and cheap.
         not_set_up = ""
         if self.mise_local_config.is_file() and system.have("mise"):
-            self.run_dotfiles_apply()
-            self.run_tools_install()
+            runner.run("dotfile apply", self.run_dotfiles_apply)
+            runner.run("tool install", self.run_tools_install, needs=["dotfile apply"])
         else:
             reason = (
                 "mise is not installed"
@@ -745,26 +751,18 @@ class UpdateMixin:
             if system.is_tty() and self._confirm_bootstrap():
                 system.run([str(self.repo / "bootstrap")])
                 not_set_up = ""
-        self.cmd_env_pull()
         self.check_ssh_key_backup()
-        if not_set_up:
-            self.write_update_state("attention", not_set_up)
-        else:
-            self.write_update_state("updated", pending="", failed_revision="")
-        zsh_failure = (
-            self.zsh_health_failure()
-            if steps & {"dotfiles", "shell"} and not not_set_up
-            else ""
-        )
-        self.update_failure_file.unlink(missing_ok=True)
-        if zsh_failure:
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-            self.update_failure_file.write_text(zsh_failure + "\n", encoding="utf-8")
-            self.write_update_state(
-                "attention",
-                "zsh does not start cleanly after the update; see machine attention",
-            )
-            warn(f"zsh health check failed after the update:\n{zsh_failure}")
+        zsh_failure = ""
+        if steps & {"dotfiles", "shell"} and not not_set_up:
+
+            def zsh_check() -> None:
+                nonlocal zsh_failure
+                zsh_failure = self.zsh_health_failure()
+
+            runner.run("zsh health check", zsh_check, needs=["dotfile apply"])
+            if zsh_failure:
+                runner.fail("zsh health check", "zsh does not start cleanly")
+                warn(f"zsh health check failed after the update:\n{zsh_failure}")
 
         if not self.saved_ansible():
             log("ansible: false in the host config; system changes are not applied")
@@ -788,10 +786,25 @@ class UpdateMixin:
                     profile_changed=profile_changed,
                 )
                 log(f"applying system changes ({reason})")
-                code = self.cmd_apply(apply_args)
-                return code or (1 if zsh_failure else 0)
+                # cmd_apply restores the host config itself before it fails.
+                runner.run("ansible apply", lambda: self.cmd_apply(apply_args))
 
-        if zsh_failure:
+        self.update_failure_file.unlink(missing_ok=True)
+        summary = runner.report("update")
+        if summary:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            details = summary + (f"\n\n{zsh_failure}" if zsh_failure else "")
+            self.update_failure_file.write_text(details + "\n", encoding="utf-8")
+            self.write_update_state(
+                "attention",
+                f"update failed: {', '.join(runner.failed_names())}; "
+                "see machine attention",
+                pending="",  # the checkout is current; only steps failed
+            )
             return 1  # the shell wrapper only reloads after a successful update
+        if not_set_up:
+            self.write_update_state("attention", not_set_up)
+        else:
+            self.write_update_state("updated", pending="", failed_revision="")
         log("update finished" if not not_set_up else "update finished, host not set up")
         return 0

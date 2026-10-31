@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from . import system
+from . import steps, system
 from .core import (
     CONTEXTS,
     DEVICES,
@@ -102,6 +102,26 @@ class CommandsMixin:
 
         self.persist_host_config(context, device, features, allow_from, yes=args.yes)
 
+        # Shell first, so a new terminal is usable while Ansible runs; a failing step
+        # does not stop the steps that do not need it (see Steps).
+        runner = steps.Steps()
+        if not args.skip_dotfiles:
+            runner.run("env pull", self.cmd_env_pull)
+            runner.run("dotfile apply", self.run_dotfiles_apply)
+            if os.environ.get("MACHINE_SKIP_TOOLS") != "1":
+                runner.run(
+                    "tool install", self.run_tools_install, needs=["dotfile apply"]
+                )
+            if (
+                not skip_ansible
+                and runner.ok("dotfile apply")
+                and runner.ok("tool install")
+            ):
+                log(
+                    "the shell is ready: open a new terminal to work in it "
+                    "while Ansible continues here"
+                )
+
         if skip_ansible:
             log(
                 "skipping ansible"
@@ -112,20 +132,28 @@ class CommandsMixin:
                 )
             )
         else:
-            self.run_ansible_or_hint(args.playbook, args.limit, args.local, ask_become)
+            runner.run(
+                "ansible",
+                lambda: self.run_ansible_or_hint(
+                    args.playbook, args.limit, args.local, ask_become
+                ),
+            )
 
         if "ssh-host-key" in features and device != "container":
-            self.provision_host_ssh_key()
+
+            def ssh_host_key() -> None:
+                # A key left unprovisioned is reported by the step itself, not a failure.
+                self.provision_host_ssh_key()
+
+            runner.run("ssh host key", ssh_host_key)
 
         self.maybe_tailscale_login(features)
 
-        if not args.skip_dotfiles:
-            self.run_dotfiles_apply()
-            if os.environ.get("MACHINE_SKIP_TOOLS") != "1":
-                self.run_tools_install()
-            if device != "container":
-                self.ensure_update_timer()
-            self.cmd_env_pull()
+        # Last: the timer starts the background update, which must not run during Ansible.
+        if not args.skip_dotfiles and device != "container":
+            runner.run("update timers", self.ensure_update_timer)
+        if runner.report("setup"):
+            return 1
         log("setup finished")
         return 0
 

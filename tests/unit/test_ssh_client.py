@@ -582,3 +582,20 @@ def test_add_keeps_change_made_on_another_host(tmp_path, monkeypatch, fake_bw):
     machine.cmd_ssh_add("lab")
     text = note_text(store)
     assert "Host other" in text and "Host lab" in text
+
+
+def test_legacy_resolution_counts_listed_hosts_as_resolved(
+    tmp_path, monkeypatch, fake_bw
+):
+    cli, machine, home, _repo, _store = client(tmp_path, monkeypatch, fake_bw)
+    (home / ".ssh/config.d").mkdir()
+    (home / ".ssh/config.d/20-home").write_text(LIST)
+    (home / ".ssh/config.pre-dotfiles").write_text(
+        "Host nas\n  Port 5115\n\nHost old\n  User x\n"
+    )
+    machine.write_legacy_ssh_config()
+    monkeypatch.setattr(cli.system, "choose", lambda *_a, **_k: "drop it")
+    machine.resolve_legacy_ssh_config()
+    assert not (home / ".ssh/config.pre-dotfiles").exists()
+    assert (home / ".local/share/machine/ssh-backup/config.pre-dotfiles").is_file()
+    assert not (home / ".ssh/config.d/90-legacy").exists()

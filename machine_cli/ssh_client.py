@@ -215,6 +215,14 @@ class SshClientMixin:
             if p.is_file() and not p.is_symlink()
         )
 
+    def managed_ssh_names(self) -> set:
+        """Host names the host list or ~/.ssh/config.local defines."""
+        managed = set()
+        for other in (self.ssh_list_path(), self.ssh_dir / "config.local"):
+            if other and other.is_file():
+                managed |= defined_names(other.read_text(encoding="utf-8"))
+        return managed
+
     def write_legacy_ssh_config(self) -> None:
         """Hosts of the replaced config that neither the host list nor
         ~/.ssh/config.local defines, so nothing breaks before the list exists."""
@@ -224,10 +232,7 @@ class SshClientMixin:
             if path.is_file():
                 path.unlink()
             return
-        managed = set()
-        for other in (self.ssh_list_path(), self.ssh_dir / "config.local"):
-            if other and other.is_file():
-                managed |= defined_names(other.read_text(encoding="utf-8"))
+        managed = self.managed_ssh_names()
         chunks = [LEGACY_HEADER]
         hosts = 0
         for source in sources:
@@ -657,9 +662,15 @@ class SshClientMixin:
                     f"could not write Bitwarden {item}; the hosts stay in the old config"
                 )
                 done -= {b.norm for b in to_bitwarden}
+        managed = self.managed_ssh_names()
         for source in self.legacy_ssh_sources():
             preamble, source_blocks = parse_blocks(source.read_text(encoding="utf-8"))
-            rest = [b for b in source_blocks if b.norm not in done]
+            # hosts that the list or config.local define are resolved as well
+            rest = [
+                b
+                for b in source_blocks
+                if b.norm not in done and not (set(b.names) & managed)
+            ]
             if not rest:
                 backup = self.state_dir / "ssh-backup" / source.name
                 backup.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

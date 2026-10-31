@@ -53,6 +53,7 @@ class MiseToolsMixin:
             capture=True,
         )
         system.run(["mise", "install"], env=env, cwd=self.repo)
+        self.remove_old_local_bw(env)
         features, _ = feature_table.split(
             parse_profile_file(self.applied_host_path)["features"],
             self.current_context(),

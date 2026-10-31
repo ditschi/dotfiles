@@ -4,6 +4,7 @@
 
 - [x] 1.1 Add `bitwarden = "latest"` with a one-line comment to `home/core/.config/mise/conf.d/20-tools.toml`; verify `mise ls bitwarden` lists it from that fragment and the repository check for tools declared twice passes.
 - [x] 1.2 Run `mise lock --global --platform linux-x64,linux-arm64 bitwarden` so `home/core/.config/mise/mise.lock` gets `[[tools.bitwarden]]` with a sha256 checksum and URL for `linux-x64` and `linux-arm64` (`bw-linux-arm64-<ver>.zip`); verify both platform entries in the diff and that no other tool's entry changed.
+- [x] 1.3 Pin `bitwarden = "2026.8.0"` with a comment on the Vaultwarden incompatibility and re-lock; verify the lock's sha256 for both platforms equals the GitHub asset digests.
 
 ## 2. machine installs bw through mise
 
@@ -37,3 +38,4 @@
 - Clean environment (x86_64; scratch `HOME`, `MISE_DATA_DIR`, no `~/.config/mise`, no `bw` on `PATH`): `Machine().ensure_bitwarden_cli()` ran `mise install bitwarden` from the repository config, returned true, and `bw --version` printed `2026.10.1` from `<MISE_DATA_DIR>/installs/bitwarden/2026.10.1/bw`.
 - zsh completion: with `bw` on `PATH`, `dotfiles_cli_completions` registers `_comps[bw]=_bw`; without `bw` it returns 0 and registers nothing. `bw <Tab>` was not tried in an interactive terminal.
 - `mise lock` also deleted the unrelated `home/core/.config/mise/locks/npm-anthropic-ai-claude-code/2.1.308/`; it was restored, so only the `bitwarden` entries changed in the lockfile.
+- 4.4 first run (netmaster, `bw` 2026.10.1 via mise shims): install worked (`bw --version` 2026.10.1), but `machine env pull` failed after login with `KeyIdBackfillError` (404 from Vaultwarden 2026.6.0) and wrote no env files; led to task 1.3. Lock after 1.3: sha256 367f618e… (linux-x64) and 74d822a5… (linux-arm64), equal to the GitHub digests.

@@ -62,6 +62,7 @@ def apply_role(tmp_path):
                         "monitoring_main_conf": str(etc / "telegraf.conf"),
                         "monitoring_default_file": str(etc / "default-telegraf"),
                         "monitoring_service_group": grp.getgrgid(os.getgid()).gr_name,
+                        "monitoring_sudoers_file": str(etc / "sudoers-telegraf"),
                         "influx_url": "",
                         "influx_token": "",
                         "influx_org": "home",
@@ -188,6 +189,17 @@ def test_fragments_have_no_agent_table():
     assert _agent_tables(*fragments) == 0
 
 
+def test_only_the_smart_fragment_reads_smart():
+    # SMART needs real disks and sudo; the other fragments run everywhere.
+    readers = {
+        p.name
+        for p in (ROLE / "files").glob("machine_*.conf")
+        if "inputs.smart" in p.read_text()
+    }
+    assert readers == {"machine_smart.conf"}
+    assert "use_sudo = true" in (ROLE / "files/machine_smart.conf").read_text()
+
+
 @needs_ansible
 @pytest.mark.parametrize(
     ("configs", "interval"),
@@ -216,3 +228,19 @@ def test_remote_base_leaves_the_interval_to_the_remote_configs(apply_role):
     main = (etc / "telegraf.conf").read_text()
     assert _agent_tables(etc / "telegraf.conf") == 1
     assert not re.search(r"^\s*interval\s*=", main, re.M)
+
+
+@needs_ansible
+def test_smart_fragment_brings_the_smartctl_rule_and_leaves_with_it(apply_role):
+    etc, run = apply_role
+    smart = ["machine/base", "machine/server", "machine/smart"]
+    run(monitoring_configs=smart)
+    rule = etc / "sudoers-telegraf"
+    assert "machine_smart.conf" in _names(etc)
+    assert _mode(rule) == "0o440"
+    assert "telegraf ALL=(root) NOPASSWD: /usr/sbin/smartctl\n" in rule.read_text()
+
+    run(monitoring_configs=["machine/base", "machine/server"])
+    assert "machine_smart.conf" not in _names(etc)
+    assert {"machine_base.conf", "machine_server.conf"} <= _names(etc)
+    assert not rule.exists()

@@ -84,22 +84,50 @@
   when: not _monitoring_remote
   notify: Restart telegraf
 
-- name: Find local fragments replaced by the remote configs
+# Remote configs replace all local fragments; otherwise drop those no longer resolved
+# (for example machine_smart.conf on a host that turned out to be a VM).
+- name: Find local fragments
   ansible.builtin.find:
     paths: "{{ monitoring_conf_dir }}"
     patterns: "machine_*.conf"
   register: monitoring_local_fragments
-  when: _monitoring_remote
 
-- name: Remove local fragments replaced by the remote configs
+- name: Remove local fragments that are not resolved
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: absent
   loop: "{{ monitoring_local_fragments.files | default([]) }}"
   loop_control:
     label: "{{ item.path }}"
-  when: _monitoring_remote
+  when: _monitoring_remote or (item.path | basename) not in _monitoring_files
+  vars:
+    _monitoring_files: "{{ _monitoring_names | map('replace', '/', '_') | map('regex_replace', '$', '.conf') | list }}"
   notify: Restart telegraf
+
+# inputs.smart (machine/smart) runs smartctl through sudo: it needs raw disk access.
+- name: Install smartmontools for the SMART input
+  ansible.builtin.apt:
+    name: smartmontools
+    state: present
+  when:
+    - ansible_facts.os_family == "Debian"
+    - "'machine/smart' in _monitoring_names"
+
+- name: Let telegraf run only smartctl as root
+  ansible.builtin.copy:
+    dest: "{{ monitoring_sudoers_file }}"
+    mode: "0440"
+    content: |
+      # Managed by ansible roles/monitoring (machine/smart)
+      telegraf ALL=(root) NOPASSWD: {{ monitoring_smartctl }}
+    validate: visudo -cf %s
+  when: "'machine/smart' in _monitoring_names"
+
+- name: Remove the smartctl rule without the SMART input
+  ansible.builtin.file:
+    path: "{{ monitoring_sudoers_file }}"
+    state: absent
+  when: "'machine/smart' not in _monitoring_names"
 
 # inputs.docker reads /var/run/docker.sock; the docker group grants that (root-equivalent).
 - name: Check for the docker group

@@ -160,9 +160,16 @@ def test_excluded_features_bring_no_packages():
 @pytest.mark.parametrize(
     "name,expected",
     [
-        ("private-laptop", ["machine/base", "machine/laptop", "machine/docker"]),
-        ("private-desktop", ["machine/base", "machine/docker"]),
-        ("private-server", ["machine/base", "machine/server", "machine/docker"]),
+        (
+            "private-laptop",
+            ["machine/base", "machine/laptop", "machine/smart", "machine/docker"],
+        ),
+        ("private-desktop", ["machine/base", "machine/smart", "machine/docker"]),
+        (
+            "private-server",
+            ["machine/base", "machine/server", "machine/smart", "machine/docker"],
+        ),
+        ("private-vm-server", ["machine/base", "machine/server", "machine/docker"]),
         ("pi", ["machine/base", "machine/pi", "machine/docker"]),
         ("work-desktop", []),
         ("container", []),
@@ -172,10 +179,10 @@ def test_monitoring_fragments_from_hardware(name, expected):
     assert resolve_monitoring(host_vars(name)) == expected
 
 
-def _dump(playbook: str, name: str, tmp_path: Path, features=None):
+def _dump(playbook: str, name: str, tmp_path: Path, features=None, **overrides):
     dump_path = tmp_path / "dump.json"
     extra = tmp_path / "extra.json"
-    extra.write_text(json.dumps(host_vars(name, features)))
+    extra.write_text(json.dumps({**host_vars(name, features), **overrides}))
     subprocess.run(
         [
             "ansible-playbook",
@@ -214,6 +221,7 @@ def test_python_resolver_matches_ansible(name: str, tmp_path: Path):
     [
         ("private-laptop", None),
         ("private-server", None),
+        ("private-vm-server", None),
         ("pi-zero", None),
         ("private-desktop", ["monitoring"]),
     ],
@@ -223,6 +231,19 @@ def test_python_monitoring_matches_ansible(name: str, features, tmp_path: Path):
     assert _dump("dump_monitoring.yml", name, tmp_path, features) == resolve_monitoring(
         host
     )
+
+
+@pytest.mark.skipif(
+    shutil.which("ansible-playbook") is None, reason="ansible-playbook not installed"
+)
+def test_remote_configs_get_no_smart(tmp_path: Path):
+    base = {
+        "influx_telegraf_config_base": "https://influx.example.test/api/v2/telegrafs"
+    }
+    host = {**host_vars("private-server"), **base}
+    dumped = _dump("dump_monitoring.yml", "private-server", tmp_path, **base)
+    assert "machine/smart" not in dumped
+    assert dumped == resolve_monitoring(host)
 
 
 def test_group_vars_are_lists():
@@ -243,5 +264,6 @@ def test_monitoring_fallback_files_exist():
         "machine_pi.conf",
         "machine_server.conf",
         "machine_docker.conf",
+        "machine_smart.conf",
     ):
         assert (files / name).is_file()

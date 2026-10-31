@@ -26,6 +26,7 @@ HOSTS = {
     "private-desktop": {"context": "private", "device": "desktop"},
     "work-desktop": {"context": "work", "device": "desktop"},
     "private-server": {"context": "private", "device": "server"},
+    "private-vm-server": {"context": "private", "device": "server", "hw_virtual": True},
     "pi": {"context": "private", "device": "server", "hw_pi": True},
     "pi-zero": {
         "context": "private",
@@ -41,7 +42,13 @@ def host_vars(name: str, features: Iterable[str] | None = None) -> dict:
     """Extra vars for Ansible: context, device, hardware facts and features."""
     from machine_cli import features as feature_table
 
-    host = {"hw_laptop": False, "hw_pi": False, "hw_pi_zero": False, **HOSTS[name]}
+    host = {
+        "hw_laptop": False,
+        "hw_pi": False,
+        "hw_pi_zero": False,
+        "hw_virtual": False,
+        **HOSTS[name],
+    }
     host["features"] = (
         list(features)
         if features is not None
@@ -90,6 +97,12 @@ def resolve_monitoring(host: dict) -> List[str]:
         names.append("machine/pi")
     if host["device"] == "server" and not host["hw_pi"]:
         names.append("machine/server")
+    if (
+        not host["hw_virtual"]
+        and not host["hw_pi"]
+        and not host.get("influx_telegraf_config_base")
+    ):
+        names.append("machine/smart")
     if "docker" in features_set:
         names.append("machine/docker")
     return names

@@ -34,6 +34,7 @@
 - `pytest tests/integration -m apt_gnome` (via `uv run --with-requirements tests/requirements.txt`): 1 passed; the container gets no `machine_smart.conf` and no sudoers rule.
 - Detection on real hosts: this laptop `hw_virtual=False`; contabo reports `virtualization_role: guest`, `virtualization_type: kvm`.
 - After merging (`79066c9`): contabo `telegraf` active, no `machine_smart.conf`, no sudoers rule, no errors since the restart. homeserver has no `monitoring` (its Telegraf comes from k3s), so the SMART check was done on the physical laptop instead: `telegraf` active with `machine_smart.conf`, `smartmontools` 7.5 installed, `/etc/sudoers.d/telegraf-smartctl` mode `0440`, `sudo smartctl` calls on `/dev/nvme0` every 30 s and no `E!` lines.
+- Log filter (3.5, `d1951a7` and `b471f87`): after `machine update` on the laptop, `telegraf` is active with both `LogFilterPatterns` and no `E!` lines; `journalctl -u telegraf` shows no `COMMAND=/usr/sbin/smartctl` and no `pam_unix(sudo:session)` lines since the restart. Before the PAM pattern, 120 session lines appeared in 10 minutes.
 
 ## Workflow follow-up
 

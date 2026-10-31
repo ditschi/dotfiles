@@ -22,7 +22,7 @@
 - [x] 4.1 Run `pytest tests/unit/test_monitoring_role.py tests/unit/test_package_presets.py tests/unit/test_telegraf.py -q`, then `pytest tests/unit -q`, because the hardware facts and the resolution are shared by packages and monitoring. Record the results.
 - [x] 4.2 Run `ansible-lint ansible/*.yml` and `pre-commit run --files <changed paths>`, including the new `machine_smart.conf`. Record the results.
 - [x] 4.3 Run the affected Docker integration tests (Readme "Tests") that apply the monitoring role, to check that test containers get no SMART fragment. Record the results.
-- [ ] 4.4 After merging: run `machine update` on contabo and check `systemctl is-active telegraf` and that `machine_smart.conf` is absent; on homeserver check that `telegraf` is active and `journalctl -u telegraf` shows no SMART errors. Record the results.
+- [x] 4.4 After merging: run `machine update` on contabo and check `systemctl is-active telegraf` and that `machine_smart.conf` is absent; on homeserver check that `telegraf` is active and `journalctl -u telegraf` shows no SMART errors. Record the results.
 
 ## Validation record
 
@@ -32,6 +32,7 @@
 - `uvx ansible-lint ansible/*.yml`: 0 failures, 0 warnings. `pre-commit run --files <changed paths>`: clean after black and end-of-file fixes.
 - `pytest tests/integration -m apt_gnome` (via `uv run --with-requirements tests/requirements.txt`): 1 passed; the container gets no `machine_smart.conf` and no sudoers rule.
 - Detection on real hosts: this laptop `hw_virtual=False`; contabo reports `virtualization_role: guest`, `virtualization_type: kvm`.
+- After merging (`79066c9`): contabo `telegraf` active, no `machine_smart.conf`, no sudoers rule, no errors since the restart. homeserver has no `monitoring` (its Telegraf comes from k3s), so the SMART check was done on the physical laptop instead: `telegraf` active with `machine_smart.conf`, `smartmontools` 7.5 installed, `/etc/sudoers.d/telegraf-smartctl` mode `0440`, `sudo smartctl` calls on `/dev/nvme0` every 30 s and no `E!` lines.
 
 ## Workflow follow-up
 

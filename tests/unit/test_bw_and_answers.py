@@ -532,3 +532,76 @@ def test_bitwarden_setup_does_not_prompt_with_a_valid_saved_session(
         ),
     )
     assert machine.setup_bitwarden()
+
+
+@pytest.mark.parametrize("answer", [True, False])
+def test_unlock_offers_login_when_logged_out(tmp_path, monkeypatch, answer):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    monkeypatch.setattr("builtins.input", lambda _: "")
+    questions = []
+    monkeypatch.setattr(
+        cli.system, "prompt_yes_no", lambda q, d: questions.append(q) or answer
+    )
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        if args == ["bw", "status"]:
+            unlocked = os.environ.get("BW_SESSION") == "fresh"
+            output = json.dumps(
+                {"status": "unlocked" if unlocked else "unauthenticated"}
+            )
+        elif args[:2] == ["bw", "login"]:
+            output = "fresh"
+        else:
+            output = ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert machine.unlock_bitwarden() == answer
+    assert len(questions) == 1 and "not logged in" in questions[0]
+    assert any(c[:2] == ["bw", "login"] for c in commands) == answer
+    assert ["bw", "unlock", "--raw"] not in commands
+
+
+def test_unlock_does_not_ask_to_log_in_when_unattended(tmp_path, monkeypatch):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    monkeypatch.setattr(
+        cli.system, "prompt_yes_no", lambda *_: pytest.fail("no question unattended")
+    )
+    machine.unattended = True
+
+    def run(args, **kwargs):
+        output = '{"status":"unauthenticated"}' if args == ["bw", "status"] else ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert not machine.unlock_bitwarden()
+
+
+def test_bitwarden_setup_defaults_to_the_own_server(tmp_path, monkeypatch):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    answers = iter([True, False])
+    monkeypatch.setattr(cli.system, "prompt_yes_no", lambda *_: next(answers))
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda q: prompts.append(q) or "")
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        output = '{"status":"unauthenticated"}' if args == ["bw", "status"] else ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    monkeypatch.setattr(machine, "unlock_bitwarden", lambda **_: True)
+    assert machine.setup_bitwarden()
+    assert prompts == ["Bitwarden server URL [https://vault.ditscher.me]: "]
+    assert ["bw", "config", "server", "https://vault.ditscher.me"] in commands

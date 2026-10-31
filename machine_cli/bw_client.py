@@ -19,6 +19,7 @@ from .core import (
 
 
 DEFAULT_BW_EMAIL = "chris@ditschers.de"
+DEFAULT_BW_SERVER = "https://vault.ditscher.me"
 # Variables read from the Telegraf item (spec secret-tools, "Influx item layout")
 # and the Ansible variables they become (group_vars/all/packages.yml).
 INFLUX_KEYS = {
@@ -56,7 +57,19 @@ class BwClientMixin:
                 return False
             status = system.run(["bw", "status"], capture=True, check=False)
             status_text = status.stdout or ""
-            if allow_login and "unauthenticated" in status_text.lower():
+            logged_out = "unauthenticated" in status_text.lower()
+            if logged_out and not allow_login:
+                # `bw unlock` cannot work without a login; ask instead of failing.
+                if getattr(self, "unattended", False) or not system.prompt_yes_no(
+                    "Bitwarden is not logged in. Log in now?", True
+                ):
+                    log(
+                        "WARNING: Bitwarden is not logged in; environment sync "
+                        "skipped (run machine env pull)"
+                    )
+                    return False
+                allow_login = True
+            if allow_login and logged_out:
                 log("Bitwarden login")
                 default_email = os.environ.get("BW_EMAIL") or DEFAULT_BW_EMAIL
                 email = input(f"Bitwarden account email [{default_email}]: ").strip()
@@ -175,7 +188,7 @@ class BwClientMixin:
         if status.get("status") != "unlocked":
             os.environ.pop("BW_SESSION", None)
         if status.get("status") == "unauthenticated":
-            current = status.get("serverUrl") or "https://vault.bitwarden.com"
+            current = status.get("serverUrl") or DEFAULT_BW_SERVER
             server = input(f"Bitwarden server URL [{current}]: ").strip() or current
             parsed = urlsplit(server)
             if (

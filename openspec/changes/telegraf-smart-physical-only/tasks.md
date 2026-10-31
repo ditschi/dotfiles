@@ -16,6 +16,7 @@
 - [x] 3.2 In `roles/monitoring/tasks/main.yml`, when `machine/smart` is resolved and the host is Debian-family: install `smartmontools` and write `/etc/sudoers.d/telegraf-smartctl` (`0440`, `telegraf ALL=(root) NOPASSWD: /usr/sbin/smartctl`, `validate: visudo -cf %s`); otherwise remove that file. Make the sudoers path a role default, so the unit test can point it under `tmp_path`. Verify with a new `apply_role` test for both cases (rule written / removed) and `ansible-lint ansible/*.yml`.
 - [x] 3.3 Remove local `machine_*.conf` fragments that are not resolved (local mode only), with a restart notification. Verify with an `apply_role` test that runs with `machine/smart`, then without it, and checks that `machine_smart.conf` is gone.
 - [x] 3.4 Update `roles/monitoring/README.md` (inputs, SMART on physical non-Pi hosts, sudoers rule, no SMART with the remote base) and the hardware facts comment in `group_vars/all/packages.yml` if it lists them. Verify by reading the diff.
+- [x] 3.5 Add a `telegraf.service` drop-in with `LogFilterPatterns=~COMMAND=/usr/sbin/smartctl` on hosts with `machine/smart` (removed elsewhere; restart handler with daemon reload), because `sudo-rs` cannot stop logging allowed calls. Verify with the `apply_role` SMART test and, after merging, on the laptop: no new `sudo` lines for `smartctl` in `journalctl -u telegraf`.
 
 ## 4. Validation
 

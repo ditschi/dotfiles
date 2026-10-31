@@ -26,6 +26,10 @@ from .profile import host_config_changes
 
 Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
 
+# The handoff to the code of a new revision (`update --resume-*`); the new
+# checkout lists the versions it accepts in machine_cli/resume-protocol.
+RESUME_PROTOCOL = "1"
+
 
 STATE_KEYS = (
     "state",
@@ -682,6 +686,27 @@ class UpdateMixin:
         )
         return bool((result.stdout or "").strip())
 
+    def hand_over_to_new_code(self, previous: str) -> bool:
+        """True when `machine_cli/` changed and the new code accepts the handoff.
+
+        A revision without this handoff (for example after a rollback) would reject
+        the resume options; its steps run with the code that is running."""
+        if not self.machine_code_changed(previous):
+            return False
+        marker = self.repo / "machine_cli" / "resume-protocol"
+        try:
+            lines = marker.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+        words = [w for line in lines if not line.startswith("#") for w in line.split()]
+        if RESUME_PROTOCOL in words:
+            return True
+        log(
+            "machine_cli changed, but the new code does not accept the handoff; "
+            "running the remaining steps with the code that is running"
+        )
+        return False
+
     def machine_entry_command(self) -> list[str]:
         """Start the checkout's CLI; run directly, uv resolves its dependencies."""
         script = self.repo / "machine_cli" / "machine"
@@ -794,7 +819,7 @@ class UpdateMixin:
         elif plan["conflicts"]:
             plan = self.resolve_conflicts(plan, args.force)
         self.merge_upstream(plan)
-        if self.machine_code_changed(previous):
+        if self.hand_over_to_new_code(previous):
             code = self.run_new_machine_code(args, previous)
             if code is not None:
                 return code

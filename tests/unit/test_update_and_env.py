@@ -2110,6 +2110,14 @@ def test_status_shows_a_low_disk(update_env, capsys, tmp_path, monkeypatch):
 # --- handoff to the machine code of the new revision ------------------------
 
 
+def _push_machine_code(other: Path, protocol: str = "1") -> None:
+    """A commit that changes machine_cli/ in a CLI accepting the given handoff."""
+    if protocol:
+        (other / "machine_cli").mkdir(exist_ok=True)
+        (other / "machine_cli/resume-protocol").write_text(f"# versions\n{protocol}\n")
+    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+
+
 def _resume_args(rest: list[str]) -> argparse.Namespace:
     def value(option: str) -> str:
         return rest[rest.index(option) + 1] if option in rest else ""
@@ -2155,7 +2163,7 @@ def _new_code(monkeypatch, machine, child=None) -> list[list[str]]:
 def test_update_hands_remaining_steps_to_new_machine_code(update_env, monkeypatch):
     machine, repo, other, _home, calls = update_env
     before = machine.repo_revision()
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     started = _new_code(monkeypatch, machine)
 
     assert _update(machine) == 0
@@ -2169,7 +2177,7 @@ def test_update_hands_remaining_steps_to_new_machine_code(update_env, monkeypatc
 
 def test_update_passes_system_options_to_new_machine_code(update_env, monkeypatch):
     machine, _repo, other, _home, _calls = update_env
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     started = _new_code(monkeypatch, machine)
 
     assert _update(machine, system=True, skip_ansible=True) == 0
@@ -2189,7 +2197,7 @@ def test_update_without_machine_code_change_runs_in_one_process(
 
 def test_resumed_update_takes_steps_from_the_previous_revision(update_env, monkeypatch):
     machine, _repo, other, _home, calls = update_env
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     _push_change(other, "ansible/roles/base/tasks/main.yml", "- debug: {}\n")
     _new_code(monkeypatch, machine)
 
@@ -2199,7 +2207,7 @@ def test_resumed_update_takes_steps_from_the_previous_revision(update_env, monke
 
 def test_update_records_attention_when_new_machine_code_stops(update_env, monkeypatch):
     machine, _repo, other, _home, calls = update_env
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     _new_code(monkeypatch, machine, lambda rest: subprocess.CompletedProcess(rest, 1))
 
     assert _update(machine) == 1
@@ -2211,7 +2219,7 @@ def test_update_records_attention_when_new_machine_code_stops(update_env, monkey
 
 def test_update_keeps_the_reason_the_new_machine_code_recorded(update_env, monkeypatch):
     machine, _repo, other, _home, _calls = update_env
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: 1)
     _new_code(monkeypatch, machine)
 
@@ -2223,7 +2231,7 @@ def test_update_runs_steps_itself_when_new_machine_code_cannot_start(
     update_env, monkeypatch, capsys
 ):
     machine, _repo, other, _home, calls = update_env
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
 
     def cannot_start(rest):
         raise OSError("no such file")
@@ -2235,10 +2243,38 @@ def test_update_runs_steps_itself_when_new_machine_code_cannot_start(
     assert "could not start the new machine code" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("protocol", ["", "2"])
+def test_update_without_accepted_handoff_runs_in_one_process(
+    update_env, monkeypatch, capsys, protocol
+):
+    """E.g. after a rollback to a revision that has no resume options."""
+    machine, _repo, other, _home, calls = update_env
+    _push_machine_code(other, protocol)
+    started = _new_code(monkeypatch, machine)
+
+    assert _update(machine) == 0
+    assert started == [] and calls == ["env", "dotfiles", "tools"]
+    assert "does not accept the handoff" in capsys.readouterr().out
+    assert machine.read_update_state()["state"] == "updated"
+
+
+def test_auto_update_without_accepted_handoff_runs_in_one_process(
+    update_env, monkeypatch
+):
+    machine, repo, other, _home, calls = update_env
+    _push_machine_code(other, protocol="")
+    _push_change(other, "home/dot_new", "x\n")
+    started = _new_code(monkeypatch, machine)
+
+    assert _auto(machine) == 0
+    assert started == [] and calls == ["dotfiles"]
+    assert machine.read_update_state()["state"] == "updated"
+
+
 def test_auto_update_hands_steps_to_new_machine_code(update_env, monkeypatch):
     machine, repo, other, _home, calls = update_env
     before = machine.repo_revision()
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     _push_change(other, "home/dot_new", "x\n")
     started = _new_code(monkeypatch, machine)
 
@@ -2266,7 +2302,7 @@ def test_auto_update_reverts_when_new_machine_code_reports_a_failure(
 ):
     machine, repo, other, _home, _calls = update_env
     before = machine.repo_revision()
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
     (repo / "home/dot_placeholder").write_text("edited\n")
     monkeypatch.setattr(machine, "zsh_health_failure", lambda: "zsh failed to start")
     _new_code(monkeypatch, machine)
@@ -2284,7 +2320,7 @@ def test_auto_update_reverts_when_new_machine_code_reports_a_failure(
 def test_auto_update_reverts_when_new_machine_code_stops(update_env, monkeypatch, how):
     machine, _repo, other, _home, _calls = update_env
     before = machine.repo_revision()
-    _push_change(other, "machine_cli/new_step.py", "x = 1\n")
+    _push_machine_code(other)
 
     def child(rest):
         if how == "cannot-start":

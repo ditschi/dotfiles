@@ -12,6 +12,8 @@ All work happens in the non-live worktree `.claude/worktrees/xenodochial-ellis-c
 
 - [x] 2.1 Split `_apply_auto` (`machine_cli/auto_update.py`) into the fast-forward and `_auto_steps(steps)` returning `(failure, code)`; after the fast-forward hand over when `machine_cli/` changed; the child (`--auto --resume-from <rev> --resume-result <file>`) writes the result as JSON; the parent reverts on a reported failure, a non-zero exit, an `OSError` or a missing result (`resume-failed`); verify with tests: success → state "updated" and local stash copy dropped; reported failure → revert with that reason; crash/missing result → revert with `resume-failed`; resumed child writes the result file
 
+- [x] 2.2 Hand over only when the new checkout's `machine_cli/resume-protocol` lists the running code's protocol version; otherwise log it and run the steps in-process (found in code review: a rollback to a CLI without the resume options would otherwise revert or fail); verify with tests for a missing marker and an unknown version, manual and automatic
+
 ## 3. CLI
 
 - [x] 3.1 Add hidden `--resume-from` and `--resume-result` options to `update` in `machine_cli/machine`, not shown in `--help`; verify with a test in `tests/unit/test_machine_cli.py` that they parse into the args and do not appear in the help text
@@ -23,7 +25,7 @@ All work happens in the non-live worktree `.claude/worktrees/xenodochial-ellis-c
 ## 5. Validation
 
 - [x] 5.1 Run `pytest tests/unit/test_update_and_env.py tests/unit/test_machine_cli.py -q`, then `pytest tests/unit -q` because the update entry point (a shared path) changes; record commands and results here
-  - 2026-10-31: `pytest tests/unit/test_update_and_env.py tests/unit/test_machine_cli.py -q` → 163 passed (before the end-to-end test was added); `pytest tests/unit -q` → 839 passed after the black/flake8 fixes. The new tests cover the handoff (manual and automatic), the revert in the parent (reported failure, non-zero exit, missing result, cannot start), the in-process fallback, the hidden CLI options, and one end-to-end run that starts the real `machine_cli/machine` of the new revision as the child. The full suite covers the shared update entry point.
+  - 2026-10-31: `pytest tests/unit/test_update_and_env.py tests/unit/test_machine_cli.py -q` → 163 passed (before the end-to-end test was added); `pytest tests/unit -q` → 839 passed after the black/flake8 fixes. After the code-review fix (2.2): `pytest tests/unit/test_update_and_env.py tests/unit/test_machine_cli.py -q` → 168 passed; `pytest tests/unit -q` → 850 passed; pre-commit on the changed paths passes. The new tests cover the handoff (manual and automatic), the revert in the parent (reported failure, non-zero exit, missing result, cannot start), the in-process fallback, the hidden CLI options, and one end-to-end run that starts the real `machine_cli/machine` of the new revision as the child. The full suite covers the shared update entry point.
 - [x] 5.2 Run `pre-commit run --files` on all changed and added paths, including this change directory; record the result
   - 2026-10-31: all hooks pass after black reformatted `updates.py` and the test file and one flake8 E203 in the test helper was fixed
 - [x] 5.3 `openspec validate update-runs-new-machine-code --strict`; record the result

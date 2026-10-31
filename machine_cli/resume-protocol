@@ -1,0 +1,3 @@
+# Versions of the update handoff (`machine update --resume-*`) this CLI accepts,
+# separated by whitespace. An older machine hands over only when its version is listed.
+1

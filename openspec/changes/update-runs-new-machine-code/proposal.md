@@ -8,7 +8,7 @@
 
 - After the checkout update, `machine update` checks whether `machine_cli/` differs between the revision before and after. If it does, the old code keeps the update lock and starts the checkout's `machine_cli/machine` with a hidden option that runs only the remaining steps, then waits and returns the child's result. If nothing in `machine_cli/` changed, the update runs as before in one process.
 - The background job (`machine update --auto`) does the same after its fast-forward. The child runs the dotfile apply, the tool install and the zsh health check and reports the result. The old process keeps the revert: if the child reports a failure, cannot start or crashes, the old code resets to the previous revision and re-applies the dotfile groups with code that matches that revision.
-- The hidden option is an internal interface between two versions of `machine`: older code calls newer code with it, so later changes have to keep accepting it.
+- The hidden option is an internal interface between two versions of `machine`: older code calls newer code with it, so later changes have to keep accepting it. The new checkout lists the protocol versions it accepts in `machine_cli/resume-protocol`; when the running code's version is not listed (for example after a rollback), the update runs the remaining steps itself as before.
 - The first update that brings this change still runs the rest with the old code, because the old code does not know about the handoff yet.
 
 ## Capabilities

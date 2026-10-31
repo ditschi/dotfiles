@@ -116,7 +116,7 @@ class AutoUpdateMixin:
             )
             self.event("update-auto", "blocked", "fast-forward-failed")
             return 0
-        if self.machine_code_changed(previous):
+        if self.hand_over_to_new_code(previous):
             failure, code = self._auto_steps_with_new_code(previous)
         else:
             failure, code = self._auto_steps(steps)

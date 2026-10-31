@@ -30,19 +30,21 @@
 
 **Manual update: the parent returns the child's exit code.** The parent records the `update` event with the child's exit code; the child records none. If the child exits non-zero and has not recorded needs-attention (for example after a traceback), the parent records needs-attention naming the stopped child. Ctrl-C reaches both processes; the parent stops at once as before (exit 130). If the entry point cannot be started (`OSError`), the manual update warns and runs the remaining steps in the parent, because the user is present and the steps are idempotent.
 
-**The resume options are an internal, stable interface.** `machine update --resume-from <rev>` (manual; `--system` and `--skip-ansible` are passed on) and `machine update --auto --resume-from <rev> --resume-result <file>` (automatic) are hidden from `--help`. The caller is always an older revision of `machine`, so later changes keep accepting these options and their meaning, or add new ones next to them.
+**The resume options are an internal, versioned interface.** `machine update --resume-from <rev>` (manual; `--system` and `--skip-ansible` are passed on) and `machine update --auto --resume-from <rev> --resume-result <file>` (automatic) are hidden from `--help`. The caller is always an older revision of `machine`, so later changes keep accepting these options and their meaning. An incompatible change gets a new protocol version instead.
+
+**The new checkout declares which handoff it accepts.** `machine_cli/resume-protocol` lists the protocol versions the CLI of that revision accepts (currently `1`). The running code hands over only when its own version is listed; otherwise it logs that the new code does not accept the handoff and runs the remaining steps itself, as before this change. Without this check, an update to a revision without the resume options (a rollback of this change, or of `machine_cli` to before it) would start a child that rejects the options: the automatic update would revert it and the manual update would fail until it was run a second time. A plain file is used because the running code cannot import the new revision's modules, and asking the new CLI (for example through its help) would start a process for every update.
 
 **How the child is started.** `<checkout>/machine_cli/machine` directly when it is executable, so `uv` resolves the dependencies of the new revision; otherwise the running interpreter with the script as argument. `--debug` is passed on when it is on.
 
 ## Risks / Trade-offs
 
 - [The child cannot import or start, for example a new dependency that `uv` cannot fetch offline] → the automatic update reverts; the manual update ends with an error and needs-attention, and the user runs `machine update` again once the cause is fixed.
-- [A later change breaks the resume interface] → old code would start a child that rejects the options; the automatic update would revert every time. Recorded in Decisions as a stable interface; a unit test fixes the command line.
+- [A later change breaks the resume interface without changing the protocol version] → old code would start a child that rejects the options; the automatic update would revert every time. Recorded in Decisions as a versioned interface; a unit test fixes the command line.
 - [Two processes print to the same terminal or journal] → the parent prints nothing between starting the child and its exit, apart from its own summary on failure.
 
 ## Migration Plan
 
-No migration. The first update that brings this change runs the rest with the old code; the handoff works from the next update on. Rollback: revert the commits; the next update with the reverted code hands over to it one last time.
+No migration. The first update that brings this change runs the rest with the old code; the handoff works from the next update on. Rollback: revert the commits. The reverted checkout has no `machine_cli/resume-protocol`, so the update that brings the revert runs its remaining steps with the code that is running and does not hand over.
 
 ## Assumptions
 

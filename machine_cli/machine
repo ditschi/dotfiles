@@ -189,7 +189,13 @@ def setup(
     is_flag=True,
     help="skip system provisioning for this run; keep system changes pending",
 )
-def update(apply_system, force, check, json_, auto, skip_ansible) -> None:
+# Internal: an older `machine` that updated the checkout and holds the update lock
+# runs the remaining steps with this revision's code. Keep these options stable.
+@click.option("--resume-from", default="", hidden=True)
+@click.option("--resume-result", default="", hidden=True)
+def update(
+    apply_system, force, check, json_, auto, skip_ansible, resume_from, resume_result
+) -> None:
     args = types.SimpleNamespace(
         system=apply_system,
         force=force,
@@ -197,6 +203,8 @@ def update(apply_system, force, check, json_, auto, skip_ansible) -> None:
         json=json_,
         auto=auto,
         skip_ansible=skip_ansible,
+        resume_from=resume_from,
+        resume_result=resume_result,
     )
     _exit(Machine().cmd_update(args))
 

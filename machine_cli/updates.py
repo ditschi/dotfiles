@@ -6,12 +6,14 @@ import contextlib
 import fcntl
 import getpass
 import json
+import os
+import sys
 import time
 import types
 from datetime import datetime
-from typing import Callable, Iterable, Iterator
+from typing import Callable, Iterable, Iterator, Optional
 
-from . import events, local_overrides, system
+from . import core, events, local_overrides, system
 from .core import die, log, parse_profile_file, parse_profile_text, warn
 from .local_changes import classify_paths
 from .steps import Steps
@@ -671,9 +673,79 @@ class UpdateMixin:
             )
             self.block_update(plan)
 
+    # --- handoff to the machine code of the new revision ---------------------
+
+    def machine_code_changed(self, previous: str) -> bool:
+        """True when `machine_cli/` differs between `previous` and the checkout."""
+        result = self._git(
+            "diff", "--name-only", previous, "HEAD", "--", "machine_cli/"
+        )
+        return bool((result.stdout or "").strip())
+
+    def machine_entry_command(self) -> list[str]:
+        """Start the checkout's CLI; run directly, uv resolves its dependencies."""
+        script = self.repo / "machine_cli" / "machine"
+        command = (
+            [str(script)]
+            if os.access(script, os.X_OK)
+            else [sys.executable, str(script)]
+        )
+        return command + (["--debug"] if core.debug_enabled() else [])
+
+    def run_new_machine_code(
+        self, args: types.SimpleNamespace, previous: str
+    ) -> Optional[int]:
+        """Run the remaining update steps with the new code; None if it cannot start.
+
+        This process keeps the update lock while the child runs. Older revisions
+        call `update --resume-from`, so its meaning must stay the same."""
+        command = self.machine_entry_command() + ["update", "--resume-from", previous]
+        if getattr(args, "system", False):
+            command.append("--system")
+        if getattr(args, "skip_ansible", False):
+            command.append("--skip-ansible")
+        state_before = (
+            self.update_state.read_text(encoding="utf-8")
+            if self.update_state.is_file()
+            else ""
+        )
+        log("machine_cli changed; running the remaining steps with the new code")
+        try:
+            result = system.run(command, check=False)
+        except OSError as exc:
+            warn(
+                f"could not start the new machine code ({exc}); "
+                "running the remaining steps with the code that is running"
+            )
+            return None
+        state_after = (
+            self.update_state.read_text(encoding="utf-8")
+            if self.update_state.is_file()
+            else ""
+        )
+        if result.returncode != 0 and state_after == state_before:
+            # The child stopped before it recorded a result, e.g. on a traceback.
+            self.write_update_state(
+                "attention",
+                f"update failed: the new machine code stopped (exit "
+                f"{result.returncode}); run: machine update",
+                pending="",
+            )
+        return result.returncode
+
+    def resume_update(self, args: types.SimpleNamespace) -> int:
+        """The steps after the checkout update, for an older `machine` that holds the lock."""
+        previous = args.resume_from
+        if getattr(args, "auto", False):
+            return self.resume_auto(previous, args.resume_result)
+        incoming = self.incoming_changes("HEAD", previous)
+        return self._update_steps(args, set(self.plan_steps(incoming, "HEAD")))
+
     def cmd_update(self, args: types.SimpleNamespace) -> int:
         if getattr(args, "check", False):
             return self.update_check(getattr(args, "json", False))
+        if getattr(args, "resume_from", ""):
+            return self.resume_update(args)
         if getattr(args, "auto", False):
             return self.update_auto(args)
         with self.update_lock():
@@ -700,6 +772,7 @@ class UpdateMixin:
     def _update_locked(self, args: types.SimpleNamespace) -> int:
         self.ensure_update_timer()
         self.run_local_resolvers(interactive=True)
+        previous = self.repo_revision()
         plan = self.update_plan(fetch=True)
         if plan["state"] == "no-upstream":
             self.write_update_state("attention", plan["blockers"][0])
@@ -721,8 +794,14 @@ class UpdateMixin:
         elif plan["conflicts"]:
             plan = self.resolve_conflicts(plan, args.force)
         self.merge_upstream(plan)
-        steps = set(plan["steps"])
+        if self.machine_code_changed(previous):
+            code = self.run_new_machine_code(args, previous)
+            if code is not None:
+                return code
+        return self._update_steps(args, set(plan["steps"]))
 
+    def _update_steps(self, args: types.SimpleNamespace, steps: set[str]) -> int:
+        """Everything after the checkout update: host config, env, dotfiles, tools, Ansible."""
         profile_backup = self.backup_applied_host()
         profile_changed = self.sync_host_config_from_repo()
 

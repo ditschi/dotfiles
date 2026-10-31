@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import json
 import subprocess
 import types
+from pathlib import Path
 from typing import Iterator, Optional
 
 from . import events, system
@@ -115,13 +117,10 @@ class AutoUpdateMixin:
             )
             self.event("update-auto", "blocked", "fast-forward-failed")
             return 0
-        failure = ""
-        if "dotfiles" in steps and not self._dotfiles_apply_quiet():
-            failure, code = "dotfile apply failed", "apply-failed"
-        elif "tools" in steps and not self._tools_install_quiet():
-            failure, code = "tool install failed", "tools-failed"
-        elif reason := self.zsh_health_failure():
-            failure, code = reason, "zsh-unhealthy"
+        if self.machine_code_changed(previous):
+            failure, code = self._auto_steps_with_new_code(previous)
+        else:
+            failure, code = self._auto_steps(steps)
         if failure:
             return self._revert_auto(previous, target, failure, code, timer, local)
         if local:
@@ -134,6 +133,57 @@ class AutoUpdateMixin:
         self.write_update_state("available" if remaining else "updated")
         self.event("update-auto", "applied", duration=timer.seconds())
         log(f"updated automatically to {self.repo_revision()[:8]}")
+        return 0
+
+    def _auto_steps(self, steps: set[str]) -> tuple[str, str]:
+        """Run the steps after the fast-forward; (failure, event code) of the first failure."""
+        if "dotfiles" in steps and not self._dotfiles_apply_quiet():
+            return "dotfile apply failed", "apply-failed"
+        if "tools" in steps and not self._tools_install_quiet():
+            return "tool install failed", "tools-failed"
+        if reason := self.zsh_health_failure():
+            return reason, "zsh-unhealthy"
+        return "", ""
+
+    def _auto_steps_with_new_code(self, previous: str) -> tuple[str, str]:
+        """Run the steps with the new code in a child; this process keeps the revert."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        result_file = self.state_dir / "update-resume-result.json"
+        result_file.unlink(missing_ok=True)
+        command = self.machine_entry_command() + [
+            "update",
+            "--auto",
+            "--resume-from",
+            previous,
+            "--resume-result",
+            str(result_file),
+        ]
+        log("machine_cli changed; running the remaining steps with the new code")
+        try:
+            returncode = system.run(command, check=False).returncode
+        except OSError as exc:
+            return f"the new machine code could not be started: {exc}", "resume-failed"
+        try:
+            result = json.loads(result_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            result = None
+        finally:
+            result_file.unlink(missing_ok=True)
+        if returncode != 0 or not isinstance(result, dict):
+            return (
+                f"the new machine code stopped without a result (exit {returncode})",
+                "resume-failed",
+            )
+        failure = str(result.get("failure") or "")
+        return failure, (str(result.get("code") or "resume-failed") if failure else "")
+
+    def resume_auto(self, previous: str, result_path: str) -> int:
+        """Child side of the handoff: run the steps and report them to the parent."""
+        steps = set(classify_paths(self.incoming_changes("HEAD", previous)))
+        failure, code = self._auto_steps(steps)
+        Path(result_path).write_text(
+            json.dumps({"failure": failure, "code": code}) + "\n", encoding="utf-8"
+        )
         return 0
 
     def _dotfiles_apply_quiet(self) -> bool:

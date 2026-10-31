@@ -103,6 +103,9 @@ dotfiles_cli_completions() {
   dotfiles_cache_eval openspec openspec completion generate zsh
   dotfiles_cache_eval starship-completion starship completions zsh
   dotfiles_cache_eval git-lfs git-lfs completion zsh
+  dotfiles_cache_eval bw bw completion --shell zsh
+  # Its `#compdef` line only counts in an fpath file, so register the function here.
+  if (( $+functions[_bw] )); then compdef _bw bw; fi
 }
 
 dotfiles_deferred_init() {

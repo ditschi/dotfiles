@@ -255,7 +255,7 @@ The update SHALL report a pending system update only when the files changed sinc
 - **THEN** no system update is reported for it
 
 ### Requirement: Attention entry point
-`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`, a filesystem low on space or inodes, local-only keys or shell code in an env file) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
+`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`, a filesystem low on space or inodes, local-only keys or shell code in an env file, local SSH host blocks, a failed write to the SSH host list, SSH key files not pushed yet, hosts still taken from the replaced SSH config, a newly learned home gateway) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
 
 #### Scenario: Open items exist
 - **WHEN** a user runs `machine attention` and items are open
@@ -312,6 +312,22 @@ The update SHALL report a pending system update only when the files changed sinc
 #### Scenario: Local-only env keys
 - **WHEN** `~/.env` or `~/.env.host` has a local-only section, or was left unchanged because it holds shell code (see the capability `env-files`)
 - **THEN** an env item names the file and its keys and offers the choices of "Choices for a local-only key" for each key, and the item disappears once no key is left unresolved
+
+#### Scenario: Local SSH host blocks
+- **WHEN** the generated SSH host list has a local-only section (see the capability `ssh-client-config`)
+- **THEN** an SSH item names each block and offers the choices of "Choices for a local host block", and the item disappears once no block is left unresolved
+
+#### Scenario: SSH key files not pushed yet
+- **WHEN** key files under `machine/ssh_keys/` or `machine/ssh_host_keys/` are changed but not pushed (see the capability `ssh-host-keys`)
+- **THEN** an SSH item lists the files and offers to commit and push them
+
+#### Scenario: New home gateway learned
+- **WHEN** `ssh-route` learned a new home gateway while an older one is stored (see the capability `ssh-route`)
+- **THEN** an SSH item says so and offers to remove the older entry or keep both
+
+#### Scenario: Hosts from the replaced SSH config
+- **WHEN** `~/.ssh/config.d/90-legacy` exists (see the capability `ssh-client-config`)
+- **THEN** an SSH item names its hosts and offers the choices of "Hosts of the replaced config stay usable"
 
 ### Requirement: Update ends converged
 `machine update` SHALL end with a converge check, also when nothing was incoming: the user-space tools declared in the `mise` configuration are installed (missing ones are added) and the dotfile groups of the host are applied (missing links created, removed ones pruned). The checks SHALL be idempotent and cheap when nothing is missing.

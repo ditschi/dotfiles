@@ -32,7 +32,7 @@ With the feature `ssh-host-key`, `machine setup` SHALL, without asking and in th
 - **THEN** no key is generated, restored or uploaded, and setup says that the next `machine update` or `machine setup` with Bitwarden finishes it
 
 ### Requirement: Key check during update
-The manual `machine update` SHALL compare the host's key with its Bitwarden item only when a valid Bitwarden session is available without a prompt (environment or `~/.env.local`). A missing item SHALL be created with the local key without asking; a different key SHALL become an attention item. Without such a session it SHALL log a warning that says how to log in. It SHALL never generate or restore a key.
+The manual `machine update` SHALL compare the host's key with its Bitwarden item only when a valid Bitwarden session is available, from the environment, `~/.env.local`, or renewed in a terminal (see "Expired session is renewed in a terminal" in `secret-tools`). A missing item SHALL be created with the local key without asking; a different key SHALL become an attention item. Without such a session it SHALL log a warning that says how to log in. It SHALL never generate or restore a key.
 
 #### Scenario: Key not backed up
 - **WHEN** `machine update` runs with a saved valid session and the host's key has no item
@@ -46,12 +46,20 @@ The manual `machine update` SHALL compare the host's key with its Bitwarden item
 - **WHEN** `machine update` runs and no valid session is available without a prompt
 - **THEN** no key check runs, nothing prompts, and a warning says that the SSH key was not checked and to log in with `machine env pull` in a terminal
 
+#### Scenario: Expired saved session in a terminal
+- **WHEN** `machine update` runs in a terminal and the saved session is expired
+- **THEN** the session is renewed first and the key check runs with it
+
 ### Requirement: Background update without Bitwarden
-The background update SHALL NOT use Bitwarden; only the manual `machine update` checks the SSH key.
+The background update SHALL NOT use Bitwarden; only the manual `machine update` checks the SSH key. When the host expects Bitwarden (see the capability `secret-tools`), the background update MAY call `bw status` to notice an expired session, and SHALL make no other `bw` call.
 
 #### Scenario: Background update
-- **WHEN** the background update runs
+- **WHEN** the background update runs on a host that does not expect Bitwarden
 - **THEN** it does not call `bw`
+
+#### Scenario: Background update with a saved session
+- **WHEN** the background update runs on a host with a saved session
+- **THEN** `bw status` is its only `bw` call
 
 ### Requirement: Resolving a different key
 When the local key and the item differ, `machine attention` and `machine ssh sync` SHALL show both fingerprints and ask which side wins: local (the item is overwritten with the local key), Bitwarden (the local key is renamed to `<key>.old-<YYYYMMDD>` and the item's key is written in its place) or later (nothing changes). Without a terminal nothing SHALL change.
@@ -87,7 +95,7 @@ Existing local keys SHALL keep their path, permissions and passphrase, and SHALL
 - **THEN** the existing key stays unchanged
 
 ### Requirement: Public keys of home hosts in the repository
-For the `home` class, setup, `sync` and `rotate` SHALL write the public key to `machine/ssh_keys/<hostname>.pub` without a question and log a hint to commit it. Keys of the `work` class SHALL NOT be written to the repository. `authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`; `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
+For the `home` class, setup, the manual `machine update`, `sync` and `rotate` SHALL write the public key to `machine/ssh_keys/<hostname>.pub` without a question when the file is missing or differs, and log a hint to commit it. The file SHALL hold only the selected key. Keys of the `work` class SHALL NOT be written to the repository. `authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`; `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
 
 #### Scenario: Apply with ssh_allow_from
 - **WHEN** `machine apply` runs on a host with `ssh_allow_from: [homeserver]` and `machine/ssh_keys/homeserver.pub` exists
@@ -100,3 +108,29 @@ For the `home` class, setup, `sync` and `rotate` SHALL write the public key to `
 #### Scenario: Work host
 - **WHEN** a work host uploads its key
 - **THEN** no file is written to `machine/ssh_keys/`
+
+#### Scenario: Extra key in the file
+- **WHEN** the file of a home host holds the selected key and another key
+- **THEN** the manual update rewrites it with only the selected key
+
+### Requirement: Repository key file check during update
+The manual `machine update` on a home host SHALL compare the selected local public key with `machine/ssh_keys/<hostname>.pub` also without a Bitwarden session, and SHALL write the file when it is missing or differs. It SHALL never change the local key.
+
+#### Scenario: Key generated by hand
+- **WHEN** a user generated a new selected key with `ssh-keygen` and runs `machine update` without Bitwarden
+- **THEN** `machine/ssh_keys/<hostname>.pub` holds the new public key and the file is listed as not pushed yet
+
+#### Scenario: File already current
+- **WHEN** the file holds exactly the selected key
+- **THEN** the file is unchanged
+
+### Requirement: Key files not pushed yet
+Key files under `machine/ssh_keys/` and `machine/ssh_host_keys/` that are changed, added or removed but not pushed SHALL become one attention item that lists them and offers to commit and push them. `machine` SHALL NOT commit or push them on its own.
+
+#### Scenario: Written key file
+- **WHEN** an update wrote a key file and the user runs `machine attention`
+- **THEN** the item lists the file and offers to commit and push it
+
+#### Scenario: Pushed
+- **WHEN** the key files are committed and pushed
+- **THEN** the item is closed

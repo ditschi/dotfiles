@@ -32,7 +32,7 @@ The work modules (`01_work*.zsh`) SHALL belong to a group that only the context 
 - **THEN** it returns without effect
 
 ### Requirement: Work and private stay separate
-The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, from the context), the Bitwarden environment group (`work` or `private`, one per context, none in a container without context), the SSH key class (`work` or `home`), and the features of the private infrastructure (`monitoring`, `sshd-home`, `syncthing`, `tailscale`, `thunderbird`), which are excluded for work.
+The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, from the context), the Bitwarden environment group (`work` or `private`, one per context, none in a container without context), the SSH key class (`work` or `home`), the SSH host list (`ssh/home/config` or `ssh/work/config`), the managed SSH host keys and `ssh-route` host blocks (private only), and the features of the private infrastructure (`monitoring`, `sshd-home`, `syncthing`, `tailscale`, `thunderbird`), which are excluded for work.
 
 #### Scenario: Private host
 - **WHEN** a private host loads secrets
@@ -41,6 +41,10 @@ The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, 
 #### Scenario: Work host
 - **WHEN** a work host is set up
 - **THEN** none of the private infrastructure features is offered or applied
+
+#### Scenario: SSH host list on a work host
+- **WHEN** a work host writes its SSH host list
+- **THEN** only `ssh/work/config` is read, never `ssh/home/config`, and no managed home host keys are installed
 
 ### Requirement: Shareable repository
 The repository SHALL NOT contain secrets or sensitive work details; real work identity, internal endpoints and network details SHALL live in local or private configuration.

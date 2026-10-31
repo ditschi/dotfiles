@@ -25,7 +25,7 @@ In an interactive run (terminal, without `--yes`), every `machine` step that use
 - **THEN** the login starts at once with the saved server and the default email
 
 ### Requirement: Renewed session replaces the saved one
-When the expired session came from `~/.env.local`, the renewed session SHALL replace it there without a question; otherwise the existing opt-in question applies.
+When the expired session came from `~/.env.local`, the renewed session SHALL replace it there without a question, except in `machine setup`, which asks the save question (see "Session storage is opt-in"); otherwise the existing opt-in question applies.
 
 #### Scenario: Saved session renewed
 - **WHEN** an interactive run renewed a session that `~/.env.local` held

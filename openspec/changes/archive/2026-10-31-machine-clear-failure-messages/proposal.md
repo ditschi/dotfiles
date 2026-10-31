@@ -19,7 +19,7 @@ None.
 
 ### Modified Capabilities
 
-- `update-flow`: "Failed apply restores the host config" (failing step named; one `mise install` retry), "Conflict choices", "Force update" and "Concrete attention reason" (diverged history with conflicting uncommitted changes), "Update reports a host that is not set up" (`~/.local/bin` without a login `PATH`).
+- `update-flow`: modified "Force update", "Concrete attention reason" (diverged history with conflicting uncommitted changes) and "Update reports a host that is not set up" (`~/.local/bin` without a login `PATH`); added "Apply failure names the failing step", "Missing mise tools are installed once" and "Conflict choices for a diverged history".
 
 Affected profiles: all contexts and devices that run `machine` (private and work; containers only for the `PATH` part).
 

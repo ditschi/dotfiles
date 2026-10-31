@@ -51,4 +51,9 @@ if ! command -v mise >/dev/null 2>&1 && [[ ! -x $HOME/.local/bin/mise ]]; then
         env MISE_VERSION="v$MISE_VERSION" MISE_INSTALL_PATH="$HOME/.local/bin/mise" sh
 fi
 
+# Piped (`curl | bash`), stdin is the script itself: give the prompts the terminal.
+# Redirect on the exec line only; bash reads the rest of a piped script from stdin.
+if [[ ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
+    exec "$MACHINE" setup "$@" </dev/tty
+fi
 exec "$MACHINE" setup "$@"

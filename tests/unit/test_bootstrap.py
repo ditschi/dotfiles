@@ -150,3 +150,50 @@ def test_bootstrap_keeps_installed_mise(tmp_path):
     assert result.returncode == 0, result.stderr
     assert not (Path(env["HOME"]) / ".local/bin/mise").exists()
     assert "installing mise" not in result.stdout
+
+
+def test_piped_run_gives_setup_the_terminal(tmp_path):
+    import fcntl
+    import pty
+    import termios
+
+    checkout = _stub_checkout(tmp_path / "checkout")
+    (checkout / "machine_cli" / "machine").write_text(
+        '#!/usr/bin/env bash\n[[ -t 0 ]] && echo "stdin tty" || echo "stdin pipe"\n'
+    )
+    env = _env(tmp_path, DOTFILES_DIR=str(checkout))
+    master, slave = pty.openpty()
+
+    def own_terminal() -> None:
+        fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+
+    try:
+        result = subprocess.run(
+            ["bash", "-s"],
+            input=BOOTSTRAP.read_bytes(),
+            stdout=subprocess.PIPE,
+            stderr=slave,
+            env=env,
+            start_new_session=True,
+            preexec_fn=own_terminal,
+        )
+    finally:
+        os.close(slave)
+        os.close(master)
+    assert result.returncode == 0
+    assert b"stdin tty" in result.stdout
+
+
+def test_piped_run_without_terminal_keeps_stdin(tmp_path):
+    checkout = _stub_checkout(tmp_path / "checkout")
+    env = _env(tmp_path, DOTFILES_DIR=str(checkout))
+    result = subprocess.run(
+        ["bash", "-s", "--", "--yes"],
+        input=BOOTSTRAP.read_text(),
+        env=env,
+        capture_output=True,
+        text=True,
+        start_new_session=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "stub machine setup --yes" in result.stdout

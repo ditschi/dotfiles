@@ -564,6 +564,8 @@ def test_unlock_offers_login_when_logged_out(tmp_path, monkeypatch, answer):
     assert machine.unlock_bitwarden() == answer
     assert len(questions) == 1 and "not logged in" in questions[0]
     assert any(c[:2] == ["bw", "login"] for c in commands) == answer
+    server = ["bw", "config", "server", "https://vault.ditscher.me"]
+    assert (server in commands) == answer
     assert ["bw", "unlock", "--raw"] not in commands
 
 

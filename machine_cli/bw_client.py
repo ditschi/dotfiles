@@ -68,6 +68,11 @@ class BwClientMixin:
                         "skipped (run machine env pull)"
                     )
                     return False
+                try:
+                    server = json.loads(status_text).get("serverUrl") or ""
+                except json.JSONDecodeError:
+                    server = ""
+                self.ask_bitwarden_server(server)
                 allow_login = True
             if allow_login and logged_out:
                 log("Bitwarden login")
@@ -188,19 +193,7 @@ class BwClientMixin:
         if status.get("status") != "unlocked":
             os.environ.pop("BW_SESSION", None)
         if status.get("status") == "unauthenticated":
-            current = status.get("serverUrl") or DEFAULT_BW_SERVER
-            server = input(f"Bitwarden server URL [{current}]: ").strip() or current
-            parsed = urlsplit(server)
-            if (
-                parsed.scheme != "https"
-                or not parsed.hostname
-                or parsed.username
-                or parsed.password
-                or parsed.query
-                or parsed.fragment
-            ):
-                die("Bitwarden server must be an HTTPS URL without credentials")
-            system.run(["bw", "config", "server", server], capture=True)
+            self.ask_bitwarden_server(status.get("serverUrl") or "")
         else:
             log(f"using configured Bitwarden server: {status.get('serverUrl', '')}")
 
@@ -215,6 +208,22 @@ class BwClientMixin:
         ):
             self.save_bitwarden_local_settings()
         return True
+
+    def ask_bitwarden_server(self, current: str) -> None:
+        """Ask for the server before a login; Enter keeps `current` or the default."""
+        current = current or DEFAULT_BW_SERVER
+        server = input(f"Bitwarden server URL [{current}]: ").strip() or current
+        parsed = urlsplit(server)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            die("Bitwarden server must be an HTTPS URL without credentials")
+        system.run(["bw", "config", "server", server], capture=True)
 
     def bitwarden_setup_status(self) -> dict:
         attempted = set()

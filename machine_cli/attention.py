@@ -183,6 +183,8 @@ class AttentionMixin:
                     lambda: self.cmd_env_pull(interactive=True),
                 )
             )
+        for kind, text, question, resolve in self.ssh_attention():
+            items.append(AttentionItem(kind, text, question, resolve))
         monitoring = self.monitoring_item()
         if monitoring:
             items.append(monitoring)

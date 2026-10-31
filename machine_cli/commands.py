@@ -116,6 +116,7 @@ class CommandsMixin:
 
         if "ssh-host-key" in features and device != "container":
             self.provision_host_ssh_key()
+        self.sync_repo_key_files()
 
         self.maybe_tailscale_login(features)
 
@@ -126,6 +127,8 @@ class CommandsMixin:
             if device != "container":
                 self.ensure_update_timer()
             self.cmd_env_pull()
+            self.pull_ssh_host_list()
+            self.offer_self_in_host_list(args.yes)
         log("setup finished")
         return 0
 

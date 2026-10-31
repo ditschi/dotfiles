@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+"""ProxyCommand for home hosts: connect over the first route that works.
+
+Usage in a host block (see `machine ssh add`):
+
+    Host homeserver
+      HostKeyAlias homeserver
+      ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.4:22 ts=homeserver:22 jump=oracle:2223
+
+Routes are tried in the order lan, ts, jump; each is optional.
+
+lan   only on a network known as home. A network is keyed by the hardware address
+      of its default gateway and learned, not configured: on an unknown network the
+      host key at the LAN address is compared with the known host key of the alias
+      (%k); a match marks the network as home, anything else as away (for 12 h).
+ts    only when Tailscale is logged in and reports the peer online, after a probe.
+jump  `ssh -W localhost:<port> <jump host>`; on the jump host itself the local
+      tunnel port is used directly.
+
+The cache lives in ~/.cache/ssh-route/networks (JSON); nothing about the network
+is stored anywhere else.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import selectors
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+AWAY_TTL = 12 * 3600
+PROBE_TIMEOUT = 1.0
+CONNECT_TIMEOUT = 5.0
+HOME, AWAY = "home", "away"
+
+
+def cache_path() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "ssh-route" / "networks"
+
+
+def events_path() -> Path:
+    state = os.environ.get("MACHINE_STATE_DIR") or str(
+        Path.home() / ".local/share/machine"
+    )
+    return Path(state) / "events.jsonl"
+
+
+def known_hosts_files() -> list[Path]:
+    ssh = Path.home() / ".ssh"
+    return [ssh / "known_hosts", ssh / "known_hosts.d" / "home"]
+
+
+def split_address(value: str, default_port: int = 22) -> tuple[str, int]:
+    host, sep, port = value.rpartition(":")
+    if not sep or not port.isdigit():
+        return value, default_port
+    return host.strip("[]"), int(port)
+
+
+# --- network identity -------------------------------------------------------
+
+
+def default_gateway(proc: Path = Path("/proc/net")) -> str:
+    """IPv4 address of the default gateway, or an empty string."""
+    try:
+        lines = (proc / "route").read_text().splitlines()[1:]
+    except OSError:
+        return ""
+    for line in lines:
+        fields = line.split()
+        if len(fields) > 2 and fields[1] == "00000000" and fields[2] != "00000000":
+            raw = bytes.fromhex(fields[2])
+            return socket.inet_ntoa(raw[::-1])
+    return ""
+
+
+def gateway_mac(proc: Path = Path("/proc/net")) -> str:
+    """Hardware address of the default gateway, or an empty string."""
+    gateway = default_gateway(proc)
+    if not gateway:
+        return ""
+    try:
+        lines = (proc / "arp").read_text().splitlines()[1:]
+    except OSError:
+        return ""
+    for line in lines:
+        fields = line.split()
+        if (
+            len(fields) > 3
+            and fields[0] == gateway
+            and fields[3] != "00:00:00:00:00:00"
+        ):
+            return fields[3].lower()
+    return ""
+
+
+def load_cache(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_cache(path: Path, data: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def record_event(outcome: str) -> None:
+    """Append to machine's event log (no hardware address); best effort."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "event": "ssh-route",
+        "outcome": outcome,
+    }
+    try:
+        path = events_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
+def learn(cache: dict, mac: str, state: str, now: float) -> None:
+    """Store the network; a second home gateway is reported once."""
+    others = [
+        key for key, value in cache.items() if key != mac and value.get("state") == HOME
+    ]
+    previous = cache.get(mac, {}).get("state")
+    cache[mac] = {"state": state, "seen": now}
+    if state == HOME and previous != HOME and others:
+        record_event("home-gateway-learned")
+
+
+# --- host keys ----------------------------------------------------------------
+
+
+def known_keys(alias: str, files: Optional[list[Path]] = None) -> set[str]:
+    """`type key` of every known host key for `alias`."""
+    keys: set[str] = set()
+    for path in files if files is not None else known_hosts_files():
+        if not path.is_file():
+            continue
+        result = subprocess.run(
+            ["ssh-keygen", "-F", alias, "-f", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if line.startswith("#") or len(fields) < 3:
+                continue
+            keys.add(f"{fields[1]} {fields[2]}")
+    return keys
+
+
+def scanned_keys(host: str, port: int) -> set[str]:
+    if not shutil.which("ssh-keyscan"):
+        return set()
+    result = subprocess.run(
+        ["ssh-keyscan", "-T", str(int(PROBE_TIMEOUT) or 1), "-p", str(port), host],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    keys = set()
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if line.startswith("#") or len(fields) < 3:
+            continue
+        keys.add(f"{fields[1]} {fields[2]}")
+    return keys
+
+
+# --- probes -------------------------------------------------------------------
+
+
+def reachable(host: str, port: int, timeout: float = PROBE_TIMEOUT) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def tailscale_peer_online(name: str) -> tuple[bool, str]:
+    """(usable, reason) for the Tailscale route to `name`."""
+    if not shutil.which("tailscale"):
+        return False, "tailscale not installed"
+    result = subprocess.run(
+        ["tailscale", "status", "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=3,
+    )
+    if result.returncode != 0:
+        return False, "tailscale not running"
+    try:
+        status = json.loads(result.stdout or "{}")
+    except ValueError:
+        return False, "tailscale status unreadable"
+    if status.get("BackendState") != "Running":
+        return False, f"tailscale {status.get('BackendState', 'not running').lower()}"
+    wanted = name.split(".")[0].lower()
+    for peer in (status.get("Peer") or {}).values():
+        names = {
+            str(peer.get("HostName", "")).lower(),
+            str(peer.get("DNSName", "")).split(".")[0].lower(),
+        }
+        if wanted in names:
+            return (True, "") if peer.get("Online") else (False, "peer offline")
+    return False, "peer not in tailnet"
+
+
+def on_jump_host(jump: str) -> bool:
+    """True when this host is the jump host itself."""
+    names = {socket.gethostname().split(".")[0].lower(), socket.getfqdn().lower()}
+    host = jump.lower()
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", jump], capture_output=True, text=True, check=False, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            key, _, value = line.partition(" ")
+            if key == "hostname":
+                host = value.strip().lower()
+            if key == "hostkeyalias" and value.strip().lower() in names:
+                return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return host in names or host.split(".")[0] in names
+
+
+# --- relay --------------------------------------------------------------------
+
+
+def relay(sock: socket.socket) -> int:
+    """Copy stdin -> socket and socket -> stdout until both sides are done."""
+    sock.setblocking(False)
+    selector = selectors.DefaultSelector()
+    stdin, stdout = sys.stdin.buffer.raw, sys.stdout.buffer.raw
+    selector.register(stdin, selectors.EVENT_READ, "in")
+    selector.register(sock, selectors.EVENT_READ, "sock")
+    open_sides = 2
+    while open_sides:
+        for key, _ in selector.select():
+            if key.data == "in":
+                data = os.read(stdin.fileno(), 65536)
+                if not data:
+                    selector.unregister(stdin)
+                    try:
+                        sock.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
+                    open_sides -= 1
+                else:
+                    sock.setblocking(True)
+                    sock.sendall(data)
+                    sock.setblocking(False)
+            else:
+                try:
+                    data = sock.recv(65536)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    data = b""
+                if not data:
+                    return 0
+                view = memoryview(data)
+                while view:
+                    written = os.write(stdout.fileno(), view)
+                    view = view[written:]
+    return 0
+
+
+def connect_direct(host: str, port: int) -> int:
+    sock = socket.create_connection((host, port), timeout=CONNECT_TIMEOUT)
+    sock.settimeout(None)
+    return relay(sock)
+
+
+# --- route choice -------------------------------------------------------------
+
+
+def parse_args(argv: list[str]) -> tuple[str, dict[str, str]]:
+    if not argv:
+        raise SystemExit("usage: ssh-route <host key alias> [lan=..] [ts=..] [jump=..]")
+    alias, routes = argv[0], {}
+    for arg in argv[1:]:
+        key, sep, value = arg.partition("=")
+        if not sep or key not in ("lan", "ts", "jump") or not value:
+            raise SystemExit(f"ssh-route: unknown argument {arg!r}")
+        routes[key] = value
+    return alias, routes
+
+
+def lan_decision(alias: str, lan: str, now: Optional[float] = None) -> tuple[bool, str]:
+    """(use lan, reason) and update the network cache."""
+    now = time.time() if now is None else now
+    host, port = split_address(lan)
+    mac = gateway_mac()
+    path = cache_path()
+    cache = load_cache(path)
+    entry = cache.get(mac) if mac else None
+    if entry and entry.get("state") == HOME:
+        entry["seen"] = now
+        save_cache(path, cache)
+        if reachable(host, port):
+            return True, ""
+        return False, f"{host}:{port} not reachable on the home network"
+    if (
+        entry
+        and entry.get("state") == AWAY
+        and now - float(entry.get("seen", 0)) < AWAY_TTL
+    ):
+        return False, "not on the home network"
+    known = known_keys(alias)
+    if not known:
+        return False, f"no known host key for {alias}"
+    if not scanned_keys(host, port) & known:
+        if mac:
+            learn(cache, mac, AWAY, now)
+            save_cache(path, cache)
+        return False, "not on the home network"
+    if mac:
+        learn(cache, mac, HOME, now)
+        save_cache(path, cache)
+    return True, ""
+
+
+def main(argv: list[str]) -> int:
+    alias, routes = parse_args(argv)
+    reasons: list[str] = []
+    if "lan" in routes:
+        use, reason = lan_decision(alias, routes["lan"])
+        if use:
+            try:
+                return connect_direct(*split_address(routes["lan"]))
+            except OSError as exc:
+                reason = f"connect failed: {exc}"
+        reasons.append(f"lan: {reason}")
+    if "ts" in routes:
+        host, port = split_address(routes["ts"])
+        usable, reason = tailscale_peer_online(host)
+        if usable and not reachable(host, port, timeout=2 * PROBE_TIMEOUT):
+            usable, reason = False, "no answer from the peer"
+        if usable:
+            try:
+                return connect_direct(host, port)
+            except OSError as exc:
+                reason = f"connect failed: {exc}"
+        reasons.append(f"ts: {reason}")
+    if "jump" in routes:
+        jump, port = split_address(routes["jump"])
+        if on_jump_host(jump):
+            try:
+                return connect_direct("localhost", port)
+            except OSError as exc:
+                reasons.append(f"jump: local tunnel port {port}: {exc}")
+        else:
+            sys.stdout.flush()
+            try:
+                os.execvp("ssh", ["ssh", "-W", f"localhost:{port}", jump])
+                return 0  # only reached when execvp is replaced in tests
+            except OSError as exc:
+                reasons.append(f"jump: {exc}")
+    print(
+        f"ssh-route: no route to {alias}: " + ("; ".join(reasons) or "no routes given"),
+        file=sys.stderr,
+    )
+    return 255
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(130)

@@ -605,7 +605,7 @@ def test_ssh_allow_from_offers_hosts_with_a_repo_key(tmp_path, monkeypatch):
         cli_mod.system, "run", lambda *_a, **_k: pytest.fail("no Bitwarden lookup")
     )
 
-    assert machine.known_ssh_hosts("private") == {"homeserver": "machine/ssh_keys"}
+    assert machine.known_ssh_hosts("private") == {"homeserver": ""}
     # repo keys belong to the home fleet only
     assert machine.known_ssh_hosts("work") == {}
 

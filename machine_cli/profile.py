@@ -350,11 +350,12 @@ class ProfileMixin:
         return answer.split() if answer else list(selected)
 
     def known_ssh_hosts(self, context: str) -> Dict[str, str]:
-        """Hosts whose public key Ansible can install: {hostname: where the key is}."""
+        """Hosts whose public key Ansible can install: {hostname: note, empty when the
+        key is in machine/ssh_keys/}."""
         hosts: Dict[str, str] = {}
         if self.ssh_class(context) == "home":  # the repo only holds home fleet keys
             for path in sorted((self.repo / "machine" / "ssh_keys").glob("*.pub")):
-                hosts[path.stem] = "machine/ssh_keys"
+                hosts[path.stem] = ""
         hosts.pop(system.hostname_short(), None)
         return hosts
 
@@ -372,7 +373,8 @@ class ProfileMixin:
             for host in current:
                 hosts.setdefault(host, "configured, no key found")
             return system.choose_many(
-                "Hosts that may SSH into this machine (none = leave authorized_keys alone)",
+                "Hosts that may SSH into this machine, keys from machine/ssh_keys/ "
+                "(none = leave authorized_keys alone)",
                 hosts,
                 current,
             )

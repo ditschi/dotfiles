@@ -747,6 +747,8 @@ class UpdateMixin:
                 not_set_up = ""
         self.cmd_env_pull()
         self.check_ssh_key_backup()
+        self.sync_repo_key_files()
+        self.pull_ssh_host_list()
         if not_set_up:
             self.write_update_state("attention", not_set_up)
         else:

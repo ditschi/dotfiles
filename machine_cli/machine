@@ -240,20 +240,68 @@ def env_cmd(action) -> None:
     _exit(code)
 
 
-@app.command(
-    name="ssh",
-    help="sync: choose which SSH key wins when host and Bitwarden differ; "
-    "rotate: replace the host key with a new one",
-)
-@click.argument("action", type=click.Choice(["sync", "rotate"]))
-@click.option("--yes", is_flag=True)
-def ssh_cmd(action, yes) -> None:
-    args = types.SimpleNamespace(action=action, yes=yes)
+@app.group(name="ssh", help="SSH keys, host list and managed host keys")
+def ssh_group() -> None:
+    pass
+
+
+def _ssh_run(action: str, run) -> None:
     cli = Machine()
-    code = cli.cmd_ssh(args)
+    code = run(cli)
     if code:
         cli.event("ssh", "failed", action)
     _exit(code)
+
+
+@ssh_group.command(
+    name="sync", help="choose which SSH key wins when host and Bitwarden differ"
+)
+@click.option("--yes", is_flag=True)
+def ssh_sync_cmd(yes) -> None:
+    _ssh_run("sync", lambda cli: cli.cmd_ssh(types.SimpleNamespace(action="sync", yes=yes)))
+
+
+@ssh_group.command(name="rotate", help="replace the host's SSH key with a new one")
+@click.option("--yes", is_flag=True)
+def ssh_rotate_cmd(yes) -> None:
+    _ssh_run(
+        "rotate", lambda cli: cli.cmd_ssh(types.SimpleNamespace(action="rotate", yes=yes))
+    )
+
+
+@ssh_group.command(name="pull", help="write the host list from Bitwarden to ~/.ssh/config.d")
+def ssh_pull_cmd() -> None:
+    _ssh_run("pull", lambda cli: cli.pull_ssh_host_list(interactive=True))
+
+
+@ssh_group.command(name="add", help="add a host to the host list or ~/.ssh/config.local")
+@click.argument("alias", required=False, default="")
+def ssh_add_cmd(alias) -> None:
+    _ssh_run("add", lambda cli: cli.cmd_ssh_add(alias))
+
+
+@ssh_group.command(name="edit", help="edit the host list in $EDITOR (checked by ssh)")
+def ssh_edit_cmd() -> None:
+    _ssh_run("edit", lambda cli: cli.cmd_ssh_edit())
+
+
+@ssh_group.command(name="remove", help="remove a host and its managed host key")
+@click.argument("alias")
+def ssh_remove_cmd(alias) -> None:
+    _ssh_run("remove", lambda cli: cli.cmd_ssh_remove(alias))
+
+
+@ssh_group.group(name="known-hosts", help="managed host keys in machine/ssh_host_keys/")
+def ssh_known_hosts_group() -> None:
+    pass
+
+
+@ssh_known_hosts_group.command(
+    name="add", help="fetch, confirm and store the host key of a device"
+)
+@click.argument("alias")
+def ssh_known_hosts_add_cmd(alias) -> None:
+    _ssh_run("known-hosts", lambda cli: cli.add_known_host(alias))
 
 
 @app.command(help="update state, local changes and host config (-v: in full)")

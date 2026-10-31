@@ -14,6 +14,7 @@ from .mise_tools import MiseToolsMixin
 from .bw_client import BwClientMixin
 from .env_pull import EnvPullMixin
 from .ssh_keys import SshKeysMixin
+from .ssh_client import SshClientMixin
 from .commands import CommandsMixin
 from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
@@ -31,6 +32,7 @@ class Machine(
     BwClientMixin,
     EnvPullMixin,
     SshKeysMixin,
+    SshClientMixin,
     CommandsMixin,
     UpdateMixin,
     AutoUpdateMixin,

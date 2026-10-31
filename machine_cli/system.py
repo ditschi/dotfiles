@@ -154,7 +154,7 @@ def _checklist(
         for index, name in enumerate(names):
             pointer = ">" if index == cursor else " "
             mark = "x" if name in chosen else " "
-            line = f" {pointer} [{mark}] {name:20} {choices[name]}"
+            line = f" {pointer} [{mark}] {name:20} {choices[name]}".rstrip()
             click.echo(line[: shutil.get_terminal_size().columns - 1])
         try:
             key = click.getchar()
@@ -196,7 +196,7 @@ def _choose_many_by_number(
     names = list(choices)
     for index, name in enumerate(names, 1):
         mark = "*" if name in selected else " "
-        click.echo(f" {mark}{index}) {name:20} {choices[name]}")
+        click.echo(f" {mark}{index}) {name:20} {choices[name]}".rstrip())
     while True:
         answer = click.prompt(
             f"{title} (numbers toggle, e.g. 3,7; Enter keeps *; - for none)",

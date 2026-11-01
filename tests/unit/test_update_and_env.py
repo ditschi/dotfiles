@@ -1250,6 +1250,25 @@ def test_classify_incoming_paths():
     assert classify([("M", "docs/x.md")]) == []
 
 
+# --- machine commit --------------------------------------------------------
+
+
+def test_commit_stages_the_docs_and_agent_instructions(tmp_path, monkeypatch):
+    from test_bw_and_answers import isolated_machine
+
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    monkeypatch.setattr(machine, "move_git_overrides", lambda interactive: None)
+    ran = []
+    monkeypatch.setattr(cli.system, "run", lambda cmd, **kw: ran.append(cmd))
+
+    assert machine.cmd_commit(argparse.Namespace(message="docs")) == 0
+
+    git, _c, _repo, add, *staged = next(cmd for cmd in ran if "add" in cmd)
+    assert (git, add) == ("git", "add")
+    assert {"docs", "Readme.md", "openspec", "AGENTS.md", "CLAUDE.md"} <= set(staged)
+    assert all((REPO / path).exists() for path in staged)
+
+
 # --- machine env pull ------------------------------------------------------
 
 

@@ -44,8 +44,8 @@ later. Log in with the password after boot and use the finger on the lock screen
 timeout (PAM is sequential). Ubuntu's profile `fprintd` waits 10 s; a local profile with 6 s:
 
 ```bash
-sudo tee /usr/share/pam-configs/fprintd-6s >/dev/null <<'EOF'
-Name: Fingerprint authentication (6s timeout)
+sudo tee /usr/share/pam-configs/fprintd-custom-timeout >/dev/null <<'EOF'
+Name: Fingerprint authentication (custom timeout)
 Default: no
 Priority: 260
 Conflicts: fprintd
@@ -58,8 +58,8 @@ EOF
 On and off:
 
 ```bash
-sudo pam-auth-update --enable fprintd-6s
-sudo pam-auth-update --disable fprintd-6s
+sudo pam-auth-update --enable fprintd-custom-timeout
+sudo pam-auth-update --disable fprintd-custom-timeout
 ```
 
 Test in a new terminal and keep the old one open: `sudo -k; sudo true`.

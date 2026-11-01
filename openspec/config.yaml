@@ -3,7 +3,7 @@ schema: spec-driven
 githubCopilot:
   cloudAgent: false
 
-# Constraints an agent cannot infer from the code. Facts about the code live in Readme.md.
+# Constraints an agent cannot infer from the code. Facts about the code live in Readme.md and docs/.
 context: |
   Personal dotfiles + machine setup for one owner, shared by work and private hosts.
   Secrets and host-only Git settings must never be committed.

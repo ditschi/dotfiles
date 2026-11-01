@@ -31,4 +31,4 @@ Public SSH keys for `ssh_allow_from`: `../machine/ssh_keys/<name>.pub`
 | `zram_swap` | `zram-swap`, not on Raspberry Pis |
 | `thinkpad_l13_yoga_gen2` | detected model, no feature — S3 suspend, tablet OSK ([docs](../docs/thinkpad-l13-yoga-gen2.md)) |
 
-See root [Readme.md](../Readme.md) for architecture, Galaxy decisions, and tests.
+See [docs/architecture.md](../docs/architecture.md) for architecture and Galaxy decisions, and [docs/testing.md](../docs/testing.md) for tests.

@@ -31,9 +31,6 @@ Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
 # checkout lists the versions it accepts in machine_cli/resume-protocol.
 RESUME_PROTOCOL = "1"
 
-# Markers written by the former setup-ensure-kerberos-cron.
-KERBEROS_CRON_BEGIN = "# BEGIN ensure-kerberos-token - dotfiles"
-KERBEROS_CRON_END = "# END ensure-kerberos-token - dotfiles"
 # The OSD VPN tool of the managed work laptops; the VPN watcher needs it.
 OSD_VPN_CONNECT = Path("/usr/bin/osd-vpn-connect")
 
@@ -543,8 +540,6 @@ class UpdateMixin:
             if (units / name).is_file()
         ]
         work_net = self.work_net_units(units)
-        if work_net:
-            self.remove_kerberos_cron()
         if not (timers or work_net) or not system.have("systemctl"):
             return
         system.run(["systemctl", "--user", "daemon-reload"], check=False, capture=True)
@@ -583,35 +578,6 @@ class UpdateMixin:
                 )
             )
         return found
-
-    def remove_kerberos_cron(self) -> None:
-        """Drop the cron job of the former setup-ensure-kerberos-cron (replaced by a timer)."""
-        for leftover in (
-            self.home / ".local/bin/ensure-kerberos-token-cron",
-            self.home / "check-kerberos-cron",
-        ):
-            if leftover.is_symlink() or leftover.is_file():
-                leftover.unlink()
-        if not system.have("crontab"):
-            return
-        current = system.run(["crontab", "-l"], check=False, capture=True)
-        text = (current.stdout or "") if current.returncode == 0 else ""
-        if KERBEROS_CRON_BEGIN not in text:
-            return
-        kept, inside = [], False
-        for line in text.splitlines(keepends=True):
-            if line.strip() == KERBEROS_CRON_BEGIN:
-                inside = True
-            elif inside and line.strip() == KERBEROS_CRON_END:
-                inside = False
-            elif not inside:
-                kept.append(line)
-        system.run(
-            ["crontab", "-"], input_text="".join(kept), check=False, capture=True
-        )
-        log(
-            "removed the ensure-kerberos-token cron job (replaced by work-net-kerberos.timer)"
-        )
 
     def ensure_linger(self) -> None:
         """Keep the user manager running without a login so the timer fires on headless hosts."""

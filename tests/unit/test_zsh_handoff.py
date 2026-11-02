@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import pty
+import select
 import shutil
 import subprocess
 import time
@@ -12,7 +14,19 @@ from package_sets import REPO
 
 HELPER = REPO / "home/core/.shell/bash/zsh-health.bash"
 BASHRC = REPO / "home/core/.bashrc"
-TOOLS = ("mktemp", "head", "rm", "mkdir", "timeout", "ps", "tr", "cat", "sleep", "grep")
+TOOLS = (
+    "mktemp",
+    "head",
+    "rm",
+    "mkdir",
+    "timeout",
+    "ps",
+    "tr",
+    "cat",
+    "sleep",
+    "grep",
+    "setsid",
+)
 
 STUB = """\
 #!/bin/bash
@@ -29,6 +43,10 @@ case "$(cat "$HOME/mode")" in
     noisy) echo "some error" >&2; echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=1" ;;
     crash) exit 3 ;;
     hang) sleep 30 ;;
+    ttyhang)
+        /bin/sh -c 'echo $$ > "$HOME/reader.pid"; read -r line </dev/tty && echo "$line" >> "$HOME/stolen"' &
+        sleep 30 ;;
+    orphan) sleep 300 & echo $! > "$HOME/orphan.pid"; sleep 30 ;;
 esac
 """
 
@@ -459,6 +477,102 @@ def test_hanging_zsh_times_out(env):
     assert not (home / ".local/state/dotfiles/zsh-handoff").exists()
     (home / "mode").write_text("ok")
     assert "rc=0" in check(environ).stdout
+
+
+def _gone(pid_file: Path, limit: float = 3) -> bool:
+    if not pid_file.exists():
+        return True
+    pid = int(pid_file.read_text())
+    end = time.time() + limit
+    while time.time() < end:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    os.kill(pid, 9)
+    return False
+
+
+def test_timed_out_trial_leaves_no_process_behind(env):
+    home, _, environ = env
+    (home / "mode").write_text("orphan")
+    result = check({**environ, "DOTFILES_ZSH_CHECK_TIMEOUT": "1"})
+    assert "zsh startup timed out" in result.stderr
+    assert _gone(home / "orphan.pid")
+
+
+def _pty_read(fd: int, until: bytes, limit: float) -> bytes:
+    out = b""
+    end = time.time() + limit
+    while time.time() < end and until not in out:
+        if select.select([fd], [], [], 0.1)[0]:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+    return out
+
+
+def _start_login_bash(home: Path, environ: dict) -> tuple[int, int]:
+    """Interactive bash in a PTY that runs the handoff, like an SSH login."""
+    (home / ".bashrc").write_text('. "$HOME/.shell/bash/handoff.bash"\nPS1="READY> "\n')
+    bash = shutil.which("bash")
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.chdir(home)
+        os.execve(bash, ["bash", "-i"], environ)
+    return pid, fd
+
+
+def _runs_typed_commands(fd: int) -> list[int]:
+    ran = []
+    for n in range(3):
+        os.write(fd, f"echo R$(({n}+40))\n".encode())
+        if b"R%d\r\n" % (n + 40) in _pty_read(fd, b"R%d\r\n" % (n + 40), 5):
+            ran.append(n)
+    return ran
+
+
+def test_trial_cannot_take_terminal_input(env):
+    home, _, environ = env
+    (home / "mode").write_text("ttyhang")
+    pid, fd = _start_login_bash(home, {**environ, "DOTFILES_ZSH_CHECK_TIMEOUT": "2"})
+    try:
+        out = _pty_read(fd, b"READY> ", 20)
+        assert b"zsh startup timed out" in out
+        assert _runs_typed_commands(fd) == [0, 1, 2]
+        assert not (home / "stolen").exists()
+        assert _gone(home / "reader.pid")
+    finally:
+        os.kill(pid, 9)
+        os.waitpid(pid, 0)
+        os.close(fd)
+
+
+def test_ctrl_c_skips_the_check_and_stays_in_bash(env):
+    home, _, environ = env
+    (home / "mode").write_text("orphan")
+    pid, fd = _start_login_bash(home, {**environ, "DOTFILES_ZSH_CHECK_TIMEOUT": "30"})
+    try:
+        end = time.time() + 10
+        while not (home / "orphan.pid").exists() and time.time() < end:
+            time.sleep(0.05)
+        start = time.time()
+        os.write(fd, b"\x03")
+        out = _pty_read(fd, b"READY> ", 10)
+        assert time.time() - start < 5
+        assert b"zsh check interrupted" in out
+        assert _runs_typed_commands(fd) == [0, 1, 2]
+        assert _gone(home / "orphan.pid")
+        assert not (home / ".local/state/dotfiles/zsh-handoff").exists()
+    finally:
+        os.kill(pid, 9)
+        os.waitpid(pid, 0)
+        os.close(fd)
 
 
 @pytest.mark.parametrize("missing", ["antidote", "generated"])

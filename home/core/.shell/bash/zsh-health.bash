@@ -30,7 +30,7 @@ _zhc_stale() {
 
 # Prints the failure reason and returns 1, or returns 0 when zsh is healthy.
 _zhc_run_checks() {
-    local zsh_bin="$1" tmp out err rc reason="" timeout_cmd=""
+    local zsh_bin="$1" tmp out err rc reason="" timeout_cmd="" setsid_cmd="" trial old_int interrupted=""
     [ -x "$zsh_bin" ] || {
         echo "zsh is not executable"
         return 1
@@ -45,18 +45,28 @@ _zhc_run_checks() {
     }
 
     # Output goes to files, not a pipe, so a stuck child process cannot block us after the timeout.
-    command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout --foreground -k 1 ${DOTFILES_ZSH_CHECK_TIMEOUT:-60}"
+    # Without --foreground, timeout signals the trial's whole process group, not only zsh.
+    command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout -k 1 ${DOTFILES_ZSH_CHECK_TIMEOUT:-60}"
+    # Own session without the terminal: nothing the trial starts can read the user's keystrokes.
+    command -v setsid >/dev/null 2>&1 && setsid_cmd="setsid -w"
     tmp=$(mktemp -d 2>/dev/null) || return 0
     out="$tmp/out" err="$tmp/err"
-    # An interactive zsh without a terminal prints benign errors (zle, monitor, gitstatus), so a
-    # real terminal on stdin is kept; only without one stdin comes from /dev/null.
-    local stdin_src=/dev/null
-    [ -t 0 ] && stdin_src=/dev/tty
-    # shellcheck disable=SC2016  # expanded by the inner zsh
+    # shellcheck disable=SC2016,SC2086  # expanded by the inner zsh; the command prefixes split on purpose
     # DOTFILES_ZSH_CHECK=1 makes the deferred plugins load during the start (see 02_plugins.zsh).
-    DOTFILES_ZSH_CHECK=1 $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" <"$stdin_src"
+    DOTFILES_ZSH_CHECK=1 $setsid_cmd $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" </dev/null &
+    trial=$!
+    old_int=$(trap -p INT)
+    trap 'interrupted=1' INT
+    wait "$trial"
     rc=$?
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    if [ -n "$interrupted" ]; then
+        kill -KILL -- "-$trial" 2>/dev/null || kill -KILL "$trial" 2>/dev/null
+        wait "$trial" 2>/dev/null
+    fi
+    eval "${old_int:-trap - INT}"
+    if [ -n "$interrupted" ]; then
+        reason="zsh check interrupted"
+    elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
         reason="zsh startup timed out"
     elif [ "$rc" -ne 0 ]; then
         reason="zsh failed to start (exit $rc)"
@@ -110,14 +120,20 @@ dotfiles_zsh_handoff_ok() {
         fi
     fi
 
-    if reason=$(_zhc_run_checks "$zsh_bin"); then
+    # Interactive bash would skip the rest of ~/.bashrc on Ctrl-C; the check handles it itself.
+    local old_int ok=0
+    old_int=$(trap -p INT)
+    trap ':' INT
+    reason=$(_zhc_run_checks "$zsh_bin") || ok=1
+    eval "${old_int:-trap - INT}"
+    if [ "$ok" -eq 0 ]; then
         c_status=ok
         reason=""
     else
         c_status=fail
-        # A timeout is inconclusive (slow first start after a new plugin, or a hang): stay in
-        # bash this time, cache nothing, so the next start checks again.
-        if [ "$reason" = "zsh startup timed out" ]; then
+        # A timeout or Ctrl-C is inconclusive (slow first start after a new plugin, or a hang):
+        # stay in bash this time, cache nothing, so the next start checks again.
+        if [ "$reason" = "zsh startup timed out" ] || [ "$reason" = "zsh check interrupted" ]; then
             _zhc_report "$reason"
             return 1
         fi

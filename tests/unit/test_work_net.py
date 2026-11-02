@@ -18,6 +18,11 @@ GET_PASSWORD = REPO / "home/core/.local/bin/get-password"
 ENVIRONMENT = REPO / "home/core/.shell/common/environment.sh"
 
 
+@pytest.fixture(autouse=True)
+def isolated_work_net_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_NET_STATE_DIR", str(tmp_path / "state"))
+
+
 def _stub(bin_dir: Path, name: str, body: str) -> None:
     path = bin_dir / name
     path.write_text("#!/bin/sh\n" + body)

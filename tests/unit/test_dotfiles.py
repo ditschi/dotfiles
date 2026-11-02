@@ -236,6 +236,48 @@ def test_ssh_permission_repair_propagates_chmod_failure(ssh_dotfile_host, monkey
         host.run_dotfiles_apply()
 
 
+def test_ssh_permission_repair_reports_a_read_only_checkout(
+    ssh_dotfile_host, monkeypatch, capsys
+):
+    import errno
+
+    host, source, target = ssh_dotfile_host
+    source.chmod(0o644)
+    original_chmod = Path.chmod
+
+    def chmod(path, mode, **kwargs):
+        if path == source:
+            raise OSError(errno.EROFS, "Read-only file system", str(path))
+        return original_chmod(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", chmod)
+
+    host.run_dotfiles_apply()
+
+    output = capsys.readouterr()
+    assert target.is_symlink() and target.resolve() == source.resolve()
+    assert "read-only checkout, cannot set mode 0600 (is 0644)" in (
+        output.out + output.err
+    )
+
+
+def test_ssh_permission_repair_leaves_a_secure_config_alone(
+    ssh_dotfile_host, monkeypatch
+):
+    host, source, _target = ssh_dotfile_host
+    source.chmod(0o600)
+    original_chmod = Path.chmod
+
+    def chmod(path, mode, **kwargs):
+        if path == source:
+            pytest.fail("a config with mode 0600 must not be changed")
+        return original_chmod(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", chmod)
+
+    host.run_dotfiles_apply()
+
+
 def test_failed_dotfile_apply_does_not_repair_permissions(
     ssh_dotfile_host, monkeypatch
 ):

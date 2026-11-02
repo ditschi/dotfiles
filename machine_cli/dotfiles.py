@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import filecmp
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Sequence
 
@@ -253,7 +255,17 @@ class DotfilesMixin:
                     source.resolve() == resolved_config
                     and repo in resolved_config.parents
                 ):
-                    resolved_config.chmod(0o600)
+                    mode = stat.S_IMODE(resolved_config.stat().st_mode)
+                    if mode != 0o600:
+                        try:
+                            resolved_config.chmod(0o600)
+                        except OSError as exc:
+                            if exc.errno != errno.EROFS:
+                                raise
+                            log(
+                                f"{resolved_config}: read-only checkout, cannot set "
+                                f"mode 0600 (is {mode:04o})"
+                            )
                     break
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")

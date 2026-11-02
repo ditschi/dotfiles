@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from machine_loader import load_machine_module
 from package_sets import REPO
@@ -150,6 +153,29 @@ def test_apply_creates_dirs_fixes_mode_and_writes_known_hosts(
     assert base.stat().st_mode & 0o777 == 0o644
     known = (home / ".ssh/known_hosts.d/home").read_text()
     assert "nas ssh-ed25519 AAAAnas\n" in known
+
+
+@pytest.mark.parametrize("error", [errno.EROFS, errno.EPERM])
+def test_apply_on_a_read_only_checkout(tmp_path, monkeypatch, fake_bw, capsys, error):
+    _cli, machine, home, repo, _store = client(tmp_path, monkeypatch, fake_bw)
+    base = repo / "home/core/.ssh/config"
+    base.write_text(BASE.read_text())
+    base.chmod(0o664)
+    original_chmod = Path.chmod
+
+    def chmod(path, mode, **kwargs):
+        if path == base:
+            raise OSError(error, os.strerror(error), str(path))
+        return original_chmod(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", chmod)
+    if error != errno.EROFS:
+        with pytest.raises(OSError):
+            machine.apply_ssh_client()
+        return
+    machine.apply_ssh_client()
+    assert "read-only checkout, cannot remove write access" in capsys.readouterr().out
+    assert (home / ".ssh/known_hosts.d/home").is_file()
 
 
 def test_work_host_gets_no_managed_known_hosts(tmp_path, monkeypatch, fake_bw):

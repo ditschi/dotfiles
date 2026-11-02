@@ -7,6 +7,7 @@ hand-written config the link replaced), then the shared defaults.
 
 from __future__ import annotations
 
+import errno
 import getpass
 import json
 import os
@@ -184,8 +185,20 @@ class SshClientMixin:
         self.ensure_ssh_runtime_dirs()
         base = self.repo / "home" / "core" / ".ssh" / "config"
         if base.is_file() and base.stat().st_mode & 0o022:
-            base.chmod(base.stat().st_mode & ~0o022)
-            log(f"made {base.relative_to(self.repo)} not writable for group and others")
+            try:
+                base.chmod(base.stat().st_mode & ~0o022)
+            except OSError as exc:
+                if exc.errno != errno.EROFS:
+                    raise
+                log(
+                    f"{base}: read-only checkout, cannot remove write access "
+                    "for group and others"
+                )
+            else:
+                log(
+                    f"made {base.relative_to(self.repo)} not writable "
+                    "for group and others"
+                )
         self.write_known_hosts()
         self.write_legacy_ssh_config()
 

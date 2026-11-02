@@ -62,7 +62,7 @@ rules:
     - Require pytest tests/unit -q when impact is broad or uncertain, shared infrastructure or cross-module contracts change, test configuration changes, or focused failures suggest wider effects. If suitable coverage cannot be identified confidently, default to the full unit suite.
     - Include pre-commit run --files for changed paths, including untracked additions; use --all-files when hook configuration changes or repository-wide checks are needed. Include affected integration tests for deployment or system boundaries and ansible-lint ansible/*.yml for Ansible changes.
     - Record validation commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
-    - Before archiving, run `openspec validate --strict` from the checkout root and treat warnings as blockers, even when they are in specs outside the current change.
+    - Before archiving, run `openspec validate --strict --type spec` from the checkout root and treat warnings as blockers, even when they are in specs outside the current change.
 
 operations:
   apply:
@@ -72,5 +72,9 @@ operations:
     guidance:
       - For a worktree change, archive inside the worktree, then ask the owner before merging the branch into the live checkout and before removing the worktree.
       - If the change introduced or altered a lasting design decision, make sure the archived design.md states the decision and its rationale in plain prose.
-      - 'Default post-archive path: archive, run the required checks, commit, merge to main and push main in one guided flow. Offer split steps only as an explicit alternative.'
+      - 'Default post-archive path: archive, run checks, commit, merge to main and push main in one guided flow. Offer split steps only as an explicit alternative.'
       - 'Do not offer "archive + check" as the default when a merge-ready branch can be completed in one flow.'
+      - 'Required pre-archive checks are: (1) `openspec validate --strict --type spec`; (2) the targeted validations listed in the change tasks that cover changed behavior and known consumers.'
+      - 'Do not rerun the full test suite by default when those targeted checks already passed after the last relevant edit.'
+      - 'After merge to main and before push, rerun only targeted risk checks when the merge changed conflict resolutions, touched shared infrastructure or changed validation/test config; otherwise continue to push and rely on CI for rare side effects.'
+      - 'If post-merge checks find issues, fix them before push.'

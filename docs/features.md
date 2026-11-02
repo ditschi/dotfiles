@@ -28,7 +28,7 @@ On a work desktop with `/usr/bin/osd-vpn-connect`, the user service `work-net-vp
 
 - Kerberos server reachable (office LAN, USB-LAN, work Wi-Fi or VPN already up): no VPN start, only the Kerberos refresh.
 - No network: waits for the next event.
-- VPN client still running or a connect in progress: waits up to 45 s for its own reconnect, which is faster than a new connect.
+- VPN client still running or a connect in progress: waits up to 45 s for its own reconnect, which is faster than a new connect; it checks every 5 s and connects at once if the client gave up.
 - Otherwise it connects with `sudo -n /opt/osd/osd-wifivpn-package/connect_vpn.sh` (passwordless by the corporate sudoers) and the password from `get-password`. Before each connect it sets `USE_KEYRING=0` in `~/.wifivpn/vpn_preferences.ini`: the OSD script then uses the password from its input instead of its own keyring copy, which would be used even when stale and asks for unlocking a locked keyring. A certificate warning does not block; under 20 days a desktop notification says to run `osd-wifivpn-enroll` in the office.
 
 Logging out stops the watcher but leaves the VPN connected, so running agents and tasks keep working. Connect attempts use the same failure guard as Kerberos; an unreachable gateway, a timeout (120 s) or a missing sudo rule are not counted.

@@ -651,6 +651,7 @@ cert) read -r -p "Press [Enter]" _; read -r pw; echo "used:$pw" >"$STUB_DIR/used
 gateway) echo "[ERROR] Unable to reach the gateway 'x'"; exit 1 ;;
 rejected) read -r pw; echo "[ERROR] Failed to connect VPN: auth failed"; exit 1 ;;
 hang) sleep 30 ;;
+slow) echo "Continuing in background; pid 1"; read -r pw; sleep 30 ;;
 esac
 """
 
@@ -756,6 +757,35 @@ def test_hanging_connect_is_stopped_and_not_counted(vpn, monkeypatch):
     assert vpn.guard().describe() == "ok"
 
 
+def test_automatic_connect_is_done_when_the_tunnel_is_up(vpn, monkeypatch):
+    monkeypatch.setattr(vpn, "VPN_CONNECT_TIMEOUT", 3)
+    monkeypatch.setattr(vpn, "default_realm", lambda: "EXAMPLE.COM")
+    monkeypatch.setattr(vpn, "kdc_reachable", lambda realm: True)
+    started = time.monotonic()
+    assert vpn.connect("slow", auto=True) == 0
+    assert time.monotonic() - started < 5
+    assert vpn.guard().describe() == "ok" and vpn.refreshed == [True]
+
+
+def test_tunnel_up_without_kdc_is_not_done(vpn, monkeypatch):
+    monkeypatch.setattr(vpn, "VPN_CONNECT_TIMEOUT", 2)
+    monkeypatch.setattr(vpn, "default_realm", lambda: "EXAMPLE.COM")
+    monkeypatch.setattr(vpn, "kdc_reachable", lambda realm: False)
+    assert vpn.connect("slow", auto=True) == 1
+
+
+def test_manual_connect_waits_for_the_script_after_the_tunnel_is_up(wn):
+    result = wn.run_lines(
+        ["sh", "-c", "echo 'Continuing in background'; sleep 2; exit 3"],
+        timeout=1,
+        input="",
+        on_line=lambda line: None,
+        ready=lambda lines: bool(lines),
+        wait_after_ready=True,
+    )
+    assert result.ok and not result.timed_out
+
+
 def test_stopped_guard_blocks_automatic_connect_only(vpn):
     vpn.guard().record("locked", "s3cret")
     assert vpn.connect("ok", auto=True) == 0
@@ -808,6 +838,23 @@ def test_watcher_debounces_a_burst_into_one_check(wn):
 
 def test_watcher_waits_for_the_own_reconnect_then_connects(wn):
     state = {"client": True}
+    acts: list[str] = []
+    watcher = wn.Watcher(
+        lambda since: _facts(wn, client=state["client"], since_event=since),
+        lambda a, r: acts.append(a),
+        0.0,
+    )
+    watcher.on_event("wake", 0.0)
+    assert watcher.check(3.0)[0] == "wait"
+    assert not watcher.due(7.0) and watcher.due(8.0)
+    assert watcher.check(8.0)[0] == "wait"
+    assert acts == ["wait"]
+    assert watcher.check(43.0)[0] == "wait" and watcher.recheck_at == 46.0
+    assert watcher.check(46.0)[0] == "connect"
+
+
+def test_watcher_connects_as_soon_as_the_client_gave_up(wn):
+    state = {"client": True}
     watcher = wn.Watcher(
         lambda since: _facts(wn, client=state["client"], since_event=since),
         lambda a, r: None,
@@ -815,8 +862,8 @@ def test_watcher_waits_for_the_own_reconnect_then_connects(wn):
     )
     watcher.on_event("wake", 0.0)
     assert watcher.check(3.0)[0] == "wait"
-    assert not watcher.due(40.0) and watcher.due(46.0)
-    assert watcher.check(46.0)[0] == "connect"
+    state["client"] = False
+    assert watcher.due(8.0) and watcher.check(8.0)[0] == "connect"
 
 
 def test_watcher_ticks_every_2_minutes(wn):

@@ -86,7 +86,17 @@ or `/tmp/vpn_connect_notify` exists, the watcher waits up to 45 seconds after th
 event: 10 s dead-peer detection plus the 30 s reconnect timeout plus a margin. Within
 the 24 h gateway session this is faster than a new connect, which stops the old
 session and authenticates again. After the grace period, or when no client runs, the
-watcher connects.
+watcher connects. During the grace it checks every 5 seconds, so a client that gave
+up is replaced at once; a repeated "wait" is logged only once. The live test after a
+2-minute sleep showed the own reconnect failing and the watcher's connect bringing
+the network back about a minute after wake.
+
+The OSD script brings the tunnel up ("Continuing in background") and then pings the
+domain up to 60 times before its own `kinit`; where ICMP is blocked that takes
+minutes. The watcher's connect therefore counts as done as soon as the tunnel is up
+and the KDC answers, and leaves the script to finish in the background. A manual
+`vpn-pw` still waits for the script, like the former alias, because the terminal
+would otherwise close the script's output and end it before its `kinit`.
 
 ### Non-interactive connect with the env password
 

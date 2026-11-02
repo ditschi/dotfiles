@@ -132,8 +132,14 @@ def run_lines(
     input: str,
     on_line: Callable[[str], None],
     env: Optional[Dict[str, str]] = None,
+    ready: Optional[Callable[[List[str]], bool]] = None,
+    wait_after_ready: bool = True,
 ) -> Result:
-    """Like run, but hands every output line (stdout and stderr) to on_line live."""
+    """Like run, but hands every output line (stdout and stderr) to on_line live.
+
+    Once ready(lines) is true the command counts as successful: the timeout no
+    longer applies, and without wait_after_ready it is left running in the
+    background (its remaining output still reaches on_line)."""
     debug(f"run {' '.join(cmd)}")
     try:
         proc = subprocess.Popen(
@@ -162,13 +168,23 @@ def run_lines(
     threads = [threading.Thread(target=f, daemon=True) for f in (feed, read)]
     for thread in threads:
         thread.start()
-    try:
-        code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        log(f"{cmd[0]} stopped after {timeout:g} s")
-        return Result(_stop(proc), "".join(lines), timed_out=True)
-    threads[1].join(5)
-    return Result(code, "".join(lines))
+    deadline = time.monotonic() + timeout
+    is_ready = False
+    while True:
+        try:
+            code = proc.wait(timeout=1)
+            threads[1].join(5)
+            return Result(0 if is_ready else code, "".join(lines))
+        except subprocess.TimeoutExpired:
+            pass
+        if not is_ready and ready is not None and ready(lines):
+            is_ready = True
+            if not wait_after_ready:
+                debug(f"{cmd[0]} ready; leaving it running in the background")
+                return Result(0, "".join(lines))
+        if not is_ready and time.monotonic() > deadline:
+            log(f"{cmd[0]} stopped after {timeout:g} s")
+            return Result(_stop(proc), "".join(lines), timed_out=True)
 
 
 def keyring_unlocked() -> bool:
@@ -563,6 +579,7 @@ def kerberos_refresh(auto: bool) -> int:
 
 VPN_CONNECT_TIMEOUT = 120.0
 VPN_GRACE = 45.0
+GRACE_POLL = 5.0
 WATCH_DEBOUNCE = 3.0
 WATCH_TICK = 120.0
 CERT_WARN_DAYS = 20
@@ -626,6 +643,17 @@ def classify_vpn(result: Result) -> str:
     return "unknown"
 
 
+def tunnel_up(lines: List[str]) -> bool:
+    """openconnect went to the background and the KDC answers through the tunnel.
+
+    The OSD script then still pings the domain (minutes when ICMP is blocked)
+    before its own kinit; the watcher need not wait for that."""
+    if not any("Continuing in background" in line for line in lines):
+        return False
+    realm = default_realm()
+    return bool(realm) and kdc_reachable(realm)
+
+
 def vpn_connect(auto: bool) -> int:
     script = osd_dir() / "connect_vpn.sh"
     if not script.exists():
@@ -659,6 +687,8 @@ def vpn_connect(auto: bool) -> int:
             timeout=VPN_CONNECT_TIMEOUT,
             on_line=show,
             env=C_LOCALE,
+            ready=tunnel_up,
+            wait_after_ready=not auto,
         )
         outcome = classify_vpn(result)
         stop.record(outcome, password)
@@ -804,6 +834,7 @@ class Watcher:
         self.pending = True
         self.next_tick = now + WATCH_TICK
         self.recheck_at: Optional[float] = None
+        self.last: Optional[Tuple[str, str]] = None
 
     def on_event(self, kind: str, now: float) -> None:
         debug(f"event: {kind}")
@@ -824,8 +855,11 @@ class Watcher:
         self.next_tick = now + WATCH_TICK
         action, reason = decide(self.gather(now - self.last_event))
         if reason == "VPN client is reconnecting by itself":
-            self.recheck_at = self.last_event + VPN_GRACE + 1
-        self.act(action, reason)
+            # Poll, so a client that gave up is replaced at once, not after the grace.
+            self.recheck_at = min(now + GRACE_POLL, self.last_event + VPN_GRACE + 1)
+        if action != "wait" or (action, reason) != self.last:
+            self.act(action, reason)
+        self.last = (action, reason)
         return action, reason
 
 

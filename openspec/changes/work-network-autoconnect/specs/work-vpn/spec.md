@@ -64,6 +64,10 @@ When the KDC is not reachable but the VPN client is still running or a VPN conne
 - **WHEN** the KDC is still not reachable 45 seconds after the event
 - **THEN** the watcher starts a new VPN connect
 
+#### Scenario: Client gives up early
+- **WHEN** the VPN client ends its own reconnect attempt before the 45 seconds are over
+- **THEN** the watcher starts a new connect within about 5 seconds
+
 ### Requirement: Non-interactive VPN connect
 The watcher SHALL connect the VPN without any prompt, using the password from `get-password` for the VPN authentication and not a password copy stored by the VPN tool, also when the GNOME keyring is locked. A certificate expiry warning of the VPN tool SHALL NOT block the connect. After a successful connect the Kerberos ticket SHALL be valid.
 
@@ -126,6 +130,10 @@ A VPN connect started by the watcher SHALL be stopped after 120 seconds, logged 
 #### Scenario: Hanging connect
 - **WHEN** the VPN connect script has not finished after 120 seconds
 - **THEN** it is stopped, the timeout is logged and the watcher keeps reacting to events
+
+#### Scenario: Tunnel up before the script ends
+- **WHEN** the watcher's connect has brought the tunnel up and the KDC is reachable, but the script still waits for its own network check
+- **THEN** the connect counts as successful at once, no timeout is logged, and the script finishes in the background
 
 #### Scenario: Event source ends
 - **WHEN** the D-Bus monitor process exits

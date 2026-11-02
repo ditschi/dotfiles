@@ -696,6 +696,17 @@ def test_vpn_connect_uses_the_env_password_without_keyring(vpn, capsys):
     out = capsys.readouterr().out
     assert "Establishing VPN session" in out and "s3cret" not in out
     assert vpn.refreshed == [True]
+    log_text = (vpn.state_dir() / "work-net.log").read_text()
+    assert "| INFO Establishing VPN session" in log_text and "VPN connected" in log_text
+    assert "s3cret" not in log_text
+
+
+def test_log_file_is_capped(wn, monkeypatch):
+    monkeypatch.setattr(wn, "LOG_MAX_BYTES", 100)
+    for index in range(20):
+        wn.log(f"line {index}")
+    assert (wn.state_dir() / "work-net.log.1").exists()
+    assert (wn.state_dir() / "work-net.log").stat().st_size < 200
 
 
 def test_certificate_prompt_does_not_block(vpn):

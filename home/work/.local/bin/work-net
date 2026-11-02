@@ -45,10 +45,23 @@ SECRETS_LOCKED = [
 ]
 
 verbose = os.environ.get("WORK_NET_DEBUG") == "1"
+LOG_MAX_BYTES = 1024 * 1024
+
+
+def write_log(text: str) -> None:
+    """Own log file: AD users on the work laptops cannot read the journal."""
+    path = state_dir() / "work-net.log"
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if path.exists() and path.stat().st_size > LOG_MAX_BYTES:
+            path.replace(path.with_name("work-net.log.1"))
+        with open(path, "a") as handle:
+            handle.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} [{os.getpid()}] {text}\n")
 
 
 def log(message: str) -> None:
     print(f"work-net: {message}", flush=True)
+    write_log(message)
 
 
 def debug(message: str) -> None:
@@ -620,7 +633,9 @@ def vpn_connect(auto: bool) -> int:
         return 1
 
     def show(line: str) -> None:
-        print(line.replace(password, "***"), flush=True)
+        line = line.replace(password, "***")
+        print(line, flush=True)
+        write_log(f"| {line}")
 
     with guard().locked() as stop:
         if auto:
@@ -651,7 +666,7 @@ def vpn_connect(auto: bool) -> int:
     if outcome in ("sudo", "certificate"):
         notify(
             "VPN connect failed",
-            f"{outcome} problem; see journalctl --user -u work-net-vpn-watch",
+            f"{outcome} problem; see ~/.local/state/work-net/work-net.log",
         )
     log(f"VPN connect failed ({outcome})")
     return 1
@@ -911,6 +926,7 @@ def status() -> int:
         )
     else:
         print("Last action:      none")
+    print(f"Log:              {state_dir() / 'work-net.log'}")
     return 0
 
 

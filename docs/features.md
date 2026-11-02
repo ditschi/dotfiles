@@ -19,7 +19,7 @@ The proxy needs a valid Kerberos ticket. On hosts with the feature `kerberos`, t
 
 - **Password:** `get-password` returns `PASSWORD` from `~/.env`, `~/.env.host`, `~/.env.local` (also in services without the shell environment). Only without it does it read the GNOME keyring, and only when the keyring is unlocked, so no unlock dialog appears. The refresh keeps the keyring entry equal to the env password while the keyring is unlocked.
 - **Failure guard:** a rejected password counts; network errors and timeouts do not. After 2 rejections at least 15 minutes apart, or at once when the account is locked or the password has expired, automatic logins stop and a desktop notification says why. Fix `PASSWORD` in `~/.env` (for example with `machine env pull`), then run `kinit-pw` in a terminal: that resets the guard. A changed password also resets it.
-- **Check and debug:** `work-net status` shows the ticket, the KDC, the guard and the last action; `work-net -v kerberos refresh` (or `WORK_NET_DEBUG=1`) logs every step. To try the renewal now, raise the threshold for one run: `WORK_NET_RENEW_BEFORE_HOURS=12 work-net -v kerberos refresh`. Logs: `journalctl --user -u work-net-kerberos`. Stop the timer with `systemctl --user disable --now work-net-kerberos.timer`.
+- **Check and debug:** `work-net status` shows the ticket, the KDC, the guard and the last action; `work-net -v kerberos refresh` (or `WORK_NET_DEBUG=1`) logs every step. To try the renewal now, raise the threshold for one run: `WORK_NET_RENEW_BEFORE_HOURS=12 work-net -v kerberos refresh`. Logs: `~/.local/state/work-net/work-net.log` (the journal is not readable for AD users without the `systemd-journal` group). Stop the timer with `systemctl --user disable --now work-net-kerberos.timer`.
 - Timeouts: `kinit` 30 s, keyring 5 s, KDC check 2 s. `work-net` has no Bash or Zsh completion.
 
 ## Work VPN (work desktops with the OSD VPN tool)
@@ -39,7 +39,7 @@ Logging out stops the watcher but leaves the VPN connected, so running agents an
 | `osd-vpn-disconnect` | `work-net vpn disconnect`: disconnect and pause the watcher until the next login or wake |
 | `work-net vpn check --dry-run` | print what the watcher would do now and why |
 | `work-net status` | ticket, KDC, guard, VPN client, pause, certificate days, last action |
-| `journalctl --user -u work-net-vpn-watch` | the watcher's decisions and the OSD script's output (never the password) |
+| `less ~/.local/state/work-net/work-net.log` | the watcher's decisions and the OSD script's output (never the password); capped at 1 MiB plus one old file |
 | `systemctl --user stop work-net-vpn-watch` | stop the watcher for this session (`disable --now` permanently) |
 
 If a connect hangs: `sudo -n /opt/osd/osd-wifivpn-package/disconnect_vpn.sh`, then `vpn-pw`. `/usr/bin/osd-vpn-connect` and `/usr/bin/osd-vpn-disconnect` by full path are the unchanged OSD tools; the watcher treats a disconnect by full path as a drop and reconnects. `osd-vpn-connect` without the pipe now asks for the password, because its keyring use is switched off; `osd-vpn-connect -k` uses the keyring copy for that run.

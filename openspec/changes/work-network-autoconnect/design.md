@@ -184,7 +184,7 @@ the `kerberos` feature is selected, and the VPN watcher only on a desktop device
 (the OSD-managed bash prompt block already shows it); the refresh, the cron job and
 the cron hint are removed without a fallback (owner's decision), because the timer and
 the watcher cover every case they handled. Notifications use `notify-send` when a
-session bus is available and always go to the journal.
+session bus is available and always go to the log.
 
 ### Runtime logic in a separate `work-net` tool, setup in `machine`
 
@@ -217,7 +217,10 @@ logged and retried on the next event or run; it is not counted by the guard, bec
 it says nothing about the password. If `gdbus monitor` exits, the watcher restarts it.
 
 The OSD scripts only print to the terminal and keep no log file, so `work-net` writes
-their output line by line to the journal (stdout of the unit). `work-net status` gives
+their output line by line to its log. On the work laptop the owner (an AD user
+without the `systemd-journal` group) cannot read the journal, so every log line also
+goes to `~/.local/state/work-net/work-net.log`, capped at 1 MiB plus one old file;
+stdout still reaches the journal where it is readable. `work-net status` gives
 one read-only view of ticket, KDC, guard, pause, VPN client, certificate and the last
 action, read from the state directory and live checks. `work-net vpn check --dry-run`
 runs the watcher's decision once and prints it. `--verbose` or `WORK_NET_DEBUG=1`

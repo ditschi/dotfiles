@@ -132,11 +132,11 @@ A VPN connect started by the watcher SHALL be stopped after 120 seconds, logged 
 - **THEN** the watcher starts it again
 
 ### Requirement: VPN diagnostics
-The output of the VPN connect script SHALL be written line by line to the watcher's journal, without the password. `work-net status` SHALL also show whether the VPN client runs, whether the watcher is paused and the certificate's days left. `work-net vpn check --dry-run` SHALL print what the watcher would do now and why, without doing it.
+The output of the VPN connect script SHALL be written line by line to the `work-net` log file, without the password. `work-net status` SHALL also show whether the VPN client runs, whether the watcher is paused and the certificate's days left. `work-net vpn check --dry-run` SHALL print what the watcher would do now and why, without doing it.
 
 #### Scenario: Reading a failed connect
 - **WHEN** an automatic connect failed
-- **THEN** `journalctl --user -u work-net-vpn-watch` shows the script's messages for that attempt
+- **THEN** `~/.local/state/work-net/work-net.log` shows the script's messages for that attempt
 
 #### Scenario: Dry run
 - **WHEN** the owner runs `work-net vpn check --dry-run` at home with no VPN client running

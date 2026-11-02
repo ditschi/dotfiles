@@ -25,7 +25,3 @@ None.
 - Tests: `tests/unit/test_dotfiles.py`, `tests/unit/test_ssh_client.py`; the Docker profile tests in `tests/integration/` pass again.
 - Profiles: all contexts and devices that select the group providing `.ssh/config`; in practice containers and `sdx` sessions with a read-only checkout.
 - Where the change is made: worktree `~/dotfiles/.worktrees/ssh-config-permissions-readonly-checkout` on branch `ssh-config-permissions-readonly-checkout`, because it changes `machine_cli/`, which the live checkout serves to the host.
-
-## Assumptions
-
-- The owner was not available when this was planned. Tolerating only a read-only file system (not other permission errors) is the narrowest change that unblocks the read-only mounts while keeping the recorded expectation that permission errors fail the apply; the owner should confirm or choose another approach (for example copying the checkout into the test containers instead).

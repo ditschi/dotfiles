@@ -1,0 +1,6 @@
+[Unit]
+Description=Keep the Kerberos ticket valid (work-net)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/work-net kerberos refresh --auto

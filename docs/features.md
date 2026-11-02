@@ -13,6 +13,37 @@ Mail: feature `thunderbird` (default on private desktops) installs Thunderbird a
 
 SSH home fleet: feature `sshd-home` → `authorized_keys` (`roles/sshd_home`) from [`machine/ssh_keys/`](../machine/ssh_keys/) for entries in `ssh_allow_from`.
 
+## Kerberos ticket (work, feature `kerberos`)
+
+The proxy needs a valid Kerberos ticket. On hosts with the feature `kerberos`, the user timer `work-net-kerberos.timer` runs `work-net kerberos refresh --auto` one minute after boot and every 10 minutes, also without a login (linger). It does nothing while the ticket is valid for more than 2 hours, renews it without a password (`kinit -R`) shortly before it expires, and requests a new one with the password only when the ticket is missing or can no longer be renewed and the KDC is reachable. Shell start no longer touches the ticket; the former cron job (`setup-ensure-kerberos-cron`) is removed by `machine update`.
+
+- **Password:** `get-password` returns `PASSWORD` from `~/.env`, `~/.env.host`, `~/.env.local` (also in services without the shell environment). Only without it does it read the GNOME keyring, and only when the keyring is unlocked, so no unlock dialog appears. The refresh keeps the keyring entry equal to the env password while the keyring is unlocked.
+- **Failure guard:** a rejected password counts; network errors and timeouts do not. After 2 rejections at least 15 minutes apart, or at once when the account is locked or the password has expired, automatic logins stop and a desktop notification says why. Fix `PASSWORD` in `~/.env` (for example with `machine env pull`), then run `kinit-pw` in a terminal: that resets the guard. A changed password also resets it.
+- **Check and debug:** `work-net status` shows the ticket, the KDC, the guard and the last action; `work-net -v kerberos refresh` (or `WORK_NET_DEBUG=1`) logs every step. To try the renewal now, raise the threshold for one run: `WORK_NET_RENEW_BEFORE_HOURS=12 work-net -v kerberos refresh`. Logs: `journalctl --user -u work-net-kerberos`. Stop the timer with `systemctl --user disable --now work-net-kerberos.timer`.
+- Timeouts: `kinit` 30 s, keyring 5 s, KDC check 2 s. `work-net` has no Bash or Zsh completion.
+
+## Work VPN (work desktops with the OSD VPN tool)
+
+On a work desktop with `/usr/bin/osd-vpn-connect`, the user service `work-net-vpn-watch.service` runs `work-net vpn watch` while you are logged in to the desktop. It reacts to login, wake from sleep and network changes (and checks every 2 minutes):
+
+- Kerberos server reachable (office LAN, USB-LAN, work Wi-Fi or VPN already up): no VPN start, only the Kerberos refresh.
+- No network: waits for the next event.
+- VPN client still running or a connect in progress: waits up to 45 s for its own reconnect, which is faster than a new connect.
+- Otherwise it connects with `sudo -n /opt/osd/osd-wifivpn-package/connect_vpn.sh` (passwordless by the corporate sudoers) and the password from `get-password`. Before each connect it sets `USE_KEYRING=0` in `~/.wifivpn/vpn_preferences.ini`: the OSD script then uses the password from its input instead of its own keyring copy, which would be used even when stale and asks for unlocking a locked keyring. A certificate warning does not block; under 20 days a desktop notification says to run `osd-wifivpn-enroll` in the office.
+
+Logging out stops the watcher but leaves the VPN connected, so running agents and tasks keep working. Connect attempts use the same failure guard as Kerberos; an unreachable gateway, a timeout (120 s) or a missing sudo rule are not counted.
+
+| Command | Effect |
+| --- | --- |
+| `vpn-pw` / `osd-vpn-connect-pw` | `work-net vpn connect`: connect now with the env password; resets the failure guard and ends a pause |
+| `osd-vpn-disconnect` | `work-net vpn disconnect`: disconnect and pause the watcher until the next login or wake |
+| `work-net vpn check --dry-run` | print what the watcher would do now and why |
+| `work-net status` | ticket, KDC, guard, VPN client, pause, certificate days, last action |
+| `journalctl --user -u work-net-vpn-watch` | the watcher's decisions and the OSD script's output (never the password) |
+| `systemctl --user stop work-net-vpn-watch` | stop the watcher for this session (`disable --now` permanently) |
+
+If a connect hangs: `sudo -n /opt/osd/osd-wifivpn-package/disconnect_vpn.sh`, then `vpn-pw`. `/usr/bin/osd-vpn-connect` and `/usr/bin/osd-vpn-disconnect` by full path are the unchanged OSD tools; the watcher treats a disconnect by full path as a drop and reconnects. `osd-vpn-connect` without the pipe now asks for the password, because its keyring use is switched off; `osd-vpn-connect -k` uses the keyring copy for that run.
+
 Working Azure CLI and GitHub CLI installations are kept, including their
 authentication and package sources. Docker provisioning preserves an existing
 provider instead of replacing it with `docker.io`; only a missing,

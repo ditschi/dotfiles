@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the Kerberos ticket every 10 minutes (work-net)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+Unit=work-net-kerberos.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,985 @@
+#!/usr/bin/env python3
+"""work-net: keeps the work network usable (password sync, Kerberos, VPN).
+
+Stand-alone on purpose: it must keep working when the machine CLI is broken,
+because the proxy it keeps usable is needed to fetch a fix. Standard library only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import fcntl
+import getpass
+import hashlib
+import json
+import os
+import secrets
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+
+KEYRING_TIMEOUT = 5.0
+KINIT_TIMEOUT = 30.0
+KDC_TIMEOUT = 2.0
+RENEW_BEFORE = 2 * 3600
+GUARD_MAX_FAILURES = 2
+GUARD_SPACING = 15 * 60
+C_LOCALE = {"LC_ALL": "C"}
+SECRETS_LOCKED = [
+    "busctl",
+    "--user",
+    "get-property",
+    "org.freedesktop.secrets",
+    "/org/freedesktop/secrets/aliases/default",
+    "org.freedesktop.Secret.Collection",
+    "Locked",
+]
+
+verbose = os.environ.get("WORK_NET_DEBUG") == "1"
+
+
+def log(message: str) -> None:
+    print(f"work-net: {message}", flush=True)
+
+
+def debug(message: str) -> None:
+    if verbose:
+        log(message)
+
+
+@dataclass
+class Result:
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0 and not self.timed_out
+
+
+def run(
+    cmd: Sequence[str],
+    *,
+    timeout: float,
+    input: Optional[str] = None,
+    env: Optional[Dict[str, str]] = None,
+) -> Result:
+    """Run cmd; secrets go only through input, never into cmd or the log."""
+    debug(f"run {' '.join(cmd)}")
+    try:
+        proc = subprocess.Popen(
+            list(cmd),
+            stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            env={**os.environ, **env} if env else None,
+        )
+    except FileNotFoundError:
+        return Result(127, stderr=f"{cmd[0]}: not found")
+    try:
+        out, err = proc.communicate(input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log(f"{cmd[0]} stopped after {timeout:g} s")
+        return Result(_stop(proc), timed_out=True)
+    return Result(proc.returncode, out, err)
+
+
+def _stop(proc: subprocess.Popen) -> int:
+    """TERM, then KILL the process group; a root child (sudo) may refuse both."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, sig)
+        try:
+            return proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            continue
+    log(f"process {proc.pid} did not stop; no longer waiting for it")
+    return -1
+
+
+def run_lines(
+    cmd: Sequence[str],
+    *,
+    timeout: float,
+    input: str,
+    on_line: Callable[[str], None],
+    env: Optional[Dict[str, str]] = None,
+) -> Result:
+    """Like run, but hands every output line (stdout and stderr) to on_line live."""
+    debug(f"run {' '.join(cmd)}")
+    try:
+        proc = subprocess.Popen(
+            list(cmd),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+            env={**os.environ, **env} if env else None,
+        )
+    except FileNotFoundError:
+        return Result(127, stderr=f"{cmd[0]}: not found")
+    lines: List[str] = []
+
+    def feed() -> None:
+        with contextlib.suppress(OSError):
+            proc.stdin.write(input)
+            proc.stdin.close()
+
+    def read() -> None:
+        for line in proc.stdout:
+            lines.append(line)
+            on_line(line.rstrip("\n"))
+
+    threads = [threading.Thread(target=f, daemon=True) for f in (feed, read)]
+    for thread in threads:
+        thread.start()
+    try:
+        code = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log(f"{cmd[0]} stopped after {timeout:g} s")
+        return Result(_stop(proc), "".join(lines), timed_out=True)
+    threads[1].join(5)
+    return Result(code, "".join(lines))
+
+
+def keyring_unlocked() -> bool:
+    """Ask D-Bus instead of reading, which would open an unlock dialog."""
+    result = run(SECRETS_LOCKED, timeout=KEYRING_TIMEOUT)
+    return result.ok and result.stdout.strip() == "b false"
+
+
+def get_password() -> Optional[str]:
+    result = run(["get-password"], timeout=3 * KEYRING_TIMEOUT)
+    password = result.stdout.rstrip("\n") if result.ok else ""
+    return password or None
+
+
+def keyring_sync(user: str) -> int:
+    """Make the keyring entry read by get-password follow the env password."""
+    if not keyring_unlocked():
+        debug("keyring locked or unavailable; not synced")
+        return 0
+    password = get_password()
+    if password is None:
+        log("keyring sync: no password from get-password")
+        return 1
+    current = run(["secret-tool", "lookup", "password", user], timeout=KEYRING_TIMEOUT)
+    if current.timed_out:
+        return 1
+    if current.stdout == password:
+        debug("keyring entry is up to date")
+        return 0
+    stored = run(
+        ["secret-tool", "store", f"--label=get-password ({user})", "password", user],
+        input=password,
+        timeout=KEYRING_TIMEOUT,
+    )
+    if not stored.ok:
+        log("keyring sync: could not update the keyring entry")
+        return 1
+    log("keyring entry updated from the env password")
+    return 0
+
+
+# --- state, notifications ---------------------------------------------------
+
+
+def state_dir() -> Path:
+    if os.environ.get("WORK_NET_STATE_DIR"):
+        return Path(os.environ["WORK_NET_STATE_DIR"])
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
+    return Path(base) / "work-net"
+
+
+def write_private(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        json.dump(data, handle)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_last(action: str, outcome: str) -> None:
+    write_private(
+        state_dir() / "last.json",
+        {"time": time.time(), "action": action, "outcome": outcome},
+    )
+
+
+def notify(summary: str, body: str) -> None:
+    log(f"{summary}: {body}")
+    if os.environ.get("DBUS_SESSION_BUS_ADDRESS") and shutil.which("notify-send"):
+        run(["notify-send", "--app-name=work-net", summary, body], timeout=5)
+
+
+# --- failure guard ------------------------------------------------------------
+
+STOP_REASONS = {
+    "locked": "the account is locked (credentials revoked)",
+    "expired": "the password has expired",
+    "rejected": "the password was rejected twice",
+}
+RESET_HINT = "Fix PASSWORD in ~/.env, then run kinit-pw or vpn-pw in a terminal."
+
+
+class Guard:
+    """Shared stop for automatic logins so a stale password cannot lock the account."""
+
+    def __init__(self, directory: Path, clock: Callable[[], float] = time.time):
+        self.path = directory / "guard.json"
+        self.lock_path = directory / "guard.lock"
+        self.clock = clock
+
+    @contextlib.contextmanager
+    def locked(self) -> Iterator["Guard"]:
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with open(self.lock_path, "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            yield self
+
+    def load(self) -> dict:
+        data = read_json(self.path)
+        data.setdefault("salt", secrets.token_hex(16))
+        data.setdefault("failures", 0)
+        return data
+
+    def fingerprint(self, data: dict, password: str) -> str:
+        return hashlib.sha256((data["salt"] + password).encode()).hexdigest()
+
+    def _clear(self, data: dict) -> None:
+        data.update(failures=0, last_failure=None, rejected=None, stopped=None)
+        write_private(self.path, data)
+
+    def reset(self, why: str) -> None:
+        data = self.load()
+        if data["failures"] or data.get("stopped"):
+            log(f"failure guard reset ({why})")
+        self._clear(data)
+
+    def blocked(self, password: str) -> Optional[str]:
+        """Why an automatic attempt must not run now, or None."""
+        data = self.load()
+        rejected = data.get("rejected")
+        if rejected and rejected != self.fingerprint(data, password):
+            log("failure guard reset (the password changed)")
+            self._clear(data)
+            return None
+        if data.get("stopped"):
+            return f"stopped: {data['stopped']}"
+        last = data.get("last_failure")
+        if data["failures"] and last and self.clock() - last < GUARD_SPACING:
+            return "waiting 15 minutes after a rejected password"
+        return None
+
+    def record(self, outcome: str, password: str) -> None:
+        data = self.load()
+        if outcome == "ok":
+            self._clear(data)
+            return
+        if outcome in ("network", "timeout", "sudo", "certificate"):
+            return
+        data["failures"] += 1
+        data["last_failure"] = self.clock()
+        data["rejected"] = self.fingerprint(data, password)
+        if outcome in ("locked", "expired"):
+            data["stopped"] = STOP_REASONS[outcome]
+        elif data["failures"] >= GUARD_MAX_FAILURES:
+            data["stopped"] = STOP_REASONS["rejected"]
+        write_private(self.path, data)
+        if data.get("stopped"):
+            notify("Automatic login stopped", f"{data['stopped']}. {RESET_HINT}")
+
+    def describe(self) -> str:
+        data = self.load()
+        if data.get("stopped"):
+            return f"stopped: {data['stopped']}. {RESET_HINT}"
+        if data["failures"]:
+            retry = data["last_failure"] + GUARD_SPACING
+            return (
+                f"{data['failures']} rejected password, next automatic try after "
+                f"{datetime.fromtimestamp(retry):%H:%M}"
+            )
+        return "ok"
+
+
+def guard() -> Guard:
+    return Guard(state_dir())
+
+
+# --- Kerberos -----------------------------------------------------------------
+
+
+@dataclass
+class Ticket:
+    principal: str
+    expires: float
+    renew_until: Optional[float]
+
+    @property
+    def realm(self) -> str:
+        return self.principal.rsplit("@", 1)[-1]
+
+
+def _klist_time(day: str, clock: str) -> float:
+    for pattern in ("%m/%d/%y %H:%M:%S", "%m/%d/%Y %H:%M:%S"):
+        try:
+            return datetime.strptime(f"{day} {clock}", pattern).timestamp()
+        except ValueError:
+            continue
+    raise ValueError(f"unknown klist time {day} {clock}")
+
+
+def parse_klist(text: str) -> Optional[Ticket]:
+    """The ticket-granting ticket of the default principal (C-locale klist)."""
+    lines = text.splitlines()
+    principal = next(
+        (
+            ln.split(":", 1)[1].strip()
+            for ln in lines
+            if ln.startswith("Default principal:")
+        ),
+        None,
+    )
+    if not principal:
+        return None
+    realm = principal.rsplit("@", 1)[-1]
+    tgt = f"krbtgt/{realm}@{realm}"
+    for index, line in enumerate(lines):
+        parts = line.split()
+        if len(parts) >= 5 and parts[4] == tgt:
+            renew = None
+            following = lines[index + 1].split() if index + 1 < len(lines) else []
+            if following[:2] == ["renew", "until"] and len(following) >= 4:
+                renew = _klist_time(following[2], following[3])
+            return Ticket(principal, _klist_time(parts[2], parts[3]), renew)
+    return None
+
+
+def current_ticket() -> Optional[Ticket]:
+    result = run(["klist"], timeout=10, env=C_LOCALE)
+    if not result.ok:
+        return None
+    try:
+        return parse_klist(result.stdout)
+    except ValueError as error:
+        log(f"cannot read klist: {error}")
+        return None
+
+
+def krb5_conf() -> Path:
+    return Path(os.environ.get("KRB5_CONFIG", "/etc/krb5.conf"))
+
+
+def default_realm() -> Optional[str]:
+    try:
+        text = krb5_conf().read_text()
+    except OSError:
+        return None
+    for line in text.splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == "default_realm" and value.strip():
+            return value.strip()
+    return None
+
+
+def kdc_hosts(realm: str) -> List[Tuple[str, int]]:
+    """KDCs from krb5.conf, else DNS SRV records, else the realm's domain."""
+    hosts: List[Tuple[str, int]] = []
+    try:
+        text = krb5_conf().read_text()
+    except OSError:
+        text = ""
+    section, in_realm = "", False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            section, in_realm = line, False
+        elif section == "[realms]" and line.replace(" ", "").startswith(f"{realm}={{"):
+            in_realm = True
+        elif in_realm and line.startswith("}"):
+            in_realm = False
+        elif in_realm and line.split("=")[0].strip() == "kdc":
+            host, _, port = line.split("=", 1)[1].strip().partition(":")
+            hosts.append((host, int(port or 88)))
+    if not hosts and shutil.which("dig"):
+        srv = run(
+            ["dig", "+short", "SRV", f"_kerberos._tcp.{realm}"], timeout=KDC_TIMEOUT
+        )
+        records = sorted(line.split() for line in srv.stdout.splitlines() if line)
+        hosts = [(r[3].rstrip("."), int(r[2])) for r in records if len(r) == 4]
+    return hosts or [(realm.lower(), 88)]
+
+
+def kdc_reachable(realm: str) -> bool:
+    """TCP connect to the first KDC; the thread bounds slow DNS as well."""
+    host, port = kdc_hosts(realm)[0]
+    reached: List[bool] = []
+
+    def probe() -> None:
+        try:
+            socket.create_connection((host, port), timeout=KDC_TIMEOUT).close()
+            reached.append(True)
+        except OSError:
+            pass
+
+    worker = threading.Thread(target=probe, daemon=True)
+    worker.start()
+    worker.join(KDC_TIMEOUT)
+    debug(f"KDC {host}:{port} {'reachable' if reached else 'not reachable'}")
+    return bool(reached)
+
+
+KINIT_OUTCOMES = (
+    (
+        "network",
+        ("Cannot contact any KDC", "Cannot find KDC", "Cannot resolve network address"),
+    ),
+    ("locked", ("credentials have been revoked",)),
+    ("expired", ("Password has expired", "Password expired")),
+    ("rejected", ("Password incorrect", "Preauthentication failed")),
+)
+
+
+def classify_kinit(result: Result) -> str:
+    if result.timed_out:
+        return "timeout"
+    if result.ok:
+        return "ok"
+    text = result.stdout + result.stderr
+    for outcome, markers in KINIT_OUTCOMES:
+        if any(marker in text for marker in markers):
+            return outcome
+    return "unknown"
+
+
+def kinit_with_password(auto: bool, kinit_args: Sequence[str] = ()) -> int:
+    password = get_password()
+    if password is None:
+        log("no password from get-password; cannot request a ticket")
+        return 1
+    with guard().locked() as stop:
+        if auto:
+            reason = stop.blocked(password)
+            if reason:
+                log(f"automatic kinit skipped, failure guard {reason}")
+                return 0
+        else:
+            stop.reset("manual run")
+        result = run(
+            ["kinit", *kinit_args],
+            input=password + "\n",
+            timeout=KINIT_TIMEOUT,
+            env=C_LOCALE,
+        )
+        outcome = classify_kinit(result)
+        stop.record(outcome, password)
+    record_last("kerberos-kinit", outcome)
+    if outcome == "ok":
+        log("new Kerberos ticket requested")
+        return 0
+    log(f"kinit failed ({outcome}): {(result.stderr or result.stdout).strip()}")
+    return 1
+
+
+def renew_before() -> float:
+    """Seconds before expiry to renew; WORK_NET_RENEW_BEFORE_HOURS overrides for tests."""
+    try:
+        return float(os.environ.get("WORK_NET_RENEW_BEFORE_HOURS", "")) * 3600
+    except ValueError:
+        return RENEW_BEFORE
+
+
+def kerberos_refresh(auto: bool) -> int:
+    """Renew early without a password; use the password only when needed."""
+    ticket = current_ticket()
+    now = time.time()
+    threshold = renew_before()
+    if ticket and ticket.expires - now > threshold:
+        debug(f"ticket valid for more than {threshold / 3600:g} hours")
+        keyring_sync(getpass.getuser())
+        return 0
+    realm = ticket.realm if ticket else default_realm()
+    if not realm:
+        log("no Kerberos realm configured")
+        return 1
+    if not kdc_reachable(realm):
+        log("KDC not reachable; no ticket request")
+        return 0
+    if ticket and now < ticket.expires and (ticket.renew_until or 0) > ticket.expires:
+        renewed = run(["kinit", "-R"], timeout=KINIT_TIMEOUT, env=C_LOCALE)
+        if renewed.ok:
+            log("Kerberos ticket renewed without password")
+            record_last("kerberos-renew", "ok")
+            keyring_sync(getpass.getuser())
+            return 0
+        log(f"renewal failed: {(renewed.stderr or renewed.stdout).strip()}")
+    status = kinit_with_password(auto)
+    keyring_sync(getpass.getuser())
+    return status
+
+
+# --- VPN ----------------------------------------------------------------------
+
+VPN_CONNECT_TIMEOUT = 120.0
+VPN_GRACE = 45.0
+WATCH_DEBOUNCE = 3.0
+WATCH_TICK = 120.0
+CERT_WARN_DAYS = 20
+
+
+def osd_dir() -> Path:
+    return Path(os.environ.get("WORK_NET_OSD_DIR", "/opt/osd/osd-wifivpn-package"))
+
+
+def vpn_connecting() -> bool:
+    """The OSD connect script holds this file while it runs."""
+    notify_file = os.environ.get("WORK_NET_VPN_NOTIFY", "/tmp/vpn_connect_notify")
+    return Path(notify_file).exists()
+
+
+def pause_marker() -> Path:
+    return state_dir() / "vpn-paused"
+
+
+def clear_pause(why: str) -> None:
+    if pause_marker().exists():
+        pause_marker().unlink()
+        log(f"VPN watcher resumed ({why})")
+
+
+def use_input_password() -> None:
+    """USE_KEYRING=0: the OSD script then reads the password from its input."""
+    prefs = Path.home() / ".wifivpn/vpn_preferences.ini"
+    try:
+        lines = prefs.read_text().splitlines()
+    except OSError:
+        lines = []
+    kept = [ln for ln in lines if not ln.startswith("USE_KEYRING=")]
+    if not any(ln.startswith("USER_NAME=") for ln in kept):
+        kept.append(f"USER_NAME={getpass.getuser()}")
+    kept.append("USE_KEYRING=0")
+    if kept != lines:
+        prefs.parent.mkdir(parents=True, exist_ok=True)
+        prefs.write_text("\n".join(kept) + "\n")
+
+
+def classify_vpn(result: Result) -> str:
+    if result.timed_out:
+        return "timeout"
+    if result.ok:
+        return "ok"
+    text = result.stdout + result.stderr
+    if "a password is required" in text or "a terminal is required" in text:
+        return "sudo"
+    if "Unable to reach the gateway" in text:
+        return "network"
+    if any(
+        marker in text
+        for marker in (
+            "Certificate not found",
+            "Certificate is already expired",
+            "keys are missing in TPM",
+        )
+    ):
+        return "certificate"
+    return "unknown"
+
+
+def vpn_connect(auto: bool) -> int:
+    script = osd_dir() / "connect_vpn.sh"
+    if not script.exists():
+        log(f"{script} not found; no OSD VPN on this host")
+        return 1
+    password = get_password()
+    if password is None:
+        log("no password from get-password; cannot connect the VPN")
+        return 1
+
+    def show(line: str) -> None:
+        print(line.replace(password, "***"), flush=True)
+
+    with guard().locked() as stop:
+        if auto:
+            reason = stop.blocked(password)
+            if reason:
+                log(f"automatic VPN connect skipped, failure guard {reason}")
+                return 0
+        else:
+            stop.reset("manual run")
+            clear_pause("manual connect")
+        use_input_password()
+        log("connecting the VPN")
+        # One line for the certificate prompt, one for the password prompt.
+        result = run_lines(
+            ["sudo", "-n", str(script)],
+            input=f"{password}\n{password}\n",
+            timeout=VPN_CONNECT_TIMEOUT,
+            on_line=show,
+            env=C_LOCALE,
+        )
+        outcome = classify_vpn(result)
+        stop.record(outcome, password)
+    record_last("vpn-connect", outcome)
+    if outcome == "ok":
+        log("VPN connected")
+        kerberos_refresh(auto=True)
+        return 0
+    if outcome in ("sudo", "certificate"):
+        notify(
+            "VPN connect failed",
+            f"{outcome} problem; see journalctl --user -u work-net-vpn-watch",
+        )
+    log(f"VPN connect failed ({outcome})")
+    return 1
+
+
+def vpn_disconnect() -> int:
+    """Disconnect by hand: the watcher stays quiet until the next login or wake."""
+    pause_marker().parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    pause_marker().write_text(f"{time.time()}\n")
+    log("VPN watcher paused until the next login or wake from sleep")
+    result = run_lines(
+        ["sudo", "-n", str(osd_dir() / "disconnect_vpn.sh")],
+        input="",
+        timeout=60,
+        on_line=lambda line: print(line, flush=True),
+    )
+    return 0 if result.ok else 1
+
+
+def cert_days_left() -> Optional[int]:
+    cert = osd_dir() / "temp/certs/cert.pem"
+    result = run(
+        ["openssl", "x509", "-enddate", "-noout", "-in", str(cert)], timeout=10
+    )
+    if not result.ok or "=" not in result.stdout:
+        return None
+    try:
+        end = datetime.strptime(
+            result.stdout.split("=", 1)[1].strip(), "%b %d %H:%M:%S %Y %Z"
+        )
+    except ValueError:
+        return None
+    return int((end.timestamp() - time.time()) // 86400)
+
+
+def cert_notice() -> None:
+    days = cert_days_left()
+    if days is None or days >= CERT_WARN_DAYS:
+        return
+    marker = state_dir() / "cert-notice"
+    today = f"{datetime.now():%Y-%m-%d}"
+    if marker.exists() and marker.read_text().strip() == today:
+        return
+    notify(
+        "VPN certificate expires soon",
+        f"{days} days left. In the office network run: osd-wifivpn-enroll",
+    )
+    marker.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    marker.write_text(today + "\n")
+
+
+@dataclass
+class Facts:
+    network: bool
+    kdc: bool
+    client: bool
+    connecting: bool
+    paused: bool
+    guard: str
+    since_event: float
+
+
+def decide(facts: Facts) -> Tuple[str, str]:
+    """What the watcher does now: kerberos, connect or wait, with the reason."""
+    if facts.kdc:
+        return "kerberos", "work network reachable"
+    if not facts.network:
+        return "wait", "no network connection"
+    if facts.paused:
+        return "wait", "paused after a manual disconnect"
+    if (facts.client or facts.connecting) and facts.since_event < VPN_GRACE:
+        return "wait", "VPN client is reconnecting by itself"
+    if facts.guard.startswith("stopped"):
+        return "wait", f"failure guard {facts.guard}"
+    return "connect", "work network not reachable"
+
+
+def gather(since_event: float) -> Facts:
+    state = run(["nmcli", "-t", "-f", "STATE", "general"], timeout=10).stdout.strip()
+    realm = default_realm()
+    return Facts(
+        network=state.startswith("connected") and "local only" not in state,
+        kdc=bool(realm) and kdc_reachable(realm),
+        client=run(["pgrep", "-x", "openconnect"], timeout=5).ok,
+        connecting=vpn_connecting(),
+        paused=pause_marker().exists(),
+        guard=guard().describe(),
+        since_event=since_event,
+    )
+
+
+def act(action: str, reason: str) -> None:
+    log(f"{action}: {reason}")
+    if action == "kerberos":
+        kerberos_refresh(auto=True)
+    elif action == "connect":
+        cert_notice()
+        vpn_connect(auto=True)
+
+
+def parse_event(line: str) -> Optional[str]:
+    """Map a `gdbus monitor` line to "wake" or "network"; None for noise."""
+    if "org.freedesktop.login1.Manager.PrepareForSleep (false" in line:
+        return "wake"
+    if line.startswith("/org/freedesktop/NetworkManager:") and any(
+        key in line
+        for key in (
+            "StateChanged",
+            "DeviceAdded",
+            "DeviceRemoved",
+            "'Connectivity'",
+            "'ActiveConnections'",
+            "'State'",
+        )
+    ):
+        return "network"
+    return None
+
+
+class Watcher:
+    """Debounces events into checks; gather and act are injected for tests."""
+
+    def __init__(
+        self,
+        gather: Callable[[float], Facts],
+        act: Callable[[str, str], None],
+        now: float,
+    ):
+        self.gather, self.act = gather, act
+        self.last_event = now
+        self.pending = True
+        self.next_tick = now + WATCH_TICK
+        self.recheck_at: Optional[float] = None
+
+    def on_event(self, kind: str, now: float) -> None:
+        debug(f"event: {kind}")
+        if kind == "wake":
+            clear_pause("wake from sleep")
+        self.last_event = now
+        self.pending = True
+
+    def due(self, now: float) -> bool:
+        return (
+            (self.pending and now - self.last_event >= WATCH_DEBOUNCE)
+            or now >= self.next_tick
+            or (self.recheck_at is not None and now >= self.recheck_at)
+        )
+
+    def check(self, now: float) -> Tuple[str, str]:
+        self.pending, self.recheck_at = False, None
+        self.next_tick = now + WATCH_TICK
+        action, reason = decide(self.gather(now - self.last_event))
+        if reason == "VPN client is reconnecting by itself":
+            self.recheck_at = self.last_event + VPN_GRACE + 1
+        self.act(action, reason)
+        return action, reason
+
+
+MONITORS = {
+    "login1": ["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1"],
+    "network": [
+        "gdbus",
+        "monitor",
+        "--system",
+        "--dest",
+        "org.freedesktop.NetworkManager",
+    ],
+}
+
+
+def follow(
+    cmd: Sequence[str],
+    put: Callable[[str], None],
+    sleep: Callable[[float], None] = time.sleep,
+    rounds: Optional[int] = None,
+) -> None:
+    """Feed parsed events of a monitor command to put; restart it when it ends."""
+    done = 0
+    while rounds is None or done < rounds:
+        with subprocess.Popen(
+            list(cmd), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+        ) as proc:
+            for line in proc.stdout:
+                kind = parse_event(line)
+                if kind:
+                    put(kind)
+        done += 1
+        log(f"D-Bus monitor {cmd[-1]} ended; restarting")
+        put("network")
+        sleep(5)
+
+
+def vpn_watch() -> int:
+    """Run in the graphical session until it ends."""
+    import queue
+
+    events: "queue.Queue[str]" = queue.Queue()
+    for cmd in MONITORS.values():
+        threading.Thread(target=follow, args=(cmd, events.put), daemon=True).start()
+    clear_pause("login")
+    watcher = Watcher(gather, act, time.monotonic())
+    log("VPN watcher started")
+    while True:
+        with contextlib.suppress(queue.Empty):
+            watcher.on_event(events.get(timeout=1), time.monotonic())
+        if watcher.due(time.monotonic()):
+            watcher.check(time.monotonic())
+
+
+def vpn_check(dry_run: bool) -> int:
+    action, reason = decide(gather(float("inf")))
+    if dry_run:
+        verb = {"kerberos": "refresh the Kerberos ticket", "connect": "connect the VPN"}
+        print(f"would {verb.get(action, action)}: {reason}")
+        return 0
+    act(action, reason)
+    return 0
+
+
+# --- status -------------------------------------------------------------------
+
+
+def _when(epoch: float) -> str:
+    return f"{datetime.fromtimestamp(epoch):%Y-%m-%d %H:%M}"
+
+
+def status() -> int:
+    ticket = current_ticket()
+    if ticket:
+        renew = (
+            f", renewable until {_when(ticket.renew_until)}"
+            if ticket.renew_until
+            else ""
+        )
+        print(
+            f"Kerberos ticket:  {ticket.principal}, valid until {_when(ticket.expires)}{renew}"
+        )
+    else:
+        print("Kerberos ticket:  none")
+    realm = ticket.realm if ticket else default_realm()
+    if realm:
+        reach = "reachable" if kdc_reachable(realm) else "not reachable"
+        print(f"KDC:              {realm} {reach}")
+    print(f"Failure guard:    {guard().describe()}")
+    if (osd_dir() / "connect_vpn.sh").exists():
+        client = run(["pgrep", "-x", "openconnect"], timeout=5).ok
+        print(f"VPN client:       {'running' if client else 'not running'}")
+        paused = "paused until login or wake" if pause_marker().exists() else "active"
+        print(f"VPN watcher:      {paused}")
+        days = cert_days_left()
+        if days is not None:
+            print(f"VPN certificate:  {days} days left")
+    last = read_json(state_dir() / "last.json")
+    if last.get("time"):
+        print(
+            f"Last action:      {_when(last['time'])} {last.get('action')} {last.get('outcome')}"
+        )
+    else:
+        print("Last action:      none")
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(prog="work-net", description=__doc__)
+    root.add_argument(
+        "-v", "--verbose", action="store_true", help="log every step (WORK_NET_DEBUG=1)"
+    )
+    groups = root.add_subparsers(dest="group", required=True)
+    keyring = groups.add_parser("keyring", help="GNOME keyring entry of get-password")
+    keyring_cmds = keyring.add_subparsers(dest="command", required=True)
+    keyring_cmds.add_parser("sync", help="update the entry from the env password")
+    kerberos = groups.add_parser("kerberos", help="Kerberos ticket")
+    kerberos_cmds = kerberos.add_subparsers(dest="command", required=True)
+    refresh = kerberos_cmds.add_parser("refresh", help="renew or request when needed")
+    refresh.add_argument("--auto", action="store_true", help="obey the failure guard")
+    kinit = kerberos_cmds.add_parser("kinit", help="request a ticket with get-password")
+    kinit.add_argument("--auto", action="store_true", help="obey the failure guard")
+    kinit.add_argument("kinit_args", nargs=argparse.REMAINDER, help="passed to kinit")
+    stop = groups.add_parser("guard", help="failure guard for automatic logins")
+    stop_cmds = stop.add_subparsers(dest="command", required=True)
+    stop_cmds.add_parser("status", help="show the guard state")
+    stop_cmds.add_parser("reset", help="allow automatic logins again")
+    vpn = groups.add_parser("vpn", help="OSD VPN")
+    vpn_cmds = vpn.add_subparsers(dest="command", required=True)
+    connect = vpn_cmds.add_parser("connect", help="connect with get-password")
+    connect.add_argument("--auto", action="store_true", help="obey the failure guard")
+    vpn_cmds.add_parser("disconnect", help="disconnect; pause the watcher")
+    vpn_cmds.add_parser("watch", help="connect when needed (systemd user service)")
+    check = vpn_cmds.add_parser("check", help="decide once what the watcher would do")
+    check.add_argument("--dry-run", action="store_true", help="only print it")
+    groups.add_parser("status", help="show ticket, KDC, guard, VPN and last action")
+    return root
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    global verbose
+    args = parser().parse_args(argv)
+    verbose = verbose or args.verbose
+    local_bin = str(Path.home() / ".local/bin")
+    if local_bin not in os.environ.get("PATH", "").split(":"):
+        os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+    command = (args.group, getattr(args, "command", None))
+    if command == ("keyring", "sync"):
+        return keyring_sync(getpass.getuser())
+    if command == ("kerberos", "refresh"):
+        return kerberos_refresh(args.auto)
+    if command == ("kerberos", "kinit"):
+        extra = [a for a in args.kinit_args if a != "--"]
+        return kinit_with_password(args.auto, extra)
+    if command == ("guard", "status"):
+        print(guard().describe())
+        return 0
+    if command == ("guard", "reset"):
+        with guard().locked() as stop:
+            stop.reset("manual reset")
+        return 0
+    if command == ("status", None):
+        return status()
+    if command == ("vpn", "connect"):
+        return vpn_connect(args.auto)
+    if command == ("vpn", "disconnect"):
+        return vpn_disconnect()
+    if command == ("vpn", "watch"):
+        return vpn_watch()
+    if command == ("vpn", "check"):
+        return vpn_check(args.dry_run)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

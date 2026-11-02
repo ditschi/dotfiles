@@ -127,6 +127,8 @@ From the laptop to a reachable device:
 | Status / drift | `machine status` / `machine host show` |
 | Inventory (vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` from Bitwarden | `machine env pull` |
+| Kerberos ticket, failure guard (work) | `work-net status`, details in [docs/features.md](docs/features.md#kerberos-ticket-work-feature-kerberos) |
+| Work VPN: connect, disconnect, what the watcher does | `vpn-pw`, `osd-vpn-disconnect`, `work-net vpn check --dry-run`, details in [docs/features.md](docs/features.md#work-vpn-work-desktops-with-the-osd-vpn-tool) |
 | Resolve different SSH keys (host / Bitwarden) | `machine ssh sync` |
 | Install collections | `ansible-galaxy collection install -r ansible/requirements.yml` |
 

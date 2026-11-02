@@ -7,5 +7,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# On work hosts work-net applies the failure guard; a run in a terminal resets it.
+if command -v work-net >/dev/null 2>&1; then
+    auto=(--auto)
+    [[ -t 2 ]] && auto=()
+    exec work-net kerberos kinit "${auto[@]}" -- "$@"
+fi
+
 password=$("$SCRIPT_DIR/get-password")
-echo "$password" | kinit "$@"
+printf '%s\n' "$password" | kinit "$@"

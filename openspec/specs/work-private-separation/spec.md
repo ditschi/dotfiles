@@ -31,20 +31,26 @@ The work modules (`01_work*.zsh`) SHALL belong to a group that only the context 
 - **WHEN** a linked work module is sourced and `WORK_SETUP` is not `true`
 - **THEN** it returns without effect
 
-### Requirement: Work and private stay separate
-The separation SHALL also cover the Git default identity (`~/.gitconfig.local`, from the context), the Bitwarden environment group (`work` or `private`, one per context, none in a container without context), the SSH key class (`work` or `home`), the SSH host list (`ssh/home/config` or `ssh/work/config`), the managed SSH host keys and `ssh-route` host blocks (private only), and the features of the private infrastructure (`monitoring`, `sshd-home`, `syncthing`, `tailscale`, `thunderbird`), which are excluded for work.
+### Requirement: Context separation for identity, secrets and SSH
+The work/private separation SHALL cover Git default identity (`~/.gitconfig.local`, from context), Bitwarden environment group (`work` or `private`, one per context, none in a container without context), SSH key class (`work` or `home`) and SSH host list (`ssh/home/config` or `ssh/work/config`).
 
 #### Scenario: Private host
 - **WHEN** a private host loads secrets
 - **THEN** only `env/groups/private` and its host item are queried, never the work group
 
-#### Scenario: Work host
-- **WHEN** a work host is set up
-- **THEN** none of the private infrastructure features is offered or applied
+### Requirement: Private-only SSH management is excluded for work
+Managed SSH host keys and `ssh-route` host blocks SHALL be private-only and SHALL NOT be used on work hosts.
 
 #### Scenario: SSH host list on a work host
 - **WHEN** a work host writes its SSH host list
 - **THEN** only `ssh/work/config` is read, never `ssh/home/config`, and no managed home host keys are installed
+
+### Requirement: Private infrastructure features are excluded for work
+The private infrastructure features `monitoring`, `sshd-home`, `syncthing`, `tailscale` and `thunderbird` SHALL be excluded for work.
+
+#### Scenario: Work host
+- **WHEN** a work host is set up
+- **THEN** none of the private infrastructure features is offered or applied
 
 ### Requirement: Shareable repository
 The repository SHALL NOT contain secrets or sensitive work details; real work identity, internal endpoints and network details SHALL live in local or private configuration.

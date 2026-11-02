@@ -289,7 +289,11 @@ class CommandsMixin:
 
         branch = (self._git("rev-parse", "--abbrev-ref", "HEAD").stdout or "").strip()
         behind, ahead = plan["incoming_commits"], plan["local_commits"]
-        position = Text(f"{branch or '?'} · ")
+        repo_path = str(self.repo)
+        home = os.path.expanduser("~")
+        if repo_path == home or repo_path.startswith(home + os.sep):
+            repo_path = "~" + repo_path.removeprefix(home)
+        position = Text(f"{repo_path} · {branch or '?'} · ")
         if behind or ahead:
             parts = [f"{behind} behind"] if behind else []
             parts += [f"{ahead} ahead"] if ahead else []

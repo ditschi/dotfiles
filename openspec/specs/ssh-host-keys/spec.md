@@ -83,27 +83,22 @@ When the local key and the item differ, `machine attention` and `machine ssh syn
 - **WHEN** a user runs `machine ssh rotate` with Bitwarden unlocked
 - **THEN** the new key is selected and in the item, the old key file is kept as `.old-<YYYYMMDD>`, and the public key is printed with a hint to register it where needed
 
-### Requirement: Existing keys are kept
-Existing local keys SHALL keep their path, permissions and passphrase, and SHALL be selected in the current order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, a hostname key, a sole other candidate. Restoring in setup SHALL never overwrite an existing private key; only the explicit choice "Bitwarden wins" or `rotate` replaces a local key, keeping the old one as `<key>.old-<YYYYMMDD>`.
+### Requirement: Existing key properties and selection are kept
+Existing local keys SHALL keep their path, permissions and passphrase. Setup and update SHALL select a key in this order: `MACHINE_SSH_KEY`, `id_ed25519`, `id_rsa`, a hostname key, then a sole other candidate.
 
 #### Scenario: Host with an existing key
 - **WHEN** the host has a key and no item exists
 - **THEN** that key is uploaded unchanged
+
+### Requirement: Restore never overwrites an existing private key
+Restoring in setup SHALL never overwrite an existing private key. Only the explicit choice "Bitwarden wins" or `rotate` may replace a local key, and SHALL keep the old one as `<key>.old-<YYYYMMDD>`.
 
 #### Scenario: Restore with a local key present
 - **WHEN** setup would restore a private key where one already exists
 - **THEN** the existing key stays unchanged
 
 ### Requirement: Public keys of home hosts in the repository
-For the `home` class, setup, the manual `machine update`, `sync` and `rotate` SHALL write the public key to `machine/ssh_keys/<hostname>.pub` without a question when the file is missing or differs, and log a hint to commit it. The file SHALL hold only the selected key. Keys of the `work` class SHALL NOT be written to the repository. `authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`; `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
-
-#### Scenario: Apply with ssh_allow_from
-- **WHEN** `machine apply` runs on a host with `ssh_allow_from: [homeserver]` and `machine/ssh_keys/homeserver.pub` exists
-- **THEN** that key is in `authorized_keys` and no Bitwarden lookup happens
-
-#### Scenario: Choosing ssh_allow_from
-- **WHEN** setup offers hosts for `ssh_allow_from`
-- **THEN** it offers the hosts with a file in `machine/ssh_keys/`
+For the `home` class, setup, the manual `machine update`, `sync` and `rotate` SHALL write the public key to `machine/ssh_keys/<hostname>.pub` without a question when the file is missing or differs, and log a hint to commit it. The file SHALL hold only the selected key. Keys of the `work` class SHALL NOT be written to the repository.
 
 #### Scenario: Work host
 - **WHEN** a work host uploads its key
@@ -112,6 +107,17 @@ For the `home` class, setup, the manual `machine update`, `sync` and `rotate` SH
 #### Scenario: Extra key in the file
 - **WHEN** the file of a home host holds the selected key and another key
 - **THEN** the manual update rewrites it with only the selected key
+
+### Requirement: authorized_keys comes from repository key files only
+`authorized_keys` SHALL be filled only by the Ansible role `sshd_home` from `machine/ssh_keys/` for the hosts in `ssh_allow_from`. `machine` SHALL NOT read public keys from Bitwarden for `authorized_keys`.
+
+#### Scenario: Apply with ssh_allow_from
+- **WHEN** `machine apply` runs on a host with `ssh_allow_from: [homeserver]` and `machine/ssh_keys/homeserver.pub` exists
+- **THEN** that key is in `authorized_keys` and no Bitwarden lookup happens
+
+#### Scenario: Choosing ssh_allow_from
+- **WHEN** setup offers hosts for `ssh_allow_from`
+- **THEN** it offers the hosts with a file in `machine/ssh_keys/`
 
 ### Requirement: Repository key file check during update
 The manual `machine update` on a home host SHALL compare the selected local public key with `machine/ssh_keys/<hostname>.pub` also without a Bitwarden session, and SHALL write the file when it is missing or differs. It SHALL never change the local key.

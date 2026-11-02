@@ -1,6 +1,15 @@
 # shellcheck shell=bash
 alias zshalias='nano "$HOME/.shell/common/aliases.sh"'
 
+# The live checkout is the one ~/.local/bin/machine links into; ~/dotfiles only without it.
+if [ -z "${DOTFILES_REPO:-}" ] && [ -L "$HOME/.local/bin/machine" ]; then
+    _dotfiles_live=$(readlink -f "$HOME/.local/bin/machine" 2>/dev/null) || _dotfiles_live=
+    _dotfiles_live=${_dotfiles_live%/machine_cli/machine}
+    if [ -n "$_dotfiles_live" ] && [ -d "$_dotfiles_live/home" ] && [ -e "$_dotfiles_live/.git" ]; then
+        DOTFILES_REPO=$_dotfiles_live
+    fi
+    unset _dotfiles_live
+fi
 export DOTFILES_REPO="${DOTFILES_REPO:-$HOME/dotfiles}"
 export DOTFILES_REPO_URL="${DOTFILES_REPO_URL:-https://github.com/ditschi/dotfiles.git}"
 export DOTFILES_UPDATE_STATE="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}"
@@ -16,7 +25,7 @@ dotfiles-setup() {
         return 1
     fi
 
-    if [ ! -d "$DOTFILES_REPO/.git" ]; then
+    if [ ! -e "$DOTFILES_REPO/.git" ]; then
         echo "Dotfiles repository missing. Cloning from $DOTFILES_REPO_URL"
         if ! git clone "$DOTFILES_REPO_URL" "$DOTFILES_REPO"; then
             echo "Failed to clone dotfiles repository."

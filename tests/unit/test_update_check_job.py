@@ -34,7 +34,7 @@ def job_env(tmp_path: Path, monkeypatch):
     # a PATH without `machine`, so the job takes the fallback path
     tools = tmp_path / "tools"
     tools.mkdir()
-    for name in ("git", "bash", "date", "rm", "mv", "printf"):
+    for name in ("git", "bash", "date", "rm", "mv", "printf", "readlink"):
         tools.joinpath(name).symlink_to(shutil.which(name))
     home = tmp_path / "home"
     home.mkdir()
@@ -47,9 +47,13 @@ def job_env(tmp_path: Path, monkeypatch):
         "GIT_TERMINAL_PROMPT": "0",
     }
 
-    def run() -> subprocess.CompletedProcess:
+    def run(**overrides: str | None) -> subprocess.CompletedProcess:
+        merged = {**env, **overrides}
         return subprocess.run(
-            [str(tools / "bash"), str(JOB)], env=env, capture_output=True, text=True
+            [str(tools / "bash"), str(JOB)],
+            env={k: v for k, v in merged.items() if v is not None},
+            capture_output=True,
+            text=True,
         )
 
     def push() -> None:
@@ -58,6 +62,35 @@ def job_env(tmp_path: Path, monkeypatch):
         _git("push", "-q", "origin", "HEAD:main", cwd=other)
 
     return run, push, origin, tmp_path / "state"
+
+
+def test_job_uses_the_linked_checkout_outside_home_dotfiles(job_env, tmp_path):
+    run, _push, _origin, _state = job_env
+    live = tmp_path / "src/dotfiles"
+    (live / "home").mkdir(parents=True)
+    (live / ".git").write_text("gitdir: elsewhere\n")  # a linked worktree
+    (live / "machine_cli").mkdir()
+    calls = tmp_path / "calls"
+    stub = live / "machine_cli/machine"
+    stub.write_text(f'#!{shutil.which("bash")}\nprintf "%s\\n" "$*" > "{calls}"\n')
+    stub.chmod(0o755)
+    link = tmp_path / "home/.local/bin/machine"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(stub)
+
+    result = run(DOTFILES_REPO=None)
+
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text() == "update --auto\n"
+
+
+def test_job_falls_back_to_home_dotfiles_without_the_link(job_env, tmp_path):
+    run, push, _origin, state = job_env
+    (tmp_path / "repo").rename(tmp_path / "home/dotfiles")
+    push()
+
+    assert run(DOTFILES_REPO=None).returncode == 0
+    assert "state=available" in state.read_text()
 
 
 def test_job_marks_pending_update_and_clears_it(job_env):

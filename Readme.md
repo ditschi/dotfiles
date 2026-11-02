@@ -97,7 +97,7 @@ Or in one step, which clones the repository to `~/dotfiles` (override with `DOTF
 curl -fsSL https://raw.githubusercontent.com/ditschi/dotfiles/main/bootstrap | bash
 ```
 
-Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout. An existing clone is used as it is; update it with `machine update`.
+Bootstrap links `~/.local/bin/machine` to `machine_cli/machine` in the checkout. The checkout may be at any path; that link marks the live checkout, and `machine repo` prints it. An existing clone is used as it is; update it with `machine update`.
 
 Non-interactive:
 
@@ -125,6 +125,7 @@ From the laptop to a reachable device:
 | Full setup / change features | `machine setup` (saved answers as defaults) |
 | Save the host config to the repo | `machine host save` |
 | Status / drift | `machine status` / `machine host show` |
+| Path of the live checkout (for scripts and agents) | `machine repo` |
 | Inventory (vault) | `machine inventory edit ansible/inventory/hosts.yml` |
 | `~/.env` from Bitwarden | `machine env pull` |
 | Kerberos ticket, failure guard (work) | `work-net status`, details in [docs/features.md](docs/features.md#kerberos-ticket-work-feature-kerberos) |

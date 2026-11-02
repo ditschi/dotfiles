@@ -98,6 +98,7 @@ def ssh_g(config: Path, host: str) -> dict:
 
 def base_in(home: Path) -> Path:
     path = home / ".ssh/config"
+    (home / ".ssh/cm").mkdir(parents=True, exist_ok=True)
     path.write_text(BASE.read_text().replace("~/", f"{home}/"))
     return path
 
@@ -238,6 +239,8 @@ def test_pull_writes_list_for_private_host(tmp_path, monkeypatch, fake_bw):
     assert "Host homeserver" in path.read_text()
     assert "Host ci" not in path.read_text()
     assert path.stat().st_mode & 0o777 == 0o600
+    assert (home / ".ssh/cm").is_dir()
+    assert (home / ".ssh/cm").stat().st_mode & 0o777 == 0o700
     assert not (home / ".ssh/config.d/20-work").exists()
 
 

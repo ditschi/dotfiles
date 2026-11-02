@@ -138,6 +138,12 @@ def blobs(text: str) -> List[str]:
 class SshClientMixin:
     # --- paths ------------------------------------------------------------------
 
+    def ensure_ssh_runtime_dirs(self) -> None:
+        """Ensure local SSH runtime directories used by config and ControlPath exist."""
+        for path in (self.ssh_dir, self.ssh_dir / "cm", self.ssh_dir / "config.d"):
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+            path.chmod(0o700)
+
     @property
     def ssh_dir(self) -> Path:
         return self.home / ".ssh"
@@ -175,9 +181,7 @@ class SshClientMixin:
     # --- apply (no Bitwarden; also in the background update) --------------------
 
     def apply_ssh_client(self) -> None:
-        for path in (self.ssh_dir, self.ssh_dir / "cm", self.ssh_dir / "config.d"):
-            path.mkdir(mode=0o700, parents=True, exist_ok=True)
-            path.chmod(0o700)
+        self.ensure_ssh_runtime_dirs()
         base = self.repo / "home" / "core" / ".ssh" / "config"
         if base.is_file() and base.stat().st_mode & 0o022:
             base.chmod(base.stat().st_mode & ~0o022)
@@ -382,6 +386,7 @@ class SshClientMixin:
     def pull_ssh_host_list(self, interactive: bool = False) -> int:
         if not self.current_context() or system.in_docker():
             return 0
+        self.ensure_ssh_runtime_dirs()
         if not self.ssh_list_ready(interactive):
             return 1 if interactive else 0
         system.run(["bw", "sync"], capture=True, check=False)
@@ -860,6 +865,7 @@ class SshClientMixin:
         return 0
 
     def ssh_login_test(self, alias: str) -> bool:
+        self.ensure_ssh_runtime_dirs()
         result = system.run(
             ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", alias, "true"],
             capture=True,

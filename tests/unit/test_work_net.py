@@ -714,6 +714,18 @@ def test_log_file_is_capped(wn, monkeypatch):
     assert (wn.state_dir() / "work-net.log").stat().st_size < 200
 
 
+def test_log_and_lock_are_private_under_a_loose_umask(wn):
+    old = os.umask(0o002)
+    try:
+        wn.log("hello")
+        with wn.guard().locked():
+            pass
+    finally:
+        os.umask(old)
+    for name in ("work-net.log", "guard.lock"):
+        assert (wn.state_dir() / name).stat().st_mode & 0o777 == 0o600
+
+
 def test_certificate_prompt_does_not_block(vpn):
     assert vpn.connect("cert") == 0
     assert (vpn.stub_dir / "used").read_text() == "used:s3cret\n"

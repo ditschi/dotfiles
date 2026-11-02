@@ -2,11 +2,14 @@
 # last exit status: zsh green / red, bash blue / orange. Starship has no module for both, so
 # the shells export one of the DOTFILES_PROMPT_* variables before each prompt (from
 # STARSHIP_CMD_STATUS) and one env_var module per state draws the character. Other shells
-# fall back to the shell module. 🐳 marks a container; a failed command also shows in the
-# status segment. user@host appears only over SSH (and the user name in a root shell).
+# fall back to the shell module. 💻 ssh marks an SSH session and 🐳 a container; a failed
+# command also shows in the status segment. user@host appears only over SSH (and the user name
+# in a root shell).
+# One meaning per colour: cyan location, green good/in sync, yellow needs attention, red
+# problem, purple distance to origin, blue #5f87ff remote, lilac Python venv, grey background.
 format = """
 $directory$git_branch$git_status$fill${env_var.DOTFILES_UPDATE_SEGMENT}${env_var.DOTFILES_DISK_SEGMENT}${env_var.DOTFILES_BW_SEGMENT}$status$python$cmd_duration($username$hostname )$time
-$container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
+${env_var.ssh_marker}$container${env_var.prompt_zsh}${env_var.prompt_zsh_err}${env_var.prompt_bash}${env_var.prompt_bash_err}$shell
 """
 
 add_newline = false
@@ -16,23 +19,39 @@ format = "[$path]($style) "
 truncation_length = 3
 truncate_to_repo = false
 
+# Font Awesome code-fork (git branch) from the Nerd Font, in the orange of the git logo.
 [git_branch]
-format = "[$branch]($style) "
+symbol = "\uf126 "
+format = "[$symbol](bold #F05032)[$branch]($style) "
+style = "bold green"
 
+# Counts of local changes and the distance to the upstream; ✓ when in sync with it.
 [git_status]
 format = "([$all_status$ahead_behind]($style) )"
+style = "bold"
+conflicted = "[=${count}](bold red)"
+stashed = "[≡${count}](bold purple)"
+deleted = "[✘${count}](bold red)"
+renamed = "[»${count}](bold yellow)"
+modified = "[!${count}](bold yellow)"
+staged = "[+${count}](bold green)"
+untracked = "[?${count}](bold yellow)"
+ahead = "[⇡${count}](bold purple)"
+behind = "[⇣${count}](bold purple)"
+diverged = "[⇡${ahead_count}⇣${behind_count}](bold red)"
+up_to_date = "[✓](bold green)"
 
 [env_var.DOTFILES_UPDATE_SEGMENT]
 format = "[$env_value]($style) "
-style = "yellow"
+style = "bold yellow"
 
 [env_var.DOTFILES_DISK_SEGMENT]
 format = "[$env_value]($style) "
-style = "red"
+style = "bold red"
 
 [env_var.DOTFILES_BW_SEGMENT]
 format = "[$env_value]($style) "
-style = "yellow"
+style = "bold yellow"
 
 [env_var.prompt_zsh]
 variable = "DOTFILES_PROMPT_ZSH"
@@ -52,6 +71,7 @@ format = "[❯](bold 208) "
 
 [fill]
 symbol = "─"
+style = "240"
 
 [status]
 disabled = false
@@ -61,29 +81,41 @@ recognize_signal_code = true
 symbol = "✘ "
 sigint_symbol = "INT "
 
+# Only with an active virtualenv: no project file detection.
 [python]
-format = "[$symbol$virtualenv]($style) "
-symbol = "Py "
+format = '[$symbol(\($virtualenv\) )]($style)'
+symbol = "🐍 "
+style = "bold 141"
+detect_extensions = []
+detect_files = []
+detect_folders = []
 
 [cmd_duration]
 min_time = 0
 format = "[$duration]($style) "
+style = "bold 245"
 
 # Like the former p10k context segment: shown over SSH, and the user name also as root.
 [username]
 format = "[$user]($style)"
-style_user = "180"
+style_user = "bold #5f87ff"
 style_root = "bold 178"
 
 [hostname]
 ssh_only = true
 format = "[@$hostname]($style)"
-style = "180"
+style = "bold #5f87ff"
+
+# The emoji stays unstyled: a dim or coloured attribute makes the terminal draw it darker.
+[env_var.ssh_marker]
+variable = "SSH_CONNECTION"
+format = "💻 [ssh](bold #5f87ff) "
 
 [time]
 disabled = false
 time_format = "%H:%M:%S"
 format = "[$time]($style) "
+style = "bold 245"
 
 [container]
 format = "[$symbol]($style)"

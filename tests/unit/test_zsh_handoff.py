@@ -48,7 +48,10 @@ case "$(cat "$HOME/mode")" in
         sleep 30 ;;
     orphan) sleep 300 & echo $! > "$HOME/orphan.pid"; sleep 30 ;;
     needterm)
-        [ -n "${TERM:-}" ] || echo "tput: No value for TERM and no -T specified" >&2
+        case "${TERM:-}" in
+            "") echo "tput: No value for TERM and no -T specified" >&2 ;;
+            dumb) echo "[ERROR] - (starship::print): Under a 'dumb' terminal (TERM=dumb)." >&2 ;;
+        esac
         echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=1" ;;
 esac
 """
@@ -446,12 +449,26 @@ def test_healthy_zsh_passes(env):
     assert result.stderr == ""
 
 
-def test_check_without_term_behaves_like_a_login(env):
-    """The background update has no TERM; a real login always has one."""
+@pytest.mark.parametrize("term", [None, "dumb"])
+def test_check_without_terminal_behaves_like_a_login(env, term):
+    """The background update and ssh without -t have no TERM or TERM=dumb."""
     home, _, environ = env
     (home / "mode").write_text("needterm")
     environ = {k: v for k, v in environ.items() if k != "TERM"}
-    result = check(environ, '_zhc_run_checks "$(command -v zsh)"')
+    if term:
+        environ["TERM"] = term
+    script = (
+        '. "$HOME/.shell/bash/zsh-health.bash"; '
+        '_zhc_run_checks "$(command -v zsh)"; echo "rc=$?"'
+    )
+    result = subprocess.run(
+        [shutil.which("bash"), "-c", script],
+        env=environ,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert "rc=0" in result.stdout, result.stdout + result.stderr
 
 

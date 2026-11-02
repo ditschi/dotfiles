@@ -51,10 +51,15 @@ _zhc_run_checks() {
     command -v setsid >/dev/null 2>&1 && setsid_cmd="setsid -w"
     tmp=$(mktemp -d 2>/dev/null) || return 0
     out="$tmp/out" err="$tmp/err"
+    # Without a terminal (background update, ssh without -t) TERM is unset or dumb; a real login
+    # has one, and tput or Starship in the startup files would otherwise report errors.
+    local trial_term="${TERM:-}"
+    if [ ! -t 0 ] && { [ -z "$trial_term" ] || [ "$trial_term" = dumb ]; }; then
+        trial_term=xterm-256color
+    fi
     # shellcheck disable=SC2016,SC2086  # expanded by the inner zsh; the command prefixes split on purpose
     # DOTFILES_ZSH_CHECK=1 makes the deferred plugins load during the start (see 02_plugins.zsh).
-    # A real login always has TERM; a background job does not, and tput in startup files then fails.
-    DOTFILES_ZSH_CHECK=1 TERM="${TERM:-xterm-256color}" $setsid_cmd $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" </dev/null &
+    DOTFILES_ZSH_CHECK=1 TERM="$trial_term" $setsid_cmd $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" </dev/null &
     trial=$!
     old_int=$(trap -p INT)
     trap 'interrupted=1' INT

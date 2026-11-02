@@ -27,20 +27,9 @@ context: |
   outcome, propose the most plausible motivation in clean prose, and have the owner
   confirm or reword it before it is written as fact.
 
-  Where to work: the live checkout is the path `machine repo` prints - files in $HOME
-  are symlinks into it and the host's shell, `machine` and mise read it directly. The
-  current checkout is live when `git rev-parse --show-toplevel` prints the same path;
-  any other checkout (a worktree or another clone, wherever it is) is not live, and
-  when `machine repo` fails no checkout on this host is live. In a checkout that is
-  not live, keep working there and never create another worktree from it. Work in the
-  live checkout only when the change definitely cannot affect the host's shell or
-  tools, not even in a new session (e.g. only openspec/, docs/, tests/, Readme.md).
-  Everything else (home/, machine_cli/, bootstrap, mise.toml, ansible/, ...) is made
-  in a git worktree on branch `<change-name>`, created with an absolute path:
-  `git worktree add "$(machine repo)/.worktrees/<change-name>" -b <change-name>`;
-  `.worktrees/` is gitignored. When in doubt, use a worktree. Decide before the first
-  artifact is written, so the change directory lives in the same checkout as its
-  implementation.
+  Where to work: follow "Planning changes (OpenSpec)" in AGENTS.md. Decide the
+  checkout before the first artifact is written, so the change directory lives in the
+  same checkout as its implementation.
 
   Open questions (every artifact and explore/propose/update conversations): ask
   unresolved questions and history-derived motivations with the ask_user form, not
@@ -57,24 +46,25 @@ rules:
   design:
     - List alternatives that were considered and why they were rejected, as stated by the owner.
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
+  specs:
+    - Keep each requirement to one behavior and under about 500 characters. When a MODIFIED requirement would grow past that or extends an enumerated list, split it into separate requirements or move the items into scenarios instead of appending.
   tasks:
-    - Include validation scoped to the changed behavior and known consumers. A focused test subset is sufficient for a bounded change with clear coverage; documentation-only edits need no pytest run unless they affect executable examples or test configuration.
-    - Require pytest tests/unit -q when impact is broad or uncertain, shared infrastructure or cross-module contracts change, test configuration changes, or focused failures suggest wider effects. If suitable coverage cannot be identified confidently, default to the full unit suite.
-    - Include pre-commit run --files for changed paths, including untracked additions; use --all-files when hook configuration changes or repository-wide checks are needed. Include affected integration tests for deployment or system boundaries and ansible-lint ansible/*.yml for Ansible changes.
-    - Record validation commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
-    - Before archiving, run `openspec validate --strict --type spec` from the checkout root and treat warnings as blockers, even when they are in specs outside the current change.
+    - 'Choose validation by the "Validation" rules in AGENTS.md and list it in the order it runs: targeted checks for the changed behavior and known consumers, then `pre-commit run --files <changed paths>`, then `openspec validate <change-name> --strict`. Add escalated checks only where those rules call for them.'
+    - 'End with a review task only when the change touches shared infrastructure (machine_cli core or update flow, bootstrap, test, validation or pre-commit config, shared Ansible tasks or roles), changes several capabilities, or needed escalated validation: review the branch diff against main with a fresh reviewer (`/review` or a review subagent) and fix findings before archive. Omit it for narrow changes.'
 
 operations:
   apply:
     guidance:
       - Before editing, check the proposal's stated checkout. For a worktree, work only inside `$(machine repo)/.worktrees/<change-name>` (create it with `git worktree add "$(machine repo)/.worktrees/<change-name>" -b <change-name>` if missing) and never edit the same files in the live checkout.
+      - After the last task and its validation pass, offer the archive flow with its option 1 instead of stopping.
   archive:
     guidance:
-      - For a worktree change, archive inside the worktree, then ask the owner before merging the branch into the live checkout and before removing the worktree.
-      - If the change introduced or altered a lasting design decision, make sure the archived design.md states the decision and its rationale in plain prose.
-      - 'Default post-archive path: archive, run checks, commit, merge to main and push main in one guided flow. Offer split steps only as an explicit alternative.'
-      - 'Do not offer "archive + check" as the default when a merge-ready branch can be completed in one flow.'
-      - 'Required pre-archive checks are: (1) `openspec validate --strict --type spec`; (2) the targeted validations listed in the change tasks that cover changed behavior and known consumers.'
-      - 'Do not rerun the full test suite by default when those targeted checks already passed after the last relevant edit.'
-      - 'After merge to main and before push, rerun only targeted risk checks when the merge changed conflict resolutions, touched shared infrastructure or changed validation/test config; otherwise continue to push and rely on CI for rare side effects.'
-      - 'If post-merge checks find issues, fix them before push.'
+      - 'Ask once. Offer as option 1 (recommended) the full flow below, then archive + commit and archive only as alternatives. Option 1 includes the spec sync, so do not ask the sync question separately unless a capability is sync-blocked. Choosing option 1 approves the push; ask again only when a check fails or a conflict needs a decision.'
+      - '1. Pre-archive: confirm the validation tasks passed after the last relevant edit. Do not rerun them or the full suite.'
+      - '2. Archive with spec sync in the checkout that holds the change; for a worktree change, inside the worktree.'
+      - '3. Post-sync gate: run `openspec validate --specs --strict --no-interactive` and treat every warning as a blocker, also in specs the change did not touch. The sync can push a merged requirement over the limits that the change validation passed; fix by splitting requirements or moving detail into scenarios, then rerun.'
+      - '4. If the change introduced or altered a lasting design decision, make sure the archived design.md states the decision and its rationale in plain prose.'
+      - '5. Commit the archive and the spec sync. For a change made in the live checkout, push main now and stop.'
+      - '6. Integrate main in the worktree, not in the live checkout: `git fetch`, then rebase the branch onto `origin/main`. Rerun the affected targeted checks only when conflicts were resolved, main changed files the branch also changed, or main changed shared infrastructure or test or validation config; otherwise rely on CI. When conflicts in behavioral code were resolved, also review the resolved diff (`/review` or a review subagent). Fix every failure here.'
+      - '7. Push the branch to main from the worktree with `git push origin <change-name>:main`; if it is rejected, return to step 6. Then run `machine update` in the live checkout, so it fast-forwards and applies the change like any update. If the update reports a blocker or needs a password, stop and report it.'
+      - '8. Ask before removing the worktree and the branch.'

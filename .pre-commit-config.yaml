@@ -79,6 +79,14 @@ repos:
         additional_dependencies: [pyyaml]
         files: (^|/)mise/conf\.d/.*\.toml$|^ansible/group_vars/all/packages\.yml$
         pass_filenames: false
+      - id: openspec-specs-strict
+        name: OpenSpec main specs pass strict validation
+        entry: openspec validate --specs --strict --no-interactive
+        language: node
+        language_version: 22.12.0
+        additional_dependencies: ['@fission-ai/openspec@1.14.3']
+        files: ^openspec/specs/
+        pass_filenames: false
       - id: no-co-authored-by
         name: forbid Co-authored-by trailers in commit messages
         entry: '(?i)^co-authored-by:'

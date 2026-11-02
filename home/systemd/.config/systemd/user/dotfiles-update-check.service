@@ -4,4 +4,6 @@ Description=Check dotfiles updates and manage marker file
 [Service]
 Type=oneshot
 Environment=GIT_TERMINAL_PROMPT=0
+# machine runs through uv from ~/.local/bin; without a desktop session the user manager lacks it.
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/env bash %h/.local/bin/dotfiles-update-check-job

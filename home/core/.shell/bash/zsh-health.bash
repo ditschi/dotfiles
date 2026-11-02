@@ -53,7 +53,8 @@ _zhc_run_checks() {
     out="$tmp/out" err="$tmp/err"
     # shellcheck disable=SC2016,SC2086  # expanded by the inner zsh; the command prefixes split on purpose
     # DOTFILES_ZSH_CHECK=1 makes the deferred plugins load during the start (see 02_plugins.zsh).
-    DOTFILES_ZSH_CHECK=1 $setsid_cmd $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" </dev/null &
+    # A real login always has TERM; a background job does not, and tput in startup files then fails.
+    DOTFILES_ZSH_CHECK=1 TERM="${TERM:-xterm-256color}" $setsid_cmd $timeout_cmd "$zsh_bin" -l -i -c 'print -r -- "DOTFILES_ZSH_LOADED=${DOTFILES_ZSH_LOADED:-0} DOTFILES_ZSH_DEFERRED_LOADED=${DOTFILES_ZSH_DEFERRED_LOADED:-0}"' >"$out" 2>"$err" </dev/null &
     trial=$!
     old_int=$(trap -p INT)
     trap 'interrupted=1' INT

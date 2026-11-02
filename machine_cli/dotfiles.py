@@ -222,7 +222,9 @@ class DotfilesMixin:
 
     def dotfiles_env(self) -> dict:
         env = dict(os.environ)
-        env["MISE_DOTFILES_ROOT"] = str(self.repo)
+        # mise keys its deploy records by this literal path; another spelling of the same
+        # checkout (e.g. /home -> /mnt/data/home) makes it remove the other spelling's links.
+        env["MISE_DOTFILES_ROOT"] = str(Path(self.repo).resolve())
         return env
 
     def run_dotfiles_apply(self) -> None:
@@ -240,11 +242,28 @@ class DotfilesMixin:
         ):
             log(f"{target}: {what}")
         env = self.dotfiles_env()
-        project = Path(self.repo) / "mise.toml"
-        system.run(["mise", "trust", str(project)], env=env, check=False, capture=True)
+        root = Path(env["MISE_DOTFILES_ROOT"])
+        system.run(
+            ["mise", "trust", str(root / "mise.toml")],
+            env=env,
+            check=False,
+            capture=True,
+        )
         # --yes: on a terminal mise asks before replacing live targets, even under
         # `machine setup --yes`; conflicting files were already moved aside above.
-        system.run(["mise", "dot", "apply", "--prune", "--yes"], env=env, cwd=self.repo)
+        system.run(["mise", "dot", "apply", "--prune", "--yes"], env=env, cwd=root)
+        status = system.run(
+            ["mise", "dot", "status", "--missing"],
+            env=env,
+            cwd=root,
+            check=False,
+            capture=True,
+        )
+        if status.returncode == 1:
+            die(
+                "dotfiles are still not in place after the apply "
+                "(see: mise dot status):\n" + (status.stdout or "").strip()
+            )
         ssh_config = self.home / ".ssh/config"
         if ssh_config.is_symlink() and ssh_config.is_file():
             resolved_config = ssh_config.resolve()

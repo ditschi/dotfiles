@@ -172,7 +172,7 @@ def test_status_is_compact_and_names_the_blocker(update_env, capsys):
 
     assert machine.cmd_status() == 0
     out = capsys.readouterr().out
-    assert "1 behind origin/main" in out
+    assert f"{repo} · main · 1 behind origin/main" in out
     assert "conflict with local changes in home/dot_placeholder" in out
     assert "then run: machine" in out
     assert "zsh-full" in out and "config in sync" in out
@@ -189,6 +189,13 @@ def test_status_verbose_shows_configs_and_files(update_env, capsys):
     out = capsys.readouterr().out
     assert "context: private" in out
     assert "local changes" in out and "wip.txt" in out
+
+
+def test_status_shortens_a_checkout_in_home(update_env, monkeypatch, capsys):
+    machine, repo, _other, _home, _calls = update_env
+    monkeypatch.setenv("HOME", str(repo.parent))
+    assert machine.cmd_status() == 0
+    assert f"~/{repo.name} · main · " in capsys.readouterr().out
 
 
 def test_status_notes_a_symlinked_home(update_env, monkeypatch, capsys):

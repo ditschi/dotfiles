@@ -93,7 +93,7 @@ add_completion_class(_offer_options_on_empty_word(ZshComplete), ZshComplete.name
 @click.pass_context
 def app(ctx: click.Context, debug: bool) -> None:
     core.set_debug(debug)
-    if ctx.invoked_subcommand not in ("completion", "disk"):
+    if ctx.invoked_subcommand not in ("completion", "disk", "repo"):
         ctx.call_on_close(_record_disk_state)
     if ctx.invoked_subcommand is None:
         machine = Machine()
@@ -102,7 +102,7 @@ def app(ctx: click.Context, debug: bool) -> None:
         click.echo("All clean, nothing needs attention.\n")
         click.echo(ctx.get_help())
         ctx.exit(0)
-    if ctx.invoked_subcommand not in (None, "update", "completion", "help"):
+    if ctx.invoked_subcommand not in (None, "update", "completion", "help", "repo"):
         Machine().event("usage", "invoked", ctx.invoked_subcommand)
 
 
@@ -316,6 +316,15 @@ def ssh_known_hosts_add_cmd(alias) -> None:
 @click.option("-v", "--verbose", is_flag=True, help="also list files and show the configs")
 def status(verbose) -> None:
     _exit(Machine().cmd_status(verbose))
+
+
+@app.command(name="repo", help="print the path of the live checkout (~/.local/bin/machine)")
+def repo_cmd() -> None:
+    checkout, reason = system.linked_repo()
+    if checkout is None:
+        click.echo(f"machine: {reason}", err=True)
+        raise SystemExit(1)
+    click.echo(str(checkout))
 
 
 @app.command(help="commit tracked changes")

@@ -97,11 +97,32 @@ def run(
     )
 
 
+def _is_checkout(path: Path) -> bool:
+    return (path / ".git").exists() and (path / "home").is_dir()
+
+
+def linked_repo() -> tuple[Optional[Path], str]:
+    """The live checkout, which ~/.local/bin/machine links into; else None and why."""
+    link = Path.home() / ".local/bin/machine"
+    if not link.is_symlink():
+        reason = "is not a link" if link.exists() else "does not exist"
+        return None, f"{link} {reason}; run bootstrap from the checkout"
+    target = link.resolve()
+    checkout = target.parent.parent
+    if (
+        target.parent.name != "machine_cli"
+        or not target.is_file()
+        or not _is_checkout(checkout)
+    ):
+        return None, f"{link} does not point into a dotfiles checkout ({target})"
+    return checkout, ""
+
+
 def detect_repo() -> Path:
     env = os.environ.get("DOTFILES_REPO")
     if env:
         candidate = Path(env).expanduser()
-        if (candidate / ".git").exists() and (candidate / "home").is_dir():
+        if _is_checkout(candidate):
             return candidate
         print(
             f"machine: DOTFILES_REPO={env} is not a dotfiles checkout; searching elsewhere",
@@ -109,10 +130,13 @@ def detect_repo() -> Path:
         )
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
-        if (parent / ".git").exists() and (parent / "home").is_dir():
+        if _is_checkout(parent):
             return parent
+    linked, _reason = linked_repo()
+    if linked is not None:
+        return linked
     fallback = Path.home() / "dotfiles"
-    if (fallback / ".git").exists() and (fallback / "home").is_dir():
+    if _is_checkout(fallback):
         return fallback
     die("cannot find dotfiles repository")
     raise AssertionError

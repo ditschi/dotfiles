@@ -160,12 +160,14 @@ def running_container(
     env: tuple[str, ...] = (),
     exec_env: tuple[str, ...] = (),
     apt_proxy: str = "",
+    set_repo_env: bool = True,
 ):
     """Start a throwaway container with the repo at /dotfiles.
 
     Yields (container name, `docker exec` prefix running as `user` in /dotfiles).
     `env` is set on the container, `exec_env` only for commands run through the prefix.
     With `apt_proxy`, apt in the container downloads through that proxy.
+    Without `set_repo_env`, DOTFILES_REPO is not set, as on a host.
     """
     name = f"dotfiles-{prefix}-{uuid.uuid4().hex[:8]}"
     cmd = ["docker", "run", "-d", "--name", name]
@@ -175,7 +177,7 @@ def running_container(
         cmd += ["--network", APT_CACHE_NETWORK]
     cmd += ["-v", f"{repo}:/dotfiles:{repo_mode}"]
     for item in (
-        "DOTFILES_REPO=/dotfiles",
+        *(("DOTFILES_REPO=/dotfiles",) if set_repo_env else ()),
         "DEBIAN_FRONTEND=noninteractive",
         *env,
         *(INSECURE_TLS_ENV if INSECURE_TLS else ()),

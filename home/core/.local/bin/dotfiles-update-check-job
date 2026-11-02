@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 set -u
 
-repo="${DOTFILES_REPO:-$HOME/dotfiles}"
+repo="${DOTFILES_REPO:-}"
+# The live checkout is the one ~/.local/bin/machine links into; ~/dotfiles only without it.
+if [ -z "$repo" ] && [ -L "$HOME/.local/bin/machine" ]; then
+    live="$(readlink -f "$HOME/.local/bin/machine" 2>/dev/null || true)"
+    live="${live%/machine_cli/machine}"
+    if [ -n "$live" ] && [ -d "$live/home" ] && [ -e "$live/.git" ]; then
+        repo="$live"
+    fi
+fi
+repo="${repo:-$HOME/dotfiles}"
 state_file="${DOTFILES_UPDATE_STATE:-$HOME/.dotfiles-update-state}"
 last_check_file="${DOTFILES_UPDATE_LAST_CHECK:-$HOME/.dotfiles-update-last-check}"
 
 date -Is >"$last_check_file"
 
-if [ ! -d "$repo/.git" ]; then
+# .git is a file in a linked worktree
+if [ ! -e "$repo/.git" ]; then
     exit 0
 fi
 

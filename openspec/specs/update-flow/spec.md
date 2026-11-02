@@ -220,11 +220,14 @@ When a local `machine apply` or the apply step of `machine update` fails, includ
 - **THEN** nothing is reverted
 
 ### Requirement: Relevant system changes only
-The update SHALL report a pending system update only when the files changed since the last successful Ansible run apply to this host, decided without root. A change to the feature table SHALL count only when it changes what Ansible reads.
+The update SHALL report a pending system update only when files changed since the last successful Ansible run apply to this host. Applicability SHALL be decided without root.
 
 #### Scenario: Always-relevant paths
 - **WHEN** playbooks, `ansible/tasks/`, `ansible/group_vars/` or the host config changed
 - **THEN** the change applies
+
+### Requirement: Feature table changes count only when relevant to Ansible
+A change to the feature table SHALL count as a pending system update only when it changes what Ansible reads.
 
 #### Scenario: Feature table changed only for the CLI
 - **WHEN** the only change to `ansible/group_vars/all/features.yml` is in keys that only the CLI reads (a feature's help text or dotfile groups)
@@ -255,7 +258,7 @@ The update SHALL report a pending system update only when the files changed sinc
 - **THEN** no system update is reported for it
 
 ### Requirement: Attention entry point
-`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action (pending system update, conflicts, diverging values, new local text in a conflicting file, failed update, Telegraf not working on a host with `monitoring`, a filesystem low on space or inodes, local-only keys or shell code in an env file, local SSH host blocks, a failed write to the SSH host list, SSH key files not pushed yet, hosts still taken from the replaced SSH config, a newly learned home gateway) and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
+`machine attention`, also run by `machine` without arguments, SHALL list every open item that needs manual action and guide the user through each with prompts. Background runs SHALL only record items and SHALL NOT prompt.
 
 #### Scenario: Open items exist
 - **WHEN** a user runs `machine attention` and items are open
@@ -456,7 +459,7 @@ The needs-attention reason for a blocked update SHALL name the number of incomin
 
 #### Scenario: Default status
 - **WHEN** a user runs `machine status` in a terminal
-- **THEN** it shows the branch and how far it is behind, the time of the last check, the attention reason with the next command, the incoming change count with the steps, counts of local changes, one host line (name, context, device, host config in sync), the features in columns and the dotfile groups on one line, and does not print the host config or the dotfile groups configuration in full
+- **THEN** it shows the path of the checkout it operates on, the branch and how far it is behind, the time of the last check, the attention reason with the next command, the incoming change count with the steps, counts of local changes, one host line (name, context, device, host config in sync), the features in columns and the dotfile groups on one line, and does not print the host config or the dotfile groups configuration in full
 
 #### Scenario: Verbose status
 - **WHEN** a user runs `machine status -v`

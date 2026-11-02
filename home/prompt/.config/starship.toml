@@ -1,4 +1,4 @@
-# Shared prompt for zsh and bash. The colour of the prompt character shows the shell and the
+# Shared prompt for zsh and bash. The color of the prompt character shows the shell and the
 # last exit status: zsh green / red, bash blue / orange. Starship has no module for both, so
 # the shells export one of the DOTFILES_PROMPT_* variables before each prompt (from
 # STARSHIP_CMD_STATUS) and one env_var module per state draws the character. Other shells

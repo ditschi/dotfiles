@@ -47,6 +47,9 @@ case "$(cat "$HOME/mode")" in
         /bin/sh -c 'echo $$ > "$HOME/reader.pid"; read -r line </dev/tty && echo "$line" >> "$HOME/stolen"' &
         sleep 30 ;;
     orphan) sleep 300 & echo $! > "$HOME/orphan.pid"; sleep 30 ;;
+    needterm)
+        [ -n "${TERM:-}" ] || echo "tput: No value for TERM and no -T specified" >&2
+        echo "DOTFILES_ZSH_LOADED=1 DOTFILES_ZSH_DEFERRED_LOADED=1" ;;
 esac
 """
 
@@ -441,6 +444,38 @@ def test_healthy_zsh_passes(env):
     result = check(environ)
     assert "rc=0" in result.stdout
     assert result.stderr == ""
+
+
+def test_check_without_term_behaves_like_a_login(env):
+    """The background update has no TERM; a real login always has one."""
+    home, _, environ = env
+    (home / "mode").write_text("needterm")
+    environ = {k: v for k, v in environ.items() if k != "TERM"}
+    result = check(environ, '_zhc_run_checks "$(command -v zsh)"')
+    assert "rc=0" in result.stdout, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("unit", ["dotfiles-update-check", "machine-disk-check"])
+def test_background_services_find_machine_without_a_desktop_session(unit):
+    service = (REPO / f"home/systemd/.config/systemd/user/{unit}.service").read_text()
+    path = next(
+        line for line in service.splitlines() if line.startswith("Environment=PATH=")
+    )
+    assert path.split("=", 2)[2].split(":")[:2] == [
+        "%h/.local/bin",
+        "%h/.local/share/mise/shims",
+    ]
+
+
+def test_work_update_job_uses_the_shell_proxy():
+    dropin = (
+        REPO
+        / "home/work/.config/systemd/user/dotfiles-update-check.service.d/proxy.conf"
+    )
+    shell = (REPO / "home/work/.shell/work/common/environment.sh").read_text()
+    proxy = shell.split("export http_proxy=", 1)[1].split()[0]
+    text = dropin.read_text()
+    assert f"https_proxy={proxy}" in text and f"HTTPS_PROXY={proxy}" in text
 
 
 @pytest.mark.parametrize(

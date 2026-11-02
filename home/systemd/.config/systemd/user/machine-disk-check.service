@@ -3,4 +3,6 @@ Description=Record filesystems low on space for the shell prompt
 
 [Service]
 Type=oneshot
+# machine runs through uv from ~/.local/bin; without a desktop session the user manager lacks it.
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=%h/.local/bin/machine disk --record

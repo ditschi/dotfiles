@@ -185,6 +185,25 @@ Work only in the worktree `/home/dci2lr/dotfiles/.worktrees/work-network-autocon
   ticket: work network reachable" and `work-net status` showed the running VPN
   client and 203 certificate days. 5.2 needs the units installed on the live host
   and real suspend/login cycles; it is left to the owner.
+- Live install (owner approved): branch committed, rebased onto `main` and
+  fast-forwarded into `/home/dci2lr/dotfiles`. `machine update --check` showed no
+  steps (the commits are local, not incoming), so the two steps `machine update`
+  runs for these paths were called through machine's own code: `run_dotfiles_apply()`
+  and `ensure_update_timer()`. Result: both units enabled and active, the cron block
+  and `setup-ensure-kerberos-cron` gone. Ansible was not needed (no system changes).
+- Found live: the owner's AD account cannot read the journal, so `work-net` now also
+  writes `~/.local/state/work-net/work-net.log` (owner-only, 1 MiB cap); tests keep
+  their state out of the real home. `pytest tests/unit/test_work_net.py -q`: 87
+  passed; pre-commit passed.
+- 5.2 live (detached test unit `/tmp/wn-live-test.sh`, ends with the VPN up):
+  disconnect by full path (a drop) → the watcher reconnected in 21 s; `work-net vpn
+  disconnect` → still disconnected after 140 s (log: "wait: paused after a manual
+  disconnect"); `work-net vpn connect` → "VPN watcher resumed (manual connect)",
+  connected in 13 s. The password occurs 0 times in the log; `USE_KEYRING=0` is set.
+  The watcher's own connect during the test hit the 120 s timeout because the test
+  disconnected while the OSD script waited for the network; it was stopped and not
+  counted, as specified. Still open: suspend and wake, login with a locked keyring,
+  logout with the VPN up.
 
 ## Workflow follow-up
 

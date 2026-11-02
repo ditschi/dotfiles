@@ -36,6 +36,41 @@ INFLUX_KEYS = {
 
 
 class BwClientMixin:
+    def _local_bitwarden_settings(self) -> Dict[str, str]:
+        """Read BW/Node local settings from ~/.env.local without executing it."""
+        local = self.home / ".env.local"
+        if not local.is_file():
+            return {}
+        settings: Dict[str, str] = {}
+        for line in local.read_text().splitlines():
+            match = re.match(
+                r"^\s*(?:export\s+)?"
+                r"(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)=(.*)$",
+                line,
+            )
+            if not match:
+                continue
+            key = match.group(1)
+            try:
+                value = shlex.split(match.group(2), comments=True)
+            except ValueError:
+                die(f"cannot parse {key} in {local}; repair it first")
+            if len(value) != 1:
+                die(f"expected one literal value for {key} in {local}")
+            settings[key] = value[0]
+        return settings
+
+    def _prefer_saved_session_when_env_is_stale(self) -> bool:
+        """When env BW_SESSION is stale, try ~/.env.local before prompting."""
+        current = os.environ.get("BW_SESSION")
+        if not current:
+            return False
+        saved = self._local_bitwarden_settings().get("BW_SESSION")
+        if not saved or saved == current:
+            return False
+        os.environ["BW_SESSION"] = saved
+        return self.bitwarden_session_valid()
+
     def unlock_bitwarden(
         self,
         *,
@@ -56,6 +91,15 @@ class BwClientMixin:
             and os.environ.get("BW_SESSION")
             and not self.bitwarden_session_valid()
         ):
+            if self._prefer_saved_session_when_env_is_stale():
+                self.clear_bitwarden_notice()
+                result = system.run(["bw", "sync"], check=False, capture=True)
+                if result.returncode:
+                    log(
+                        "WARNING: Bitwarden sync failed; check server, network and unlock session"
+                    )
+                    return False
+                return True
             log("saved BW_SESSION is expired or invalid; unlocking again")
             os.environ.pop("BW_SESSION")
         if not os.environ.get("BW_SESSION"):
@@ -173,6 +217,8 @@ class BwClientMixin:
         self.load_local_bitwarden_settings()
         if self.bitwarden_session_valid():
             return True
+        if self._prefer_saved_session_when_env_is_stale():
+            return True
         if os.environ.get("BW_SESSION"):
             log("saved BW_SESSION is expired or invalid; log in again")
             os.environ.pop("BW_SESSION")
@@ -190,24 +236,8 @@ class BwClientMixin:
 
     def load_local_bitwarden_settings(self) -> None:
         """Export BW_SESSION and CA/proxy settings from ~/.env.local (env wins)."""
-        local = self.home / ".env.local"
-        if not local.is_file():
-            return
-        for line in local.read_text().splitlines():
-            match = re.match(
-                r"^\s*(?:export\s+)?"
-                r"(BW_SESSION|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY)=(.*)$",
-                line,
-            )
-            if not match:
-                continue
-            try:
-                value = shlex.split(match.group(2), comments=True)
-            except ValueError:
-                die(f"cannot parse {match.group(1)} in {local}; repair it first")
-            if len(value) != 1:
-                die(f"expected one literal value for {match.group(1)} in {local}")
-            os.environ.setdefault(match.group(1), value[0])
+        for key, value in self._local_bitwarden_settings().items():
+            os.environ.setdefault(key, value)
 
     def saved_bitwarden_session(self) -> bool:
         """True when ~/.env.local sets BW_SESSION."""

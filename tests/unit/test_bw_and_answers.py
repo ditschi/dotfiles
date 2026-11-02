@@ -476,6 +476,38 @@ def test_unlock_reuses_a_saved_session_unless_expired(tmp_path, monkeypatch, val
     assert os.environ["BW_SESSION"] == ("saved" if valid else "fresh")
 
 
+def test_unlock_prefers_saved_session_when_inherited_env_session_is_stale(
+    tmp_path, monkeypatch
+):
+    cli, machine = isolated_machine(tmp_path, monkeypatch)
+    (tmp_path / ".env.local").write_text("export BW_SESSION=saved\n")
+    monkeypatch.setenv("BW_SESSION", "stale")
+    monkeypatch.setattr(cli.system, "is_tty", lambda: True)
+    monkeypatch.setattr(cli.system, "have", lambda _: True)
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        if args == ["bw", "status"]:
+            output = json.dumps(
+                {
+                    "status": (
+                        "unlocked"
+                        if os.environ.get("BW_SESSION") == "saved"
+                        else "locked"
+                    )
+                }
+            )
+        else:
+            output = ""
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(cli.system, "run", run)
+    assert machine.unlock_bitwarden()
+    assert ["bw", "unlock", "--raw"] not in commands
+    assert os.environ["BW_SESSION"] == "saved"
+
+
 @pytest.mark.parametrize("answer", [True, False])
 def test_fresh_unlock_offers_to_save_the_session_once(tmp_path, monkeypatch, answer):
     cli, machine = isolated_machine(tmp_path, monkeypatch)

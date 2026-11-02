@@ -7,7 +7,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 from machine_loader import load_machine_module
 from package_sets import REPO
 from test_ssh_host_keys import fingerprint, make_key
@@ -77,6 +76,10 @@ def note_text(store: Path, name: str = NOTE) -> str:
 
 
 def ssh_g(config: Path, host: str) -> dict:
+    # ssh rejects group-writable config files, which umask 002 would create.
+    for path in config.parent.rglob("*"):
+        if path.is_file():
+            path.chmod(0o600)
     out = subprocess.run(
         ["ssh", "-G", "-F", str(config), host],
         capture_output=True,

@@ -186,7 +186,11 @@ def test_zsh_loader_ignores_unregistered_module(tmp_path: Path):
             'print -r -- "LOADED:$DOTFILES_ZSH_LOADED DEFERRED:$DOTFILES_ZSH_DEFERRED_LOADED"',
         ],
         env={
-            **os.environ,
+            **{
+                k: v
+                for k, v in os.environ.items()
+                if k not in ("ZSH", "DOTFILES_SHELL")
+            },
             "HOME": str(home),
             "ZDOTDIR": str(home),
             "XDG_DATA_HOME": str(home / ".local/share"),

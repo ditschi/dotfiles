@@ -78,6 +78,186 @@ class _Host(DotfilesMixin):
         self.home = home
 
 
+@pytest.fixture
+def ssh_dotfile_host(tmp_path, monkeypatch):
+    from machine_cli import dotfiles
+
+    repo, _cli = _checkout_with_cli(tmp_path)
+    source = repo / "home/core/.ssh/config"
+    source.parent.mkdir(parents=True)
+    source.write_text("Host example\n    HostName example.invalid\n")
+    source.chmod(0o664)
+    home = tmp_path / "home"
+    home.mkdir()
+    host = _Host(home)
+    host.repo = repo
+    host.mise_local_config = tmp_path / "mise.local.toml"
+    host.mise_local_config.write_text(render_local_config(["core"]))
+    host.applied_host_path = tmp_path / "missing-host.yml"
+    host.current_context = lambda: "private"
+    host.current_device = lambda: "desktop"
+    host.apply_ssh_client = lambda: None
+    host.host_dotfile_groups = lambda: dotfile_groups(
+        host.current_context(), host.current_device(), []
+    )
+    target = home / ".ssh/config"
+
+    def run(args, **_kwargs):
+        if args[:3] == ["mise", "dot", "apply"]:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.is_symlink() and not target.exists():
+                target.symlink_to(source)
+
+    monkeypatch.setattr(dotfiles.system, "have", lambda _name: True)
+    monkeypatch.setattr(dotfiles.system, "run", run)
+    return host, source, target
+
+
+@pytest.mark.parametrize(
+    "context, device", [("private", "desktop"), ("work", "desktop"), ("", "container")]
+)
+def test_dotfile_apply_repairs_ssh_config_permissions(
+    ssh_dotfile_host, context, device
+):
+    import stat
+
+    host, source, target = ssh_dotfile_host
+    host.current_context = lambda: context
+    host.current_device = lambda: device
+    contents = source.read_text()
+    for mode in (0o664, 0o600, 0o664):
+        source.chmod(mode)
+        host.run_dotfiles_apply()
+        assert stat.S_IMODE(source.stat().st_mode) == 0o600
+        assert target.is_symlink() and target.resolve() == source.resolve()
+        assert source.read_text() == contents
+
+
+def test_ssh_permission_repair_preserves_unrelated_state(ssh_dotfile_host, monkeypatch):
+    import os
+    import stat
+
+    host, source, target = ssh_dotfile_host
+    source_owner = (source.stat().st_uid, source.stat().st_gid)
+    target.parent.mkdir()
+    key = target.parent / "id_ed25519"
+    key.write_text("test-only placeholder\n")
+    key.chmod(0o640)
+    sibling = source.with_name("other-config")
+    sibling.write_text("unchanged\n")
+    sibling.chmod(0o664)
+
+    def reject_umask_change(*_args):
+        pytest.fail("dotfile apply must not change the process umask")
+
+    monkeypatch.setattr(os, "umask", reject_umask_change)
+    host.run_dotfiles_apply()
+
+    assert (source.stat().st_uid, source.stat().st_gid) == source_owner
+    assert stat.S_IMODE(key.stat().st_mode) == 0o640
+    assert key.read_text() == "test-only placeholder\n"
+    assert stat.S_IMODE(sibling.stat().st_mode) == 0o664
+    assert sibling.read_text() == "unchanged\n"
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["missing", "dangling", "foreign", "regular", "unselected", "external-source"],
+)
+def test_ssh_permission_repair_skips_unmanaged_configs(
+    ssh_dotfile_host, monkeypatch, tmp_path, case
+):
+    import stat
+
+    from machine_cli import dotfiles
+
+    host, source, target = ssh_dotfile_host
+    foreign = tmp_path / "foreign-config"
+    foreign.write_text("host-local config\n")
+    foreign.chmod(0o664)
+    target.parent.mkdir()
+    if case == "dangling":
+        target.symlink_to(source)
+        source.unlink()
+    elif case == "foreign":
+        target.symlink_to(foreign)
+    elif case == "regular":
+        target.write_text("host-local config\n")
+        target.chmod(0o664)
+    elif case == "unselected":
+        target.symlink_to(source)
+        host.host_dotfile_groups = lambda: ["work"]
+    elif case == "external-source":
+        source.unlink()
+        source.symlink_to(foreign)
+        target.symlink_to(source)
+    monkeypatch.setattr(dotfiles, "clear_conflicting_targets", lambda *_args: [])
+    monkeypatch.setattr(dotfiles.system, "run", lambda *_args, **_kwargs: None)
+
+    host.run_dotfiles_apply()
+
+    assert stat.S_IMODE(foreign.stat().st_mode) == 0o664
+    if source.is_file():
+        assert stat.S_IMODE(source.stat().st_mode) == 0o664
+    if case == "regular":
+        assert not target.is_symlink()
+        assert target.read_text() == "host-local config\n"
+        assert stat.S_IMODE(target.stat().st_mode) == 0o664
+
+
+def test_ssh_permission_repair_resolves_checkout_alias(ssh_dotfile_host, tmp_path):
+    import stat
+
+    host, source, target = ssh_dotfile_host
+    alias = tmp_path / "checkout-alias"
+    alias.symlink_to(host.repo, target_is_directory=True)
+    host.repo = alias
+    target.parent.mkdir()
+    target.symlink_to(alias / "home/core/.ssh/config")
+
+    host.run_dotfiles_apply()
+
+    assert target.is_symlink() and target.resolve() == source.resolve()
+    assert stat.S_IMODE(source.stat().st_mode) == 0o600
+
+
+def test_ssh_permission_repair_propagates_chmod_failure(ssh_dotfile_host, monkeypatch):
+    host, source, _target = ssh_dotfile_host
+    original_chmod = Path.chmod
+
+    def chmod(path, mode, **kwargs):
+        if path == source:
+            raise PermissionError("cannot secure SSH config")
+        return original_chmod(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", chmod)
+
+    with pytest.raises(PermissionError, match="cannot secure SSH config"):
+        host.run_dotfiles_apply()
+
+
+def test_failed_dotfile_apply_does_not_repair_permissions(
+    ssh_dotfile_host, monkeypatch
+):
+    import stat
+    import subprocess
+
+    from machine_cli import dotfiles
+
+    host, source, target = ssh_dotfile_host
+    target.parent.mkdir()
+    target.symlink_to(source)
+
+    def run(args, **_kwargs):
+        if args[:3] == ["mise", "dot", "apply"]:
+            raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(dotfiles.system, "run", run)
+    with pytest.raises(subprocess.CalledProcessError):
+        host.run_dotfiles_apply()
+    assert stat.S_IMODE(source.stat().st_mode) == 0o664
+
+
 @pytest.mark.parametrize(
     "context, device, email",
     [

@@ -7,6 +7,8 @@ Shared shell configuration, user tools and machine setup for work and private ho
 - **Shared settings:** managed files in `$HOME` are symlinks into this checkout. Edit, commit and push here; update the other hosts to receive the change.
 - **Local settings and secrets:** stay in host-local files. User tools work without root; Ansible handles system changes and can be disabled per host with `ansible: false`.
 
+After linking dotfiles, `machine` sets the managed SSH config's checkout target to mode `0600` (owner-only), keeping `~/.ssh/config` as a symlink. This repairs group-writable checkout permissions that OpenSSH rejects; unrelated SSH files and keys are unchanged.
+
 [Quick start](#quick-start-on-the-new-host-no-control-node) · [Common commands](#day-to-day) · [How it fits together](#how-the-pieces-fit) · [Layout](#layout) · [Documentation](#documentation)
 
 ## How the pieces fit

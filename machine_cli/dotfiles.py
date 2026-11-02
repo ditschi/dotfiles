@@ -243,6 +243,18 @@ class DotfilesMixin:
         # --yes: on a terminal mise asks before replacing live targets, even under
         # `machine setup --yes`; conflicting files were already moved aside above.
         system.run(["mise", "dot", "apply", "--prune", "--yes"], env=env, cwd=self.repo)
+        ssh_config = self.home / ".ssh/config"
+        if ssh_config.is_symlink() and ssh_config.is_file():
+            resolved_config = ssh_config.resolve()
+            repo = Path(self.repo).resolve()
+            for group in self.host_dotfile_groups():
+                source = repo / "home" / group / ".ssh/config"
+                if (
+                    source.resolve() == resolved_config
+                    and repo in resolved_config.parents
+                ):
+                    resolved_config.chmod(0o600)
+                    break
         for link in sweep_dangling_links(self.home, Path(self.repo)):
             log(f"removed dangling link {link}")
         self.apply_ssh_client()

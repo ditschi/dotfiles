@@ -126,7 +126,7 @@ Work only in the worktree `/home/dci2lr/dotfiles/.worktrees/work-network-autocon
 - [x] 5.1 Run `pytest tests/unit -q` (the CLI, update flow and dotfile groups changed
   across modules) and `pre-commit run --files` with every changed and new path,
   including the change artifacts. Record commands and results.
-- [ ] 5.2 On the work laptop with the units from the worktree: suspend for about 1
+- [x] 5.2 On the work laptop with the units from the worktree: suspend for about 1
   minute and confirm the VPN recovers without a new connect; run
   `sudo -n /opt/osd/osd-wifivpn-package/disconnect_vpn.sh` (a drop) and confirm the
   watcher reconnects within about a minute; run `osd-vpn-disconnect` and confirm it
@@ -204,6 +204,22 @@ Work only in the worktree `/home/dci2lr/dotfiles/.worktrees/work-network-autocon
   disconnected while the OSD script waited for the network; it was stopped and not
   counted, as specified. Still open: suspend and wake, login with a locked keyring,
   logout with the VPN up.
+- 5.2 by the owner: suspend about 2 minutes (GNOME menu; the lid is ignored by the
+  feature `lid-switch`) → after wake "wait: VPN client is reconnecting by itself"
+  (14:22:38), own reconnect did not succeed, watcher connect at 14:23:21, tunnel up
+  14:23:28, about a minute after wake. Logout and login → VPN stayed connected, the
+  watcher started again at login and found the work network reachable.
+- Improvements from these logs: during the grace the watcher now checks every 5 s
+  (connects at once when the old client gave up; a repeated wait is logged once), and
+  the watcher's connect counts as done when the tunnel is up and the KDC answers,
+  instead of waiting for the OSD script's ping loop (cause of the earlier 120 s
+  timeout). `pytest tests/unit/test_work_net.py -q`: 91 passed; pre-commit and strict
+  validation passed; deployed by fast-forward and a watcher restart.
+- Locked keyring, live (`/tmp/wn-locked-test.sh`): default collection locked over
+  D-Bus, `get-password` still returned the env password, a drop by full path was
+  reconnected by the watcher in 22 s ("VPN connected" after 17 s) with no dialog.
+  Unlocking it again by script (`gnome-keyring-daemon --unlock`) did not work for the
+  running daemon; the owner unlocks it at the next prompt.
 
 ## Workflow follow-up
 

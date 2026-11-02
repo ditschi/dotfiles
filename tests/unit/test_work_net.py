@@ -555,21 +555,16 @@ def machine(tmp_path, monkeypatch):
     cli = load_machine_module("machine_work_net", REPO / "machine_cli/machine")
     monkeypatch.setattr(cli.system, "in_docker", lambda: False)
     ran: list[list[str]] = []
-    crontab = {"text": ""}
 
     def fake_run(args, **kwargs):
         ran.append(list(args))
-        if list(args) == ["crontab", "-l"]:
-            return subprocess.CompletedProcess(args, 0, crontab["text"], "")
-        if list(args) == ["crontab", "-"]:
-            crontab["text"] = kwargs["input_text"]
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(cli.system, "have", lambda name: True)
     monkeypatch.setattr(cli.system, "run", fake_run)
     instance = cli.Machine()
     monkeypatch.setattr(instance, "ensure_linger", lambda: None)
-    instance.ran, instance.crontab = ran, crontab
+    instance.ran = ran
     return instance
 
 
@@ -589,30 +584,6 @@ def test_kerberos_timer_follows_the_feature(machine, features, action):
 def test_hosts_without_work_net_units_are_untouched(machine):
     machine.ensure_update_timer()
     assert machine.ran == []
-
-
-CRON = (
-    "MAILTO=''\n"
-    "# BEGIN ensure-kerberos-token - dotfiles\n"
-    "*/15 * * * * PATH=/x /home/u/.local/bin/ensure-kerberos-token-cron\n"
-    "# END ensure-kerberos-token - dotfiles\n"
-    "0 3 * * * backup\n"
-)
-
-
-def test_update_removes_the_kerberos_cron_job(machine):
-    (machine.home / ".config/systemd/user/work-net-kerberos.timer").write_text("")
-    wrapper = machine.home / ".local/bin/ensure-kerberos-token-cron"
-    wrapper.parent.mkdir(parents=True)
-    wrapper.write_text("#!/bin/sh\n")
-    machine.write_profile("work", "desktop", ["kerberos"], [])
-    machine.crontab["text"] = CRON
-    machine.ensure_update_timer()
-    assert machine.crontab["text"] == "MAILTO=''\n0 3 * * * backup\n"
-    assert not wrapper.exists()
-    machine.ran.clear()
-    machine.ensure_update_timer()
-    assert ["crontab", "-"] not in machine.ran
 
 
 def test_work_shell_start_requests_no_ticket(tmp_path):

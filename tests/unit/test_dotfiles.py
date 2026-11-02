@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -101,16 +102,45 @@ def ssh_dotfile_host(tmp_path, monkeypatch):
         host.current_context(), host.current_device(), []
     )
     target = home / ".ssh/config"
+    host.mise_calls = []
+    host.mise_status_rc = 0
 
-    def run(args, **_kwargs):
+    def run(args, **kwargs):
+        host.mise_calls.append((list(args), kwargs))
         if args[:3] == ["mise", "dot", "apply"]:
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.is_symlink() and not target.exists():
                 target.symlink_to(source)
+        rc = host.mise_status_rc if args[:3] == ["mise", "dot", "status"] else 0
+        return subprocess.CompletedProcess(args, rc, "~ prompt missing\n", "")
 
     monkeypatch.setattr(dotfiles.system, "have", lambda _name: True)
     monkeypatch.setattr(dotfiles.system, "run", run)
     return host, source, target
+
+
+def test_dotfile_apply_passes_the_resolved_checkout_to_mise(ssh_dotfile_host, tmp_path):
+    host, _source, _target = ssh_dotfile_host
+    alias = tmp_path / "home-alias"
+    alias.symlink_to(host.repo, target_is_directory=True)
+    host.repo = alias
+
+    host.run_dotfiles_apply()
+
+    resolved = str(alias.resolve())
+    mise = [(a, kw) for a, kw in host.mise_calls if a[:2] == ["mise", "dot"]]
+    assert mise and all(
+        kw["env"]["MISE_DOTFILES_ROOT"] == resolved and str(kw["cwd"]) == resolved
+        for _a, kw in mise
+    )
+
+
+def test_dotfile_apply_fails_when_files_are_still_missing(ssh_dotfile_host):
+    host, _source, _target = ssh_dotfile_host
+    host.mise_status_rc = 1
+
+    with pytest.raises(SystemExit):
+        host.run_dotfiles_apply()
 
 
 @pytest.mark.parametrize(
@@ -192,7 +222,11 @@ def test_ssh_permission_repair_skips_unmanaged_configs(
         source.symlink_to(foreign)
         target.symlink_to(source)
     monkeypatch.setattr(dotfiles, "clear_conflicting_targets", lambda *_args: [])
-    monkeypatch.setattr(dotfiles.system, "run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        dotfiles.system,
+        "run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
 
     host.run_dotfiles_apply()
 

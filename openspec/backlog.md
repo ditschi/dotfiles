@@ -60,6 +60,16 @@ Keep Ansible but thin the roles; find a route for work machines without root; ru
 
 Investigation: provisioning 1-5; architecture-and-profiles A1-A6; kerberos-and-quality B1-B3.
 
+### SSH agent forwarding for trusted hosts
+
+Requested 2026-11-03 from the homelab SOPS/GitOps plan (homelab repo `docs/compose-gitops.md`): servers get a read-only GitHub deploy key, and commits made on a server are pushed with the personal key through agent forwarding, so no server holds a key that can write to GitHub.
+
+To settle:
+- Where `ForwardAgent yes` is set. The `ssh-client-config` spec forbids it under `Host *` and leaves it to `config.local`; decide whether the Bitwarden host list (`ssh/<class>/config`) may mark trusted hosts (homeserver, netmaster) instead. Oracle (public) stays opt-in with `ssh -A`.
+- Which agent holds the key. Keys have no passphrase and `AddKeysToAgent` is not set, so a running agent may hold nothing to forward; check desktop (GNOME keyring / ssh-agent) and headless hosts.
+- Confirm-on-use (`ssh-add -c`) for forwarded keys, and whether it works without a GUI askpass.
+- Whether the per-host GitHub key that the SSH key flow registers on servers should be dropped once deploy keys and forwarding exist (a server key with write access to every repo is the risk this replaces).
+
 ### Bitwarden CLI: evaluate `rbw` as a full replacement
 
 Only switch if `rbw` can replace `bw` completely; two tools would mean maintaining the logic twice. Until then the CLI keeps `bw` only.

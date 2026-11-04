@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import difflib
 import fcntl
 import getpass
 import json
@@ -13,6 +14,9 @@ import types
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, List, Optional, Tuple
+
+from rich.console import Console
+from rich.text import Text
 
 from . import core, events, local_overrides, system
 from .core import die, log, parse_profile_file, parse_profile_text, warn
@@ -88,9 +92,18 @@ class UpdateMixin:
             return None
 
         def resolve(kind: str, key: str, shared_text: str, local_text: str) -> str:
-            print(
-                f"\nConflict in {key}:\n  shared: {shared_text.strip()}\n  local:  {local_text.strip()}"
+            print(f"\nConflict in {key}:")
+            diff = difflib.unified_diff(
+                shared_text.strip().splitlines(),
+                local_text.strip().splitlines(),
+                "shared",
+                "local",
+                lineterm="",
             )
+            console = Console(highlight=False, soft_wrap=True)
+            for line in diff:
+                style = {"-": "red", "+": "green", "@": "cyan"}.get(line[0])
+                console.print(Text(line, style=style))
             return system.choose(
                 "Keep which value", ["local", "shared", "skip"], "skip"
             )

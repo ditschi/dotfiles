@@ -38,3 +38,7 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 
 - Whenever you ask what to do next or offer choices, number the options (1, 2, 3, …) so the user can answer with a single number. Mark the recommended option.
 - When you summarise what was done or is still open for a task list, name the file that holds the task numbers (for example `openspec/changes/<change>/tasks.md`) once in that message, so the numbers can be looked up.
+
+## File links in chat
+
+- Link text is the path relative to the repository (or worktree) root; the link target is the absolute path, e.g. `[home/core/.zshrc](/home/ditschi/dotfiles/.worktrees/<change-name>/home/core/.zshrc)` in a worktree, or `[home/core/.zshrc](/home/ditschi/dotfiles/home/core/.zshrc)` in the live checkout. Relative targets resolve against the live checkout and break for files that exist only in a worktree.

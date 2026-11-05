@@ -80,6 +80,10 @@ Still open after that fix: `add` and `edit` only handle Login items, not secure 
 
 Revisit when `doy/rbw#385` is fixed and released.
 
+### Take over host setup from the homelab Ansible
+
+The homelab repo is shrinking its Ansible to server roles (K3s, data mounts, restic timer, restore, deploy keys; change `shrink-homelab-ansible` in the homelab repo) and leaves the machine and its user to these dotfiles. Needed here: disable SSH password and keyboard-interactive login in `sshd_home` (the homelab `access` role did this but was never applied); enable `monitoring` and `sshd-home` for oracle in `machine/hosts/privatecloud.yml`; set the inotify limits (`fs.inotify.max_user_instances=1024`, `max_user_watches=524288`) on Docker hosts. The dotfiles run first, homelab `site.yml` after; neither calls the other, and only the dotfiles manage `authorized_keys` exclusively (homelab only adds per-host deploy keys).
+
 ## New Features
 
 ### Automatic VPN on work machines outside the corporate network

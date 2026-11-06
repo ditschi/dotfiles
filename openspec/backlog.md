@@ -80,9 +80,18 @@ Still open after that fix: `add` and `edit` only handle Login items, not secure 
 
 Revisit when `doy/rbw#385` is fixed and released.
 
-### Take over host setup from the homelab Ansible
+### Take over all host setup from the homelab repo
 
-The homelab repo is shrinking its Ansible to server roles (K3s, data mounts, restic timer, restore, deploy keys; change `shrink-homelab-ansible` in the homelab repo) and leaves the machine and its user to these dotfiles. Needed here: disable SSH password and keyboard-interactive login in `sshd_home` (the homelab `access` role did this but was never applied); enable `monitoring` and `sshd-home` for oracle in `machine/hosts/privatecloud.yml`; set the inotify limits (`fs.inotify.max_user_instances=1024`, `max_user_watches=524288`) on Docker hosts. The dotfiles run first, homelab `site.yml` after; neither calls the other, and only the dotfiles manage `authorized_keys` exclusively (homelab only adds per-host deploy keys).
+Owner decision 2026-11-06: the homelab repo removes its Ansible completely (change `retire-homelab-ansible` there; it replaces `shrink-homelab-ansible`). It was never applied. Everything that must stay true on a host moves here, because the dotfiles run on every host and update on login. One-off homelab actions (K3s install or join, restore from the NAS, the NAS NFS mount and the Oracle repo pull on homeserver, the Oracle restic script) stay in the homelab repo as scripts or `homelab` CLI commands. Neither repo calls the other; the dotfiles run first on a new or rebuilt host.
+
+Needed here:
+- `sshd_home`: disable SSH password and keyboard-interactive login (the homelab `access` role was meant to do this but was never applied).
+- oracle (`machine/hosts/privatecloud.yml`): enable `monitoring` and `sshd-home`.
+- inotify limits on every server that runs containers (Docker hosts and the K3s nodes homeserver and netmaster, where they are set by hand today in `/etc/sysctl.d/60-k3s-inotify.conf`): `fs.inotify.max_user_instances=1024`, `fs.inotify.max_user_watches=524288`. Only raise, never lower: since Linux 5.11 the kernel default for `max_user_watches` scales with RAM (about 1 % of RAM, up to 1048576), so on a large host a fixed 524288 would cut the default and hurt IDE and file watchers (for example a remote work VM with VS Code). The limits are caps, not reservations; a watch costs about 1 KB of kernel memory only while it exists.
+- CI deploy key on the compose hosts (oracle, contabo, later homeserver and netmaster) through `machine/ssh_keys` and `ssh_allow_from`; on contabo it is in `authorized_keys` by hand today. Note: `sshd_home` adds keys with `exclusive: false`, so keys added by hand stay until removed.
+- Feature `homelab-node` (was planned as a homelab Ansible role in homelab `docs/compose-gitops.md`): sops as a pinned release binary with checksum, the host age key from Bitwarden (`homelab-age-<host>`, hidden field `private_key`) in `~/.config/sops/age/keys.txt` (mode 600), a read-only GitHub deploy key, the clone at `/opt/homelab`, and the `homelab` CLI on `PATH`. contabo has sops and its age key by hand today.
+- `machine env pull` writes the personal age key (`homelab-age-key`) to `~/.config/sops/age/keys.txt` on laptops.
+- Clean-up: remove the stub `ansible/homelab.yml`, the `homelab` entry in `PLAYBOOKS` (`machine_cli/core.py`), the special case in `machine_cli/tools.py`, its lint entry in `.github/workflows/verify.yml` and `noxfile.py`, and the notes in `Readme.md`, `ansible/README.md` and `machine/hosts/README.md`.
 
 ## New Features
 

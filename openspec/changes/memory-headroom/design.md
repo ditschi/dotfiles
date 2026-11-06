@@ -37,9 +37,11 @@ systemd and kernel behaviour this design relies on (man pages of systemd 255 on 
 
 ## Decisions
 
-1. **The three settings are reproduced as the owner applied them on the L13.** Swap file on disk at 16 GiB with priority below zram, `ManagedOOMMemoryPressureLimit=80%` for `user@.service`, and `MemoryHigh=4G` for every scope of the Claude desktop app, both under the GNOME launcher name (`app-gnome-com.anthropic.Claude-`) and the plain one (`app-com.anthropic.Claude-`).
+1. **The three settings are reproduced as the owner applied them on the L13.** Swap file on disk at 16 GiB with priority below zram, `ManagedOOMMemoryPressureLimit=80%` for `user@.service`, and `MemoryHigh` for every scope of the Claude desktop app (applied as 4G, raised to 8G by decision 4), both under the GNOME launcher name (`app-gnome-com.anthropic.Claude-`) and the plain one (`app-com.anthropic.Claude-`).
 2. **The Claude app is slowed down, never killed by the dotfiles' own settings.** Nothing in this change kills, stops or restarts the app; every setting either adds room (swap) or throttles (`MemoryHigh`).
 3. **Containers never get it.** A container sees the host's memory and swap and has no own systemd user manager to configure.
+
+4. **`MemoryHigh=8G` for both Claude scopes (owner decision, 2026-11-06).** Measured on the L13 the same day: the scope `app-gnome-com.anthropic.Claude-*` holds only the Electron UI (1.0 GB now, peak 1.8 GB); the scope `app-com.anthropic.Claude-*` holds every Claude Code session and everything it starts (shells, ssh, python3, tests, builds), with a peak of 6.2 GB before any limit (the python3 process the kernel killed at 00:48 ran there). `MemoryHigh` throttles as soon as the scope exceeds it, even with free RAM, so 4G would slow normal agent work. With the 16 GiB swap file and the oomd limit at 80 % in place, the limit is only a brake against a runaway scope; 8G (a little over half of 14 GB RAM) is above the measured peak and still leaves room for the rest of the session. One value for both drop-ins keeps the group simple; the UI scope never reaches it. `MemoryLow=` protection for Claude was considered and rejected: without root it is ineffective, because the ancestors `user.slice` and `user@.service` have no `memory.low`.
 
 ## Implementation outline
 
@@ -60,7 +62,7 @@ This outline follows the recommended options in Open Questions; task 0 confirms 
   - `app-gnome-com.anthropic.Claude-.scope.d/50-memory-high.conf`
   - `app-com.anthropic.Claude-.scope.d/50-memory-high.conf`
 
-  each with `[Scope]` and `MemoryHigh=4G` and a comment that names this change. The existing `update timers` step reloads the user manager; the limit applies to the next start of the app (a running scope keeps its properties until then; `systemctl --user set-property` is not needed).
+  each with `[Scope]` and `MemoryHigh=8G` and a comment that names this change. The existing `update timers` step reloads the user manager; the limit applies to the next start of the app (a running scope keeps its properties until then; `systemctl --user set-property` is not needed).
 - **Docs**: a paragraph in `docs/features.md` (what the feature does, how to check: `swapon --show`, `systemctl show user@$(id -u).service -p ManagedOOMMemoryPressureLimit`, `systemctl --user show 'app-*Claude*' -p MemoryHigh`, `journalctl -k | grep -i oom`), the swap section of `docs/thinkpad-l13-yoga-gen2.md`, the role line in `Readme.md`, and `ansible/roles/memory_headroom/README.md` in the format of the other role READMEs.
 
 ## Alternatives considered
@@ -83,14 +85,14 @@ These are listed for the owner's decision in task 0; none of them is owner-confi
   - `mkswap` or `swapon` of the new file fails: the old file stays active, `<path>.new` is removed, exit code non-zero;
   - no active swap file: the configured path is created.
 - New `tests/unit/test_memory_headroom_role.py` (pattern of `tests/unit/test_monitoring_role.py`): the role, run on localhost with `machine_manage_services: false` and paths under `tmp_path`, writes the oomd drop-in with `ManagedOOMMemoryPressureLimit=80%` and the fstab line, and does not run the swap script; a second run reports no change.
-- Dotfile group: a check (in `tests/unit/test_dotfiles.py` or the new role test) that both drop-ins exist, contain `[Scope]` and `MemoryHigh=4G`, and that `systemd-analyze verify` accepts them where it is available (skip otherwise).
+- Dotfile group: a check (in `tests/unit/test_dotfiles.py` or the new role test) that both drop-ins exist, contain `[Scope]` and `MemoryHigh=8G`, and that `systemd-analyze verify` accepts them where it is available (skip otherwise).
 - Integration: `tests/hosts/ci-home-laptop.yml` gets `memory-headroom`; `tests/integration/test_host_yaml_install.py` asserts the oomd drop-in exists, that no swap file was created in the container, and that the second apply is idempotent.
 
 ## Risks / Trade-offs
 
 - [`MemoryHigh` makes the Claude app the largest user of swap, and a swap-based systemd-oomd kill (`ManagedOOMSwap=kill` on `-.slice`) would then pick it first] → On homeserver the shipped default is `ManagedOOMSwap=auto` (disabled). Task 1 checks the value on the L13 and the T480; if it is `kill`, task 0 decides whether the role also sets `ManagedOOMSwap=auto` on `-.slice`.
 - [More swap on disk means the session can get very slow before anything is killed] → That is the owner's stated preference ("rather slower than killed"). systemd-oomd at 80 % pressure for 20 s still ends a true runaway.
-- [`MemoryHigh` throttles the app hard when its working set alone exceeds 4 GiB] → The observed size was about 1.7 GB; Open Question 2.
+- [`MemoryHigh` throttles regardless of free RAM, so a too-low value slows normal Claude Code work] → 8G is above the measured peak of 6.2 GB (decision 4); revisit if `memory.events` shows `high` events in normal use.
 - [The kernel OOM killer can still pick the Claude app when RAM, zram and 16 GiB of disk swap are all full] → No unprivileged setting prevents that (see Context); Open Question 3.
 - [Growing the swap file costs 12 GiB of disk on the L13 and similar hosts] → The script keeps at least 20 GiB and 5 % free and never shrinks; the disk-space check warns independently.
 - [A failure between `swapon` of the new file and the rename] → The old file is only turned off after the new one is active, and a failure rolls back to the old file.
@@ -118,7 +120,7 @@ ditschi-ThinkPad-T480 has no host config in `machine/hosts/`; it gets the featur
 ## Open Questions
 
 1. **Swap size rule.** Recommended: a fixed 16 GiB (variable `memory_headroom_swapfile_size_gib`), grow only, and skip when less than 20 GiB and 5 % of the filesystem would remain free. Reason: 16 GiB is the size proven on the L13, and the free-space guard protects small disks without a formula that nobody has validated. Alternatives: the RAM size (14 GiB on the L13), RAM plus zram, or a share of the free disk space.
-2. **`MemoryHigh=4G` on hosts with less or more RAM.** Recommended: keep the fixed 4G. Reason: it is sized from the app's own working set (about 1.7 GB observed), not from the host; a percentage (`MemoryHigh=` accepts a share of physical RAM, 4G is about 29 % on the L13) would throttle the app on an 8 GB host and do nothing useful on a 32 GB host. Revisit if the app grows beyond 3 GB in normal use.
+2. **`MemoryHigh` on hosts with less or more RAM.** Answered for the value (decision 4: 8G). Still open: whether hosts with clearly less RAM than 14 GB need a lower value, or a share of RAM (`MemoryHigh=` accepts a percentage) instead. Recommended: keep the fixed 8G until such a host gets the feature.
 3. **Further protection of the Claude app.** Recommended: none in this change; measure first. Facts found: an unprivileged user cannot lower `oom_score_adj` below the minimum a privileged process set (`proc_pid_oom_score_adj(5)`), so the user cannot protect the app from the kernel OOM killer. `ManagedOOMPreference=avoid` is not simply ignored for user cgroups: per `systemd.resource-control(5)` (systemd 255) it is respected for memory-pressure kills when the cgroup and the monitored ancestor have the same owner (Claude scope under `user@.service`), and ignored for swap-based kills on `-.slice`. Options for later: `ManagedOOMPreference=avoid` in the same Claude drop-ins (cheap; verify on systemd 259 in task 1), raising the `oom_score_adj` of Firefox content processes from the user side (allowed, but needs a watcher, because `OOMScoreAdjust=` is an exec setting and not available for scopes), or a root-side setting through Ansible that lowers the Claude app's `oom_score_adj` (needs a root helper per app start).
 4. **oomd limit 80 % or oomd off for `user@.service`.** Recommended: 80 % as applied on the L13. Reason: it keeps systemd-oomd as the safety net for a runaway process while tolerating the swapping that the larger swap file allows. Turning oomd off for user sessions would leave only the kernel OOM killer, which picked the Claude app in the incident.
 5. **The `python3` process (about 1.1 GB).** Recommended: no limit now; find out which program it was before deciding. Reason: unknown process, and a limit without knowing its scope name would not apply.

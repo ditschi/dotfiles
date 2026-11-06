@@ -6,13 +6,13 @@
 
 ## 1. Verification on the L13
 
-- [ ] 1.1 On ThinkPad-L13-Yoga-Gen-2 (systemd 259), with the Claude desktop app running: check that `systemctl --user show <Claude scope> -p MemoryHigh` reports 4 GiB from the hand-made drop-ins, that `systemctl show user@$(id -u).service -p ManagedOOMMemoryPressureLimit` reports 80 %, that `swapon --show` lists zram at priority 100 and `/swap.img` with 16 GiB below it, and read `ManagedOOMSwap` of `-.slice` (`systemctl show -- -.slice -p ManagedOOMSwap`). Check in `systemd.resource-control(5)` of systemd 259 how `ManagedOOMPreference=` is treated for user cgroups. Replace the matching Assumptions in design.md with the verified facts.
+- [ ] 1.1 On ThinkPad-L13-Yoga-Gen-2 (systemd 259), with the Claude desktop app running: check that `systemctl --user show <Claude scope> -p MemoryHigh` reports 8 GiB from the hand-made drop-ins, that `systemctl show user@$(id -u).service -p ManagedOOMMemoryPressureLimit` reports 80 %, that `swapon --show` lists zram at priority 100 and `/swap.img` with 16 GiB below it, and read `ManagedOOMSwap` of `-.slice` (`systemctl show -- -.slice -p ManagedOOMSwap`). Check in `systemd.resource-control(5)` of systemd 259 how `ManagedOOMPreference=` is treated for user cgroups. Replace the matching Assumptions in design.md with the verified facts.
 
 ## 2. Feature and dotfile group
 
 - [ ] 2.1 Add tests to `tests/unit/test_features.py` for the table values of `memory-headroom` and its group (scenarios of `specs/feature-selection/spec.md`); verify they fail.
 - [ ] 2.2 Add the row `memory-headroom` to `ansible/group_vars/all/features.yml`; verify `pytest tests/unit/test_features.py -q` passes.
-- [ ] 2.3 Add the group `home/memory-headroom/.config/systemd/user/` with `app-gnome-com.anthropic.Claude-.scope.d/50-memory-high.conf` and `app-com.anthropic.Claude-.scope.d/50-memory-high.conf` (`[Scope]`, `MemoryHigh=4G`, a comment naming the reason), and a test that both exist with that content and pass `systemd-analyze verify` where available.
+- [ ] 2.3 Add the group `home/memory-headroom/.config/systemd/user/` with `app-gnome-com.anthropic.Claude-.scope.d/50-memory-high.conf` and `app-com.anthropic.Claude-.scope.d/50-memory-high.conf` (`[Scope]`, `MemoryHigh=8G`, a comment naming the reason), and a test that both exist with that content and pass `systemd-analyze verify` where available.
 
 ## 3. Role `memory_headroom`
 

@@ -50,11 +50,11 @@ With the feature `memory-headroom`, systemd-oomd SHALL act on a user session's m
 - **THEN** systemd-oomd still acts on the session
 
 ### Requirement: Claude desktop app throttled instead of killed
-With the feature `memory-headroom`, every scope of the Claude desktop app SHALL have `MemoryHigh=4G`, whether it is started from the GNOME launcher or otherwise, so that its memory is reclaimed into swap first when it grows beyond that.
+With the feature `memory-headroom`, every scope of the Claude desktop app SHALL have `MemoryHigh=8G`, whether it is started from the GNOME launcher or otherwise, so that its memory is reclaimed into swap first when it grows beyond that.
 
 #### Scenario: App started from GNOME
 - **WHEN** the Claude desktop app is started from the GNOME launcher on a host with `memory-headroom`
-- **THEN** its scope reports `MemoryHigh` of 4 GiB
+- **THEN** its scope reports `MemoryHigh` of 8 GiB
 
 #### Scenario: App not installed
 - **WHEN** the host has no Claude desktop app

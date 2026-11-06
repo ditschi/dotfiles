@@ -8,6 +8,7 @@ features:
   - gnome
   - copilot-cli
   - opencode
+  - editor-command
   - kerberos
   - azure-cli
   - etckeeper

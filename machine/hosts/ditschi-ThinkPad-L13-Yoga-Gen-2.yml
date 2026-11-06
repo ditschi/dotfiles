@@ -8,6 +8,7 @@ features:
   - gnome
   - cosmic
   - docker
+  - editor-command
   - monitoring
   - unattended-upgrades
   - syncthing

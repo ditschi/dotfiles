@@ -30,6 +30,9 @@ root = "home/opencode"
 [dotfile_groups.openspec]
 root = "home/openspec"
 
+[dotfile_groups.editor-command]
+root = "home/editor-command"
+
 [dotfile_groups.gnome]
 root = "home/gnome"
 

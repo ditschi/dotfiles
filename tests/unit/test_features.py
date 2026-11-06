@@ -77,6 +77,24 @@ def test_cosmic_selects_its_dotfile_group():
     assert "cosmic" not in features.dotfile_groups("private", "desktop", ["gnome"])
 
 
+def test_editor_command_on_desktops_and_servers():
+    for context in ("private", "work"):
+        assert "editor-command" in features.defaults(context, "desktop")
+        offered = features.allowed(context, "server")
+        defaults = features.defaults(context, "server")
+        assert "editor-command" in offered and "editor-command" not in defaults
+        assert features.split(["editor-command"], context, "container") == (
+            [],
+            ["editor-command"],
+        )
+    assert "editor-command" not in features.allowed("", "container")
+
+
+def test_editor_command_selects_its_dotfile_group():
+    groups = features.dotfile_groups("work", "desktop", ["editor-command"])
+    assert "editor-command" in groups
+
+
 def test_dotfile_groups_from_table():
     groups = features.dotfile_groups(
         "private", "desktop", ["thunderbird", "claude-code", "copilot-cli"]

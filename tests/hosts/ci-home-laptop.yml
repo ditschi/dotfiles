@@ -9,6 +9,7 @@ features:
   - fonts
   - desktop
   - gnome
+  - editor-command
   - monitoring
   - ssh-host-key
   - stylus-touch-guard

@@ -28,3 +28,29 @@ work hosts Claude Code and Copilot; opencode and containers are opt-in. mise ins
 them without sudo; authentication remains a manual step.
 
 On hosts where `$HOME` is a symlink or bind mount (for example `/home/u` → `/mnt/data/home/u`), VS Code's Copilot CLI wrapper in `…/github.copilot-chat/copilotCli` fails to drop itself from `PATH` and starts itself recursively until memory runs out. `~/.shell/common/environment.sh` therefore rewrites that `PATH` entry to its canonical path, so `copilot` reaches the mise-installed CLI. `machine status` notes such a home in the host row (`home is …`).
+
+## Open the work directory in an editor (`/editor`)
+
+The feature `editor-command` (preselected on desktops, optional on servers) adds the
+command `/editor` to Claude Code, Copilot CLI, VS Code Copilot Chat and opencode, and
+the script `open-in-editor` behind it. It opens the root of the Git worktree the agent
+works in (or the current directory outside Git) in your editor and returns at once.
+
+- `/editor` opens the work root.
+- `/editor <hint>`, for example `/editor editor.md`, also opens the file you most
+  probably mean; the agent asks with numbered options when several fit.
+- `/editor change [name]` opens proposal, design, tasks and delta specs of the
+  OpenSpec change named like the branch (or the only active change, or `name`).
+
+The editor is the Git key `editor.open`, default `code`. Set it per repository (kept in
+`.git/config`, also used by its worktrees) or as a host default:
+
+```bash
+git config editor.open cursor
+git config --file ~/.gitconfig.local editor.open "code --new-window"
+```
+
+`open-in-editor` works without an agent too: `open-in-editor [--change [NAME]] [FILE...]`.
+It provides no shell completion; file names complete as usual. VS Code Copilot Chat
+reads the skill from both `~/.claude/skills` and `~/.copilot/skills`, where it is the
+same file.

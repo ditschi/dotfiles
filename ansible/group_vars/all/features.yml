@@ -51,6 +51,11 @@ feature_table:
     private: optional
     work: optional
     container: optional
+  editor-command:
+    help: /editor agent command opens the work dir in your editor
+    groups: [editor-command]
+    server: optional
+    container: excluded
   kerberos:
     help: krb5-user + ldap-utils (work)
     private: excluded

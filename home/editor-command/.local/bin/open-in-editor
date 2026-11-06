@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Open the work root (top level of the Git worktree, or the current directory outside
+# Git) in the preferred editor, with optional files or the planning files of an
+# OpenSpec change. Used by the /editor agent command (feature `editor-command`).
+#
+# Usage: open-in-editor [--change [NAME]] [--] [FILE...]
+# Editor: git config editor.open (repository value wins over global), default `code`.
+# Exit status: 0 opened, 1 error or a missing file, 2 current change not found
+# (the active changes are printed one per line on stdout).
+set -euo pipefail
+
+usage() {
+    sed -n '2,9s/^# \{0,1\}//p' "$0"
+}
+
+change_mode=0
+change_name=""
+files=()
+while (($#)); do
+    case "$1" in
+        --change)
+            change_mode=1
+            if (($# > 1)) && [[ $2 != -* ]]; then
+                change_name="$2"
+                shift
+            fi
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            files+=("$@")
+            break
+            ;;
+        -*)
+            echo "open-in-editor: unknown option $1" >&2
+            exit 1
+            ;;
+        *) files+=("$1") ;;
+    esac
+    shift
+done
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(pwd -P)
+
+value=$(git -C "$root" config --get editor.open 2>/dev/null) || value=""
+read -r -a editor <<<"${value:-code}"
+if ! command -v "${editor[0]}" >/dev/null 2>&1; then
+    echo "open-in-editor: editor '${editor[0]}' not found (set it with: git config editor.open <command>)" >&2
+    exit 1
+fi
+
+status=0
+paths=()
+for file in "${files[@]}"; do
+    [[ $file == /* ]] || file="$PWD/$file"
+    if [[ -e $file ]]; then
+        paths+=("$file")
+    else
+        echo "open-in-editor: no such file: $file" >&2
+        status=1
+    fi
+done
+
+if ((change_mode)); then
+    changes_dir="$root/openspec/changes"
+    active=()
+    if [[ -d $changes_dir ]]; then
+        while IFS= read -r dir; do
+            active+=("$dir")
+        done < <(find "$changes_dir" -mindepth 1 -maxdepth 1 -type d ! -name archive -printf '%f\n' | sort)
+    fi
+    if [[ -z $change_name ]]; then
+        branch=$(git -C "$root" branch --show-current 2>/dev/null) || branch=""
+        if [[ -n $branch && -d "$changes_dir/$branch" && $branch != archive ]]; then
+            change_name="$branch"
+        elif ((${#active[@]} == 1)); then
+            change_name="${active[0]}"
+        else
+            echo "open-in-editor: no current change, active changes:" >&2
+            ((${#active[@]} == 0)) || printf '%s\n' "${active[@]}"
+            exit 2
+        fi
+    elif [[ $change_name == archive || ! -d "$changes_dir/$change_name" ]]; then
+        echo "open-in-editor: no change '$change_name', active changes:" >&2
+        ((${#active[@]} == 0)) || printf '%s\n' "${active[@]}" >&2
+        exit 1
+    fi
+    change="$changes_dir/$change_name"
+    for name in proposal.md design.md tasks.md; do
+        [[ -f "$change/$name" ]] && paths+=("$change/$name")
+    done
+    if [[ -d "$change/specs" ]]; then
+        while IFS= read -r spec; do
+            paths+=("$spec")
+        done < <(find "$change/specs" -name spec.md -type f | LC_ALL=C sort)
+    fi
+fi
+
+# Detached, so the agent's command returns at once and the editor outlives it.
+setsid -f "${editor[@]}" "$root" "${paths[@]}" </dev/null >/dev/null 2>&1
+echo "${editor[*]}"
+printf '%s\n' "$root" "${paths[@]}"
+exit "$status"

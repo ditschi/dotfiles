@@ -18,6 +18,7 @@ from .bw_client import INFLUX_KEYS
 from .core import (
     debug_enabled,
     log,
+    logger,
     die,
     parse_profile_file,
 )
@@ -275,6 +276,9 @@ class ToolsMixin:
                         {
                             "machine_user_path": os.environ.get("PATH", ""),
                             "machine_login_user": _login_user(),
+                            # Local runs start ansible-playbook as root (below); the
+                            # login-user tasks then switch to machine_login_user.
+                            "machine_runs_as_root": playbook_name != "homelab",
                             "machine_user_session_env": {
                                 key: os.environ[key]
                                 for key in SESSION_ENV
@@ -313,36 +317,63 @@ class ToolsMixin:
 
         Root needs none. Otherwise sudo authenticates once in this terminal (PAM
         offers fingerprint or password) unless its ticket is still valid; without a
-        terminal only an existing ticket or passwordless sudo works. Ansible's own
-        sudo per task would run in a new pseudo-terminal each time and wait for the
-        fingerprint again, which times out Ansible's become prompt."""
+        terminal (or with --no-become) only an existing ticket or passwordless sudo
+        works. Ansible's own sudo per task would run in a new pseudo-terminal each
+        time and wait for the fingerprint again, which times out Ansible's become
+        prompt.
+
+        A failed check raises CalledProcessError for the sudo command, like a failed
+        Ansible run, so callers restore the host config and report the step."""
         if system.is_root():
             return ["ansible-playbook"]
         playbook_cmd = system.which("ansible-playbook") or "ansible-playbook"
         # The ticket belongs to one sudo implementation; use the same one as become.
         sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"
+
+        def fail(cmd: List[str], message: str, code: int = 1) -> None:
+            logger.error(message)
+            raise subprocess.CalledProcessError(code, cmd)
+
         if not system.have(sudo):
-            die(
+            fail(
+                [sudo],
                 "sudo is not installed; system changes need root "
-                "(or set `ansible: false` in the host config)"
+                "(or set `ansible: false` in the host config)",
             )
-        if system.run([sudo, "-n", "true"], check=False, capture=True).returncode:
+        check = [sudo, "-n", "true"]
+        if system.run(check, check=False, capture=True).returncode:
             if not interactive:
-                die(
+                fail(
+                    check,
                     "system changes need root and sudo needs authentication; "
-                    "run `machine update` (or `machine apply`) in a terminal"
+                    + (
+                        "run without `--no-become`"
+                        if system.is_tty()
+                        else "run an interactive `machine update` (or `machine apply`) "
+                        "in a terminal"
+                    ),
                 )
             log("sudo for Ansible (fingerprint or password)")
-            if system.run([sudo, "-v"], check=False).returncode:
-                die("sudo authentication failed; system changes not applied")
-        allowed = system.run(
-            [sudo, "-n", "-l", playbook_cmd], check=False, capture=True
-        )
+            validate = [sudo, "-v"]
+            if system.run(validate, check=False).returncode:
+                fail(validate, "sudo authentication failed; system changes not applied")
+        listing = [sudo, "-n", "-l", playbook_cmd]
+        allowed = system.run(listing, check=False, capture=True)
         if allowed.returncode:
-            die(
+            if re.search(
+                r"authentication is required|password is required",
+                allowed.stderr or "",
+            ):
+                fail(
+                    listing,
+                    "the sudo ticket expired right after authentication "
+                    "(timestamp_timeout=0?); system changes not applied",
+                )
+            fail(
+                listing,
                 f"sudo refuses `{playbook_cmd}` as root, which system changes need. "
                 "Ask the administrator to allow it, or set `ansible: false` in the "
-                "host config to skip system changes on this host."
+                "host config to skip system changes on this host.",
             )
         env = [
             f"{key}={os.environ[key]}" for key in ROOT_RUN_ENV if os.environ.get(key)
@@ -352,6 +383,9 @@ class ToolsMixin:
             f"{Path.home() / '.ansible/collections'}:/usr/share/ansible/collections"
         )
         env.append(f"ANSIBLE_COLLECTIONS_PATH={collections}")
+        # Root must not leave root-owned __pycache__ in the user's uv tools or
+        # collections, which would break a later `uv tool upgrade` as the user.
+        env.append("PYTHONDONTWRITEBYTECODE=1")
         return [sudo, "-n", "--", "env", *env, playbook_cmd]
 
 

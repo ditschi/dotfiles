@@ -25,7 +25,7 @@
 
         - name: Check existing Docker CLI as the login user
           ansible.builtin.command: docker --version
-          become: true
+          become: "{{ machine_runs_as_root | bool }}"
           become_user: "{{ machine_login_user }}"
           environment:
             PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
@@ -35,7 +35,7 @@
 
         - name: Check existing Compose capability
           ansible.builtin.command: docker compose version
-          become: true
+          become: "{{ machine_runs_as_root | bool }}"
           become_user: "{{ machine_login_user }}"
           environment:
             PATH: "{{ machine_user_path | default(ansible_facts.env.PATH) }}"
@@ -211,7 +211,7 @@
 
 - name: Touch device (GNOME extensions for the login user)
   hosts: "{{ target_hosts | default('all') }}"
-  become: true
+  become: "{{ machine_runs_as_root | bool }}"
   become_user: "{{ machine_login_user }}"
   environment: "{{ machine_user_session_env }}"
   gather_facts: true

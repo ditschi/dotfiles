@@ -642,7 +642,9 @@ def test_package_table_only_names_known_features():
     assert not unknown, f"packages_by_feature has unknown features: {unknown}"
 
 
-def _sudo_env(tmp_path, monkeypatch, *, ticket=False, allowed=True, root=False):
+def _sudo_env(
+    tmp_path, monkeypatch, *, ticket=False, allowed=True, root=False, list_err=""
+):
     """Local runs: `sudo -v` once in a terminal, then ansible-playbook as root."""
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
@@ -673,7 +675,7 @@ def _sudo_env(tmp_path, monkeypatch, *, ticket=False, allowed=True, root=False):
             return subprocess.CompletedProcess(cmd, 0)
         if cmd[:3] == ["sudo", "-n", "-l"]:
             seen["sudo"].append(cmd)
-            return subprocess.CompletedProcess(cmd, 0 if allowed else 1)
+            return subprocess.CompletedProcess(cmd, 0 if allowed else 1, "", list_err)
         seen["ansible"].append(cmd)
         return subprocess.CompletedProcess(cmd, 0)
 
@@ -735,6 +737,7 @@ def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypat
     first, last = cmd.index("env") + 1, cmd.index("/opt/bin/ansible-playbook")
     env_args = cmd[first:last]
     assert "MACHINE_HARDWARE=laptop" in env_args
+    assert "PYTHONDONTWRITEBYTECODE=1" in env_args
     home = os.environ["HOME"]
     assert (
         f"ANSIBLE_COLLECTIONS_PATH={home}/.ansible/collections"
@@ -742,6 +745,7 @@ def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypat
     ) in env_args
     extra = _extra_vars(cmd)
     assert extra["machine_login_user"] == "alice"
+    assert extra["machine_runs_as_root"] is True
     assert extra["machine_user_session_env"] == {
         "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
         "XDG_RUNTIME_DIR": "/run/user/1000",
@@ -749,12 +753,40 @@ def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypat
     assert "machine_user_path" in extra
 
 
-def test_local_run_without_terminal_never_prompts(tmp_path, monkeypatch):
+def test_local_run_without_terminal_never_prompts(tmp_path, monkeypatch, capsys):
+    """Fails like an Ansible run (CalledProcessError), so apply restores the config."""
     cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
-    with pytest.raises(SystemExit):
+    with pytest.raises(subprocess.CalledProcessError):
         machine.run_ansible("workstation")
     assert seen["sudo"] == [] and seen["ansible"] == []
+    assert "interactive `machine update`" in capsys.readouterr().err
+
+
+def test_no_become_in_a_terminal_without_ticket_names_the_flag(
+    tmp_path, monkeypatch, capsys
+):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    with pytest.raises(subprocess.CalledProcessError):
+        machine.run_ansible("workstation", ask_become=False)
+    assert seen["sudo"] == [] and seen["ansible"] == []
+    assert "without `--no-become`" in capsys.readouterr().err
+
+
+def test_ticket_gone_after_authentication_is_not_called_a_refusal(
+    tmp_path, monkeypatch, capsys
+):
+    _cli_mod, machine, seen = _sudo_env(
+        tmp_path,
+        monkeypatch,
+        allowed=False,
+        list_err="sudo: interactive authentication is required",
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        machine.run_ansible("workstation")
+    err = capsys.readouterr().err
+    assert "expired" in err and "administrator" not in err
+    assert seen["ansible"] == []
 
 
 def test_no_become_uses_an_existing_ticket_only(tmp_path, monkeypatch):
@@ -775,7 +807,7 @@ def test_local_run_as_root_needs_no_sudo(tmp_path, monkeypatch):
 
 def test_refused_root_run_names_the_command(tmp_path, monkeypatch, capsys):
     _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, allowed=False)
-    with pytest.raises(SystemExit):
+    with pytest.raises(subprocess.CalledProcessError):
         machine.run_ansible("workstation")
     err = capsys.readouterr().err
     assert "ansible-playbook" in err and "ansible: false" in err

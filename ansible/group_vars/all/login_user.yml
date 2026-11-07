@@ -6,3 +6,6 @@ machine_login_user: >-
   {{ ansible_facts.user_id if ansible_facts.user_id != 'root'
      else (ansible_facts.env.SUDO_USER | default(ansible_facts.user_id)) }}
 machine_user_session_env: {}
+# True when machine started ansible-playbook as root (local runs); the login-user tasks
+# then become machine_login_user. Remote runs already run as the connecting user.
+machine_runs_as_root: false

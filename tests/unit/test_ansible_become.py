@@ -41,7 +41,7 @@ def _entries(node):
         for item in node:
             yield from _entries(item)
     elif isinstance(node, dict):
-        if "name" in node or "hosts" in node:
+        if {"name", "hosts", "block", "become"} & set(node):
             yield node
         for key in ("tasks", "pre_tasks", "post_tasks", "handlers", "block"):
             yield from _entries(node.get(key))
@@ -70,5 +70,5 @@ def test_login_user_tasks_switch_to_the_login_user():
     entries = {(rel, entry.get("name", "")): entry for rel, entry in _all_entries()}
     for key in LOGIN_USER_TASKS:
         entry = entries[key]
-        assert entry.get("become") is True, key
+        assert entry.get("become") == "{{ machine_runs_as_root | bool }}", key
         assert entry.get("become_user") == "{{ machine_login_user }}", key

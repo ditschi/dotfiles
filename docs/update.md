@@ -61,11 +61,18 @@ The recovery Ansible run only happens when syncing the host config changed it;
 an unchanged host config is restored without repeating the same failed command.
 Package and system changes are not transactionally rolled back.
 
-Managed work machines may allow only specific sudo commands. The workstation
-playbook requires approval to execute Ansible modules as root, not just permission
-to run selected APT commands. A correct sudo password does not grant that approval.
-If fact gathering reports "not allowed to execute", stop and contact the machine
-administrator for an approved deployment route. `--no-become` only suppresses the
-password prompt; it does not disable the playbook's root tasks. For such a host set
-`ansible: false` in its host config: setup, apply and update then skip Ansible, while
-dotfiles, tools and environment management stay active.
+Local Ansible runs authenticate once: `machine` runs `sudo -v` in the terminal (fingerprint
+or password, whatever PAM offers; skipped while the sudo ticket is valid) and then starts
+`ansible-playbook` itself as root, so no task asks again. Tasks for the login user (the
+Docker checks, the GNOME touch-device extensions) switch to that user with `become_user`.
+Without a terminal, or with `--no-become`, `machine` uses `sudo -n`: passwordless sudo or a
+valid ticket works, anything else fails at once with a hint to run `machine` in a terminal.
+When `machine` already runs as root (containers), Ansible runs without sudo. Remote runs
+(`--limit`) still run Ansible as the user and ask for the remote become password.
+
+A host whose sudo allows only selected commands must allow `ansible-playbook` (the path
+`command -v ansible-playbook` prints) as root. `machine` checks this with `sudo -n -l`
+before the run and stops with a message naming the command; a correct password does not
+replace that permission, so ask the administrator for it. For a host where that is not
+possible, set `ansible: false` in its host config: setup, apply and update then skip
+Ansible, while dotfiles, tools and environment management stay active.

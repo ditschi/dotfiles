@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import getpass
+import json
 import subprocess
 import os
 import re
@@ -376,6 +377,7 @@ def test_apply_failure_names_the_failed_step(tmp_path: Path, monkeypatch, capsys
     out = capsys.readouterr().out
     if step == "ansible":
         assert "Review Ansible's error" in out
+        assert "`sudo ansible-playbook`" in out
         assert "health check failed" not in out
     else:
         assert "health check failed: zsh printed errors on startup: boom" in out
@@ -619,6 +621,7 @@ def test_run_ansible_uses_classic_sudo_for_local_runs(tmp_path: Path, monkeypatc
     monkeypatch.setattr(
         cli_mod.system, "run", lambda cmd, **_k: commands.append(list(cmd))
     )
+    monkeypatch.setattr(cli_mod.system, "is_root", lambda: True)
     classic_sudo = "ansible_become_exe=sudo.ws"
 
     monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo.ws")
@@ -639,70 +642,152 @@ def test_package_table_only_names_known_features():
     assert not unknown, f"packages_by_feature has unknown features: {unknown}"
 
 
-def _sudo_env(tmp_path, monkeypatch, *, passwordless=False, good="secret"):
+def _sudo_env(tmp_path, monkeypatch, *, ticket=False, allowed=True, root=False):
+    """Local runs: `sudo -v` once in a terminal, then ansible-playbook as root."""
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
     monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
-    monkeypatch.setattr(cli_mod.system, "have", lambda name: name == "sudo")
-    seen = {"ansible": [], "files": [], "checks": 0}
+    monkeypatch.setattr(cli_mod.system, "is_root", lambda: root)
+    monkeypatch.setattr(
+        cli_mod.system, "have", lambda name: name in ("sudo", "ansible-playbook")
+    )
+    monkeypatch.setattr(
+        cli_mod.system, "which", lambda name: f"/opt/bin/{name}", raising=False
+    )
+    monkeypatch.setattr(getpass, "getpass", lambda _p: pytest.fail("machine asked"))
+    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+    monkeypatch.setenv("MACHINE_HARDWARE", "laptop")
+    state = {"ticket": ticket}
+    seen = {"sudo": [], "ansible": []}
 
     def fake_run(cmd, **kw):
+        cmd = list(cmd)
         if cmd[:3] == ["sudo", "-n", "true"]:
-            return subprocess.CompletedProcess(cmd, 0 if passwordless else 1)
-        if cmd[:2] == ["sudo", "-S"]:
-            seen["checks"] += 1
-            ok = kw.get("input_text") == good + "\n"
-            return subprocess.CompletedProcess(cmd, 0 if ok else 1)
-        seen["ansible"].append(list(cmd))
-        if "--become-password-file" in cmd:
-            path = Path(cmd[cmd.index("--become-password-file") + 1])
-            seen["files"].append(
-                (path, path.read_text(), oct(path.stat().st_mode & 0o777))
-            )
+            return subprocess.CompletedProcess(cmd, 0 if state["ticket"] else 1)
+        if cmd[:2] == ["sudo", "-v"]:
+            seen["sudo"].append(cmd)
+            state["ticket"] = True
+            return subprocess.CompletedProcess(cmd, 0)
+        if cmd[:3] == ["sudo", "-n", "-l"]:
+            seen["sudo"].append(cmd)
+            return subprocess.CompletedProcess(cmd, 0 if allowed else 1)
+        seen["ansible"].append(cmd)
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(cli_mod.system, "run", fake_run)
     return cli_mod, machine, seen
 
 
-def test_local_run_without_password_when_sudo_is_passwordless(tmp_path, monkeypatch):
-    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, passwordless=True)
-    monkeypatch.setattr(getpass, "getpass", lambda _p: pytest.fail("asked"))
+def _extra_vars(cmd: list[str]) -> dict:
+    merged: dict = {}
+    for i, arg in enumerate(cmd):
+        if arg in ("-e", "--extra-vars") and cmd[i + 1].startswith("{"):
+            merged.update(json.loads(cmd[i + 1]))
+    return merged
+
+
+def test_local_run_authenticates_once_through_sudo(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
     machine.run_ansible("workstation")
-    assert "--become-password-file" not in seen["ansible"][-1]
-    assert "--ask-become-pass" not in seen["ansible"][-1]
+    machine.run_ansible("workstation")  # e.g. the revert run: same terminal ticket
+
+    assert [c for c in seen["sudo"] if c[:2] == ["sudo", "-v"]] == [["sudo", "-v"]]
+    cmd = seen["ansible"][-1]
+    assert cmd[:4] == ["sudo", "-n", "--", "env"]
+    assert "/opt/bin/ansible-playbook" in cmd
+    assert "--become-password-file" not in cmd
+    assert "--ask-become-pass" not in cmd
 
 
-def test_local_run_checks_the_password_and_hands_it_over_once(tmp_path, monkeypatch):
+def test_local_run_uses_the_same_sudo_as_become(tmp_path, monkeypatch):
+    """The sudo ticket belongs to one implementation: sudo.ws when it exists."""
     cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
-    answers = iter(["wrong", "secret"])
-    monkeypatch.setattr(getpass, "getpass", lambda _p: next(answers))
+    ran: list[list[str]] = []
 
+    def fake_run(cmd, **_kw):
+        ran.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cli_mod.system, "run", fake_run)
+    monkeypatch.setattr(
+        cli_mod.system, "have", lambda name: name in ("sudo", "sudo.ws")
+    )
     machine.run_ansible("workstation")
-    machine.run_ansible("workstation")  # e.g. the revert run: no second prompt
-
-    assert seen["checks"] == 2
-    assert [(text, mode) for _p, text, mode in seen["files"]] == [
-        ("secret", "0o600"),
-        ("secret", "0o600"),
-    ]
-    assert all(not path.exists() for path, _t, _m in seen["files"])
+    assert ran[-1][:2] == ["sudo.ws", "-n"]
+    assert "ansible_become_exe=sudo.ws" in ran[-1]
+    assert all(c[0] != "sudo" for c in ran)
 
 
-def test_local_run_stops_after_three_wrong_passwords(tmp_path, monkeypatch):
+def test_local_run_with_a_valid_ticket_does_not_prompt(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, ticket=True)
+    machine.run_ansible("workstation")
+    assert not [c for c in seen["sudo"] if c[:2] == ["sudo", "-v"]]
+    assert seen["ansible"][-1][:2] == ["sudo", "-n"]
+
+
+def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    machine.run_ansible("workstation")
+    cmd = seen["ansible"][-1]
+    first, last = cmd.index("env") + 1, cmd.index("/opt/bin/ansible-playbook")
+    env_args = cmd[first:last]
+    assert "MACHINE_HARDWARE=laptop" in env_args
+    home = os.environ["HOME"]
+    assert (
+        f"ANSIBLE_COLLECTIONS_PATH={home}/.ansible/collections"
+        ":/usr/share/ansible/collections"
+    ) in env_args
+    extra = _extra_vars(cmd)
+    assert extra["machine_login_user"] == "alice"
+    assert extra["machine_user_session_env"] == {
+        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        "XDG_RUNTIME_DIR": "/run/user/1000",
+    }
+    assert "machine_user_path" in extra
+
+
+def test_local_run_without_terminal_never_prompts(tmp_path, monkeypatch):
     cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
-    monkeypatch.setattr(getpass, "getpass", lambda _p: "wrong")
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
     with pytest.raises(SystemExit):
         machine.run_ansible("workstation")
-    assert seen["checks"] == 3
+    assert seen["sudo"] == [] and seen["ansible"] == []
+
+
+def test_no_become_uses_an_existing_ticket_only(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, ticket=True)
+    machine.run_ansible("workstation", ask_become=False)
+    assert not [c for c in seen["sudo"] if c[:2] == ["sudo", "-v"]]
+    assert seen["ansible"][-1][:2] == ["sudo", "-n"]
+
+
+def test_local_run_as_root_needs_no_sudo(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, root=True)
+    monkeypatch.setenv("SUDO_USER", "bob")
+    machine.run_ansible("workstation")
+    cmd = seen["ansible"][-1]
+    assert cmd[0] == "ansible-playbook" and seen["sudo"] == []
+    assert _extra_vars(cmd)["machine_login_user"] == "bob"
+
+
+def test_refused_root_run_names_the_command(tmp_path, monkeypatch, capsys):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, allowed=False)
+    with pytest.raises(SystemExit):
+        machine.run_ansible("workstation")
+    err = capsys.readouterr().err
+    assert "ansible-playbook" in err and "ansible: false" in err
     assert seen["ansible"] == []
 
 
 def test_remote_run_lets_ansible_ask_for_the_password(tmp_path, monkeypatch):
     _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
     machine.run_ansible("workstation", limit="homeserver")
-    assert "--ask-become-pass" in seen["ansible"][-1]
+    cmd = seen["ansible"][-1]
+    assert cmd[0] == "ansible-playbook" and "--ask-become-pass" in cmd
+    assert seen["sudo"] == []
 
 
 def test_require_bitwarden_offers_install_then_login(tmp_path: Path, monkeypatch):

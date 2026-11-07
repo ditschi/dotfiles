@@ -252,18 +252,37 @@ class ToolsMixin:
             extra.extend(["--extra-vars", f"@{vars_file}"])
             if "monitoring" in parse_profile_file(vars_file)["features"]:
                 # Only Ansible gets the token; it never goes to ~/.env*.
-                values = self.influx_credentials()
+                values = dict(self.influx_credentials() or {})
+                # The run as root gets a fresh environment; values from the
+                # environment go into the same private file, never on a command line.
+                for key in INFLUX_KEYS:
+                    if key not in values and os.environ.get(key):
+                        values[key] = os.environ[key]
                 if values:
                     influx_file = _private_file(
                         json.dumps({INFLUX_KEYS[k]: v for k, v in values.items()}),
                         prefix="machine-influx-",
                     )
                     extra.extend(["--extra-vars", f"@{influx_file}"])
-        if force_local or not limit:
+        local = force_local or not limit
+        if local:
             cmd.extend(["--connection", "local", "--limit", "localhost"])
             extra.extend(["-e", "target_hosts=localhost"])
             extra.extend(
-                ["-e", json.dumps({"machine_user_path": os.environ.get("PATH", "")})]
+                [
+                    "-e",
+                    json.dumps(
+                        {
+                            "machine_user_path": os.environ.get("PATH", ""),
+                            "machine_login_user": _login_user(),
+                            "machine_user_session_env": {
+                                key: os.environ[key]
+                                for key in SESSION_ENV
+                                if os.environ.get(key)
+                            },
+                        }
+                    ),
+                ]
             )
             # sudo-rs (Ubuntu 25.10+) wraps the prompt as "[sudo: …]", which
             # Ansible's become plugin does not recognise; use classic sudo.
@@ -271,16 +290,12 @@ class ToolsMixin:
                 extra.extend(["-e", "ansible_become_exe=sudo.ws"])
         else:
             cmd.extend(["--limit", limit])
-        password_file: Optional[Path] = None
-        if ask_become and playbook_name != "homelab" and system.is_tty():
-            local = force_local or not limit
-            if not local:
-                cmd.append("--ask-become-pass")
-            else:
-                password = self.local_become_password()
-                if password is not None:
-                    password_file = _private_file(password)
-                    cmd.extend(["--become-password-file", str(password_file)])
+        if local and playbook_name != "homelab":
+            # One authentication in this terminal, then ansible-playbook as root:
+            # no sudo per task, so a fingerprint prompt cannot time Ansible out.
+            cmd = [*self.local_ansible_prefix(ask_become and system.is_tty()), *cmd[1:]]
+        elif ask_become and playbook_name != "homelab" and system.is_tty():
+            cmd.append("--ask-become-pass")
         if debug_enabled():
             cmd.append("-v")
         cmd.extend(extra)
@@ -288,41 +303,69 @@ class ToolsMixin:
         try:
             system.run(cmd, cwd=self.ansible_dir)
         finally:
-            for path in (password_file, influx_file):
-                if path is not None:
-                    path.unlink(missing_ok=True)
+            if influx_file is not None:
+                influx_file.unlink(missing_ok=True)
         if force_local or not limit:
             self.record_ansible_applied()
 
-    def local_become_password(self) -> Optional[str]:
-        """sudo password for local Ansible runs, checked first; None if none is needed.
+    def local_ansible_prefix(self, interactive: bool) -> List[str]:
+        """Command prefix that runs ansible-playbook as root for a local run.
 
-        A cached sudo ticket does not help: it belongs to this terminal, and Ansible
-        runs `sudo -n` without one. So the password is asked here (three tries, like
-        sudo), verified with `sudo -S -k -v`, kept for the rest of this command (a
-        revert runs Ansible again) and handed to Ansible in a private file."""
-        cached = getattr(self, "_become_password", None)
-        if cached is not None:
-            return cached
+        Root needs none. Otherwise sudo authenticates once in this terminal (PAM
+        offers fingerprint or password) unless its ticket is still valid; without a
+        terminal only an existing ticket or passwordless sudo works. Ansible's own
+        sudo per task would run in a new pseudo-terminal each time and wait for the
+        fingerprint again, which times out Ansible's become prompt."""
+        if system.is_root():
+            return ["ansible-playbook"]
+        playbook_cmd = system.which("ansible-playbook") or "ansible-playbook"
+        # The ticket belongs to one sudo implementation; use the same one as become.
         sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"
         if not system.have(sudo):
-            return None
-        if system.run([sudo, "-n", "true"], check=False, capture=True).returncode == 0:
-            return None  # passwordless sudo
-        for _ in range(3):
-            password = getpass.getpass("sudo password for Ansible: ")
-            check = system.run(
-                [sudo, "-S", "-k", "-p", "", "-v"],
-                check=False,
-                capture=True,
-                input_text=password + "\n",
+            die(
+                "sudo is not installed; system changes need root "
+                "(or set `ansible: false` in the host config)"
             )
-            if check.returncode == 0:
-                self._become_password = password
-                return password
-            print("Sorry, try again.")
-        die("3 incorrect sudo password attempts")
-        return None
+        if system.run([sudo, "-n", "true"], check=False, capture=True).returncode:
+            if not interactive:
+                die(
+                    "system changes need root and sudo needs authentication; "
+                    "run `machine update` (or `machine apply`) in a terminal"
+                )
+            log("sudo for Ansible (fingerprint or password)")
+            if system.run([sudo, "-v"], check=False).returncode:
+                die("sudo authentication failed; system changes not applied")
+        allowed = system.run(
+            [sudo, "-n", "-l", playbook_cmd], check=False, capture=True
+        )
+        if allowed.returncode:
+            die(
+                f"sudo refuses `{playbook_cmd}` as root, which system changes need. "
+                "Ask the administrator to allow it, or set `ansible: false` in the "
+                "host config to skip system changes on this host."
+            )
+        env = [
+            f"{key}={os.environ[key]}" for key in ROOT_RUN_ENV if os.environ.get(key)
+        ]
+        # Ansible's default search path, with the user's directory instead of root's.
+        collections = os.environ.get("ANSIBLE_COLLECTIONS_PATH") or (
+            f"{Path.home() / '.ansible/collections'}:/usr/share/ansible/collections"
+        )
+        env.append(f"ANSIBLE_COLLECTIONS_PATH={collections}")
+        return [sudo, "-n", "--", "env", *env, playbook_cmd]
+
+
+# Session of the login user for the tasks that run as that user (touch_device).
+SESSION_ENV = ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
+# Environment that the playbook reads on the controller and that sudo would drop.
+ROOT_RUN_ENV = ("MACHINE_HARDWARE", "ANSIBLE_VAULT_PASSWORD_FILE")
+
+
+def _login_user() -> str:
+    """The user who started machine, also when machine itself runs as root."""
+    if system.is_root() and os.environ.get("SUDO_USER"):
+        return os.environ["SUDO_USER"]
+    return getpass.getuser()
 
 
 def _private_file(content: str, prefix: str = "machine-become-") -> Path:

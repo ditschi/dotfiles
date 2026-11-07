@@ -28,16 +28,22 @@ def host_yaml_container(docker_image, request):
     hostname = request.param
     host_file = REPO / "tests" / "hosts" / f"{hostname}.yml"
     assert host_file.is_file(), f"missing host config {host_file}"
-    # sudo_prompt marker: user whose sudo prompts; Ansible gets the password from a file.
+    # sudo_prompt marker: user whose sudo prompts. machine runs in a pseudo-terminal
+    # and the password is typed at sudo's own prompt, once for the whole run.
     with_password = request.node.get_closest_marker("sudo_prompt") is not None
     user = "pwtester" if with_password else "tester"
-    exec_env = (
-        (f"ANSIBLE_BECOME_PASSWORD_FILE=/home/{user}/.become-password",)
-        if with_password
-        else ()
-    )
-    # --no-become: never prompt; pwtester's password comes from the file
-    setup_cmd = [*MACHINE_CLI, "setup", "--yes", "--no-become"]
+    if with_password:
+        setup_cmd = [
+            "python3",
+            "tests/integration/type_password_once.py",
+            f"/home/{user}/.become-password",
+            *MACHINE_CLI,
+            "setup",
+            "--yes",
+        ]
+    else:
+        # --no-become: never prompt (tester has passwordless sudo)
+        setup_cmd = [*MACHINE_CLI, "setup", "--yes", "--no-become"]
     if not wants_apt(request):
         setup_cmd.append("--skip-ansible")
 
@@ -54,7 +60,6 @@ def host_yaml_container(docker_image, request):
             "MACHINE_HOSTS_DIR=tests/hosts",
             *host_env(config.get("context", ""), config["device"], hardware),
         ),
-        exec_env=exec_env,
         apt_proxy=apt_proxy_for(request),
     ) as (name, exec_cmd):
         run_checked(

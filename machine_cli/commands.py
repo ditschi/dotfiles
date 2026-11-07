@@ -264,8 +264,9 @@ class CommandsMixin:
                 elif failed_step == "Ansible":
                     log(
                         "host config was unchanged; not retrying the failed apply. "
-                        "Review Ansible's error; sudo command restrictions require "
-                        "administrator approval, not a different password."
+                        "Review Ansible's error; where sudo is restricted, running "
+                        "`sudo ansible-playbook` as root needs administrator "
+                        "approval, not a different password."
                     )
                 else:
                     log(

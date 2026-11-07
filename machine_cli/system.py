@@ -39,6 +39,14 @@ def have(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+def which(name: str) -> Optional[str]:
+    return shutil.which(name)
+
+
+def is_root() -> bool:
+    return os.geteuid() == 0
+
+
 def ensure_user_bin_on_path(home: Path) -> None:
     """Prepend ~/.local/bin and the mise shims to PATH when missing.
 

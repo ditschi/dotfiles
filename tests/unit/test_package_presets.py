@@ -98,6 +98,9 @@ def test_docker_preserves_provider(tmp_path, provider, compose, expected):
             name = nested.pop("register")
             del nested["ansible.builtin.command"]
             nested.pop("environment", None)
+            # The check runs as the login user; the stub needs no become.
+            nested.pop("become", None)
+            nested.pop("become_user", None)
             nested["ansible.builtin.set_fact"] = {
                 name: {"rc": 0 if name == "machine_docker" or compose else 1}
             }

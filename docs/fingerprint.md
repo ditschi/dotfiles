@@ -66,3 +66,7 @@ Test in a new terminal and keep the old one open: `sudo -k; sudo true`.
 
 Through `common-auth` this also applies to `su`, TTY login and polkit dialogs. Over SSH, sudo
 also waits for the finger first (`pam_fprintd` does not detect remote sessions).
+
+`machine` asks for sudo once in the terminal before a local Ansible run and then runs
+`ansible-playbook` as root, so the fingerprint works there as well and Ansible never waits
+for the fingerprint timeout itself.

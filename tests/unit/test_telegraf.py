@@ -12,6 +12,8 @@ import pytest
 from machine_loader import load_machine_module
 from package_sets import REPO
 
+from machine_cli.bw_client import INFLUX_KEYS  # noqa: E402
+
 MACHINE = REPO / "machine_cli/machine"
 ITEM = "influxdb-telegraf-write"
 
@@ -137,6 +139,11 @@ def _record_ansible(cli, monkeypatch, machine):
     seen: list[dict] = []
     real_run = cli.system.run
     monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
+    # As root, machine starts ansible-playbook without sudo.
+    monkeypatch.setattr(cli.system, "is_root", lambda: True)
+    # Values from the environment would also go into the private file.
+    for key in INFLUX_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
     def fake_run(cmd, **kw):
         if cmd and cmd[0] == "ansible-playbook":
@@ -324,3 +331,17 @@ def test_inactive_telegraf_shows_journal_and_restarts(tmp_path, monkeypatch, fak
     item.resolve()
     assert ["journalctl", "-u", "telegraf", "-n", "20", "--no-pager"] in commands
     assert commands[-1] == ["sudo", "systemctl", "restart", "telegraf"]
+
+
+def test_influx_values_from_the_environment_go_into_the_private_file(
+    tmp_path, monkeypatch, fake_bw
+):
+    cli, machine, _home, _store = telegraf_machine(tmp_path, monkeypatch, fake_bw)
+    seen = _record_ansible(cli, monkeypatch, machine)
+    monkeypatch.setenv("INFLUX_URL", "https://from.env")
+
+    machine.run_ansible("workstation", ask_become=False)
+
+    [(_path, values, _mode)] = seen[-1]["influx"]
+    assert values["influx_url"] == "https://from.env"
+    assert "https://from.env" not in " ".join(seen[-1]["cmd"])

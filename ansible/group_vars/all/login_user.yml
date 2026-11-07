@@ -1,0 +1,8 @@
+---
+# The user who started `machine`. Local runs start ansible-playbook as root and pass
+# machine_login_user and the GNOME session variables as extra vars; remote runs fall
+# back to the user who became root.
+machine_login_user: >-
+  {{ ansible_facts.user_id if ansible_facts.user_id != 'root'
+     else (ansible_facts.env.SUDO_USER | default(ansible_facts.user_id)) }}
+machine_user_session_env: {}

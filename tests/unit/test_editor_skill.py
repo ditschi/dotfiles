@@ -41,3 +41,10 @@ def test_opencode_command_has_the_skill_body():
     meta, body = split(OPENCODE)
     assert set(meta) == {"description"}
     assert body == split(SKILL)[1]
+
+
+def test_argument_placeholder_appears_once():
+    """Claude Code and opencode replace every $ARGUMENTS in the body, so the
+    fallback for agents that do not substitute it must not name it again."""
+    _meta, body = split(SKILL)
+    assert body.count("$ARGUMENTS") == 1

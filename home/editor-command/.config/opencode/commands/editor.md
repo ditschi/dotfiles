@@ -5,7 +5,7 @@ Open the current work in the user's editor with `open-in-editor`. Only open file
 
 Argument: $ARGUMENTS
 
-If the argument above is literally `$ARGUMENTS`, use the text the user wrote after `/editor` instead.
+Some agents do not fill in the argument line: if it shows a placeholder instead of text, use the text the user wrote after `/editor`; if it is empty, there is no argument.
 
 Run `open-in-editor` in the session's current working directory. It opens the root of the Git worktree there (or the directory itself outside Git) in the editor from `git config editor.open` (default VS Code) and returns at once.
 

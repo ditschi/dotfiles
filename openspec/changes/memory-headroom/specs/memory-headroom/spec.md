@@ -63,3 +63,17 @@ With the feature `memory-headroom`, every scope of the Claude desktop app SHALL 
 #### Scenario: App running during apply
 - **WHEN** the app is running while `machine apply` adds the setting
 - **THEN** the app keeps running, and the limit applies from its next start
+
+### Requirement: Claude desktop app survives a kill of one of its processes
+With the feature `memory-headroom`, every scope of the Claude desktop app SHALL have `OOMPolicy=continue`, so that systemd does not stop the whole app when the kernel OOM killer kills one process in its scope.
+
+#### Scenario: Test run of a Claude Code session killed
+- **WHEN** the kernel OOM killer kills a `python3` process that a Claude Code session started inside the app's scope
+- **THEN** only that process ends, and the app and its other Claude Code sessions keep running
+
+### Requirement: No swap-based systemd-oomd kills
+With the feature `memory-headroom`, `-.slice` SHALL have `ManagedOOMSwap=auto`, configured in its own drop-in, so that systemd-oomd does not kill a cgroup because of its swap use, also if a distribution default enables it.
+
+#### Scenario: Swap almost full
+- **WHEN** RAM and swap are more than 90 % used and the Claude app holds the most swap
+- **THEN** systemd-oomd does not kill the app's scope for its swap use

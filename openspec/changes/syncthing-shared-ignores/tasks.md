@@ -2,11 +2,11 @@
 
 ## 0. Owner confirmation
 
-- [ ] 0.1 Get the owner's answers to Open Questions 1-9 in design.md (missing include target, creating `.stglobalignore`, `.claude/worktrees`, servers, trigger, location of the rule list, content of the default ignore patterns, configuration directory order, folders of another user). Test question 1 on a scratch folder with Syncthing v2.1.x. Record the answers in design.md (move them from Open Questions into Decisions, and update the Implementation outline) and add the resulting scenarios to `specs/syncthing-ignores/spec.md` before any code task.
+- [ ] 0.1 Get the owner's answers to Open Questions 1-10 in design.md (missing include target, creating `.stglobalignore`, `.claude/worktrees`, servers, trigger, location of the rule list, content of the default ignore patterns, configuration directory order, folders of another user, existing default ignore patterns). Question 1 was tested in task 1.1. Record the answers in design.md (move them from Open Questions into Decisions, and update the Implementation outline) and add the resulting scenarios to `specs/syncthing-ignores/spec.md` before any code task.
 
 ## 1. Syncthing interface
 
-- [ ] 1.1 On a laptop with Syncthing v2.1.x, verify how the running instance reports its configuration path and how the default ignore patterns are set while it runs (REST endpoint or command-line interface), and how a changed `.stignore` is reloaded. Record the result under Assumptions in design.md (replace the assumption with the verified fact).
+- [x] 1.1 On a laptop with Syncthing v2.1.x, verify how the running instance reports its configuration path and how the default ignore patterns are set while it runs (REST endpoint or command-line interface), and how a changed `.stignore` is reloaded. Record the result under Assumptions in design.md (replace the assumption with the verified fact).
 
 ## 2. Ignore step
 

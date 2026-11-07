@@ -7,6 +7,7 @@ import getpass
 import json
 import os
 import re
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -355,7 +356,14 @@ class ToolsMixin:
                 )
             log("sudo for Ansible (fingerprint or password)")
             validate = [sudo, "-v"]
-            if system.run(validate, check=False).returncode:
+            # Ctrl+C at the fingerprint prompt makes PAM skip to the password; it
+            # must reach sudo only, not abort machine.
+            previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            try:
+                result = system.run(validate, check=False)
+            finally:
+                signal.signal(signal.SIGINT, previous)
+            if result.returncode:
                 fail(validate, "sudo authentication failed; system changes not applied")
         listing = [sudo, "-n", "-l", playbook_cmd]
         allowed = system.run(listing, check=False, capture=True)

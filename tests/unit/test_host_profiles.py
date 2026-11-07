@@ -723,6 +723,26 @@ def test_local_run_uses_the_same_sudo_as_become(tmp_path, monkeypatch):
     assert all(c[0] != "sudo" for c in ran)
 
 
+def test_ctrl_c_during_sudo_authentication_reaches_sudo_only(tmp_path, monkeypatch):
+    """Ctrl+C skips the fingerprint in PAM; machine ignores it while sudo -v runs."""
+    import signal
+
+    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    handlers: list = []
+    real_run = cli_mod.system.run
+
+    def run(cmd, **kw):
+        if list(cmd)[:2] == ["sudo", "-v"]:
+            handlers.append(signal.getsignal(signal.SIGINT))
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(cli_mod.system, "run", run)
+    before = signal.getsignal(signal.SIGINT)
+    machine.run_ansible("workstation")
+    assert handlers == [signal.SIG_IGN]
+    assert signal.getsignal(signal.SIGINT) is before
+
+
 def test_local_run_with_a_valid_ticket_does_not_prompt(tmp_path, monkeypatch):
     _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, ticket=True)
     machine.run_ansible("workstation")

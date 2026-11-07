@@ -482,7 +482,7 @@ When a local `machine apply` or the apply step of `machine update` fails, the me
 
 #### Scenario: Ansible failure keeps its hint
 - **WHEN** the Ansible run of `machine apply` fails and the host config did not change
-- **THEN** the output says to review Ansible's error and that sudo command restrictions need administrator approval
+- **THEN** the output says to review Ansible's error and that running `ansible-playbook` as root through sudo needs administrator approval where sudo is restricted
 
 ### Requirement: Missing mise tools are installed once
 When the post-apply health check fails because zsh reports a missing mise tool (`mise WARN missing: …`), `machine` SHALL log that it installs the missing tools, run `mise install` once and repeat the health check before it restores anything.

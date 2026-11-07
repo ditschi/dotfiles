@@ -458,6 +458,24 @@ def test_conflicting_targets_are_cleared_without_losing_files(tmp_path):
     assert (home / ".config/app").is_symlink()
 
 
+def test_conflicting_target_cleanup_keeps_link_to_a_linked_group_file(tmp_path):
+    """A group file that is itself a link (one source, two targets) stays linked."""
+    repo = tmp_path / "checkout"
+    skill = repo / "home/editor-command/.claude/skills/editor/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("skill")
+    copy = repo / "home/editor-command/.copilot/skills/editor/SKILL.md"
+    copy.parent.mkdir(parents=True)
+    copy.symlink_to("../../../.claude/skills/editor/SKILL.md")
+    home = tmp_path / "h"
+    target = home / ".copilot/skills/editor/SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.symlink_to(copy)
+
+    assert clear_conflicting_targets(repo, home, ["editor-command"]) == []
+    assert target.is_symlink()
+
+
 def test_conflicting_target_cleanup_resolves_checkout_alias(tmp_path):
     repo = tmp_path / "checkout"
     new_config = repo / "home/core/.zsh/config/05_pyenv.zsh"

@@ -163,7 +163,10 @@ def clear_conflicting_targets(
             break
         if target.is_symlink():
             current = (target.parent / os.readlink(target)).resolve(strict=False)
-            if current != source and (current == repo or repo in current.parents):
+            # Compare resolved paths: a group file may itself be a link to another
+            # group file (one source, two targets).
+            right = source.resolve(strict=False)
+            if current != right and (current == repo or repo in current.parents):
                 target.unlink()
                 changed.append((target, "removed stale link"))
         elif target.is_file():

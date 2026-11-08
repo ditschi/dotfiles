@@ -118,6 +118,7 @@ class CommandsMixin:
                 runner.run(
                     "tool install", self.run_tools_install, needs=["dotfile apply"]
                 )
+            runner.run("syncthing ignores", self.run_syncthing_ignores)
             if (
                 not skip_ansible
                 and runner.ok("dotfile apply")
@@ -229,6 +230,11 @@ class CommandsMixin:
         self.allowed_features(
             data["features"], self.current_context(), self.current_device()
         )
+        # `machine update` runs this step itself before it calls apply.
+        if getattr(args, "user_steps", True):
+            user_steps = steps.Steps()
+            user_steps.run("syncthing ignores", self.run_syncthing_ignores)
+            user_steps.report("apply")
         if not data["ansible"]:
             log("ansible: false in the host config; skipping ansible")
             return 0

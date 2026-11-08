@@ -1,0 +1,21 @@
+// Shared Syncthing ignore rules for this folder. This file is synced to every
+// device; each device's own .stignore loads it with "#include .stglobalignore".
+// Created by the dotfiles (machine/syncthing/stglobalignore) when the folder had none;
+// the dotfiles never change it afterwards.
+// To sync something listed here anyway, add "!<path>" ABOVE the rules (first match wins).
+// Synology folders.
+(?d)@eaDir
+(?d)#recycle
+(?d)#snapshot
+// Build output and dependency caches: rebuilt locally, never worth syncing.
+(?d)**/target
+(?d)**/node_modules
+(?d)**/.venv
+(?d)**/__pycache__
+(?d)**/.pytest_cache
+(?d)**/.mypy_cache
+(?d)**/.ruff_cache
+(?d)**/.nox
+(?d)**/.tox
+// Git worktrees of Claude Code sessions; without (?d), so Syncthing never deletes one.
+**/.claude/worktrees

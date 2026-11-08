@@ -887,6 +887,7 @@ class UpdateMixin:
             runner.run("dotfile apply", self.run_dotfiles_apply)
             runner.run("ssh host list", self.pull_ssh_host_list)
             runner.run("tool install", self.run_tools_install, needs=["dotfile apply"])
+            runner.run("syncthing ignores", self.run_syncthing_ignores)
         else:
             reason = (
                 "mise is not installed"
@@ -937,6 +938,7 @@ class UpdateMixin:
                     skip_ansible=False,
                     profile_backup=profile_backup,
                     profile_changed=profile_changed,
+                    user_steps=False,
                 )
                 log(f"applying system changes ({reason})")
                 # cmd_apply restores the host config itself before it fails.

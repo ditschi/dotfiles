@@ -27,6 +27,7 @@ The script itself only defines the command line. The implementation is the packa
 | `tools` | bootstrap tools, git / ansible runners |
 | `dotfiles`, `mise_tools`, `mise_check`, `terminal_fonts` | dotfile groups (`mise dot`), tool install, fragment checks, terminal fonts |
 | `bw_client`, `env_pull`, `ssh_keys` | Bitwarden client, `~/.env`, per-host SSH keys |
+| `syncthing_ignores` | shared Syncthing ignore rules: `.stglobalignore` per folder, include line, default ignore patterns |
 | `commands` | setup, apply, update, status, commit, push |
 | `updates`, `auto_update`, `local_changes`, `local_overrides`, `system_relevance` | update plan and resolvers, background update, relevance filter |
 | `attention`, `events` | `machine attention`, local event log |

@@ -1205,6 +1205,7 @@ def _ordered_setup(tmp_path, monkeypatch, fail=(), interrupt=(), calls=None, **a
         ("cmd_env_pull", "env"),
         ("run_dotfiles_apply", "dotfiles"),
         ("run_tools_install", "tools"),
+        ("run_syncthing_ignores", "syncthing"),
         ("run_ansible_or_hint", "ansible"),
         ("provision_host_ssh_key", "ssh"),
         ("maybe_tailscale_login", "tailscale"),
@@ -1246,6 +1247,7 @@ def test_setup_applies_the_shell_before_ansible(tmp_path, monkeypatch):
         "env",
         "dotfiles",
         "tools",
+        "syncthing",
         "ready",
         "ansible",
         "ssh",
@@ -1261,6 +1263,7 @@ def test_setup_env_pull_failure_still_applies_everything(tmp_path, monkeypatch):
         "env",
         "dotfiles",
         "tools",
+        "syncthing",
         "ready",
         "ansible",
         "ssh",
@@ -1272,7 +1275,15 @@ def test_setup_env_pull_failure_still_applies_everything(tmp_path, monkeypatch):
 def test_setup_dotfile_failure_skips_tools_but_runs_ansible(tmp_path, monkeypatch):
     code, calls = _ordered_setup(tmp_path, monkeypatch, fail={"dotfiles"})
     assert code == 1
-    assert calls == ["env", "dotfiles", "ansible", "ssh", "tailscale", "timer"]
+    assert calls == [
+        "env",
+        "dotfiles",
+        "syncthing",
+        "ansible",
+        "ssh",
+        "tailscale",
+        "timer",
+    ]
 
 
 def test_setup_ansible_failure_still_handles_key_and_timers(tmp_path, monkeypatch):
@@ -1290,7 +1301,15 @@ def test_setup_skip_dotfiles_runs_only_ansible_and_later_steps(tmp_path, monkeyp
 def test_setup_without_ansible_prints_no_ready_line(tmp_path, monkeypatch):
     code, calls = _ordered_setup(tmp_path, monkeypatch, skip_ansible=True)
     assert code == 0
-    assert calls == ["env", "dotfiles", "tools", "ssh", "tailscale", "timer"]
+    assert calls == [
+        "env",
+        "dotfiles",
+        "tools",
+        "syncthing",
+        "ssh",
+        "tailscale",
+        "timer",
+    ]
 
 
 def test_setup_ctrl_c_stops_at_once(tmp_path, monkeypatch):
@@ -1394,3 +1413,31 @@ def test_hosts_readme_disk_space_example_parses():
         {"path": "/mnt/data", "min_free": "100G", "min_free_percent": 3},
         {"path": "/mnt/scratch", "ignore": True},
     ]
+
+
+def test_apply_runs_syncthing_ignores_and_a_failure_does_not_stop_it(
+    tmp_path: Path, monkeypatch
+):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/testhost.yml").write_text(
+        "---\ncontext: private\ndevice: desktop\nfeatures:\n  - syncthing\n"
+    )
+    calls: list[str] = []
+
+    def failing_step():
+        calls.append("syncthing")
+        raise OSError("boom")
+
+    monkeypatch.setattr(machine, "run_syncthing_ignores", failing_step)
+    args = argparse.Namespace(
+        limit="", playbook="workstation", no_become=True, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
+    assert calls == ["syncthing"]
+
+    calls.clear()
+    args.user_steps = False
+    assert machine.cmd_apply(args) == 0
+    assert calls == []

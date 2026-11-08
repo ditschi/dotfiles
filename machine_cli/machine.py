@@ -23,6 +23,7 @@ from .attention import AttentionMixin
 from .local_work import LocalWorkMixin
 from .monitoring import MonitoringMixin
 from .disk_space import DiskSpaceMixin
+from .syncthing_ignores import SyncthingIgnoresMixin
 
 
 class Machine(
@@ -42,6 +43,7 @@ class Machine(
     LocalWorkMixin,
     MonitoringMixin,
     DiskSpaceMixin,
+    SyncthingIgnoresMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()

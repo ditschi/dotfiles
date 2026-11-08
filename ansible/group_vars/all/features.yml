@@ -76,9 +76,9 @@ feature_table:
     help: Keep /etc in a local git repository (history of system config)
     container: excluded
   syncthing:
-    help: Syncthing package
+    help: Syncthing package + shared ignore rules
     work: excluded
-    server: excluded
+    server: optional
     container: excluded
   thunderbird:
     help: 'Thunderbird + tb CLI and bridge (extension: manual install)'

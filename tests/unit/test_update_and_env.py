@@ -3009,3 +3009,36 @@ def test_env_push_asks_a_removal_question_for_a_removal_conflict(
         False,
     )
     assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=vault"
+
+
+def test_update_runs_syncthing_ignores_after_the_tools(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    monkeypatch.setattr(
+        machine, "run_syncthing_ignores", lambda: calls.append("syncthing")
+    )
+    seen = []
+    monkeypatch.setattr(
+        machine,
+        "cmd_apply",
+        lambda args: seen.append(args) or calls.append("apply") or 0,
+    )
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine) == 0
+    assert calls == ["env", "dotfiles", "tools", "syncthing", "apply"]
+    # apply must not run the step a second time
+    assert seen[0].user_steps is False
+
+
+def test_update_syncthing_failure_still_runs_ansible(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+
+    def fail():
+        calls.append("syncthing")
+        raise OSError("boom")
+
+    monkeypatch.setattr(machine, "run_syncthing_ignores", fail)
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine) == 1
+    assert calls == ["env", "dotfiles", "tools", "syncthing", "apply"]

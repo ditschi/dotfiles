@@ -44,9 +44,16 @@ def test_new_private_server():
     defaults = features.defaults("private", "server")
     offered = features.allowed("private", "server")
     assert "etckeeper" in defaults
-    for name in ("gnome", "fonts", "thunderbird", "syncthing", "cosmic"):
+    for name in ("gnome", "fonts", "thunderbird", "cosmic"):
         assert name not in offered
-    assert "tailscale" in offered and "tailscale" not in defaults
+    for name in ("tailscale", "syncthing"):
+        assert name in offered and name not in defaults
+
+
+def test_syncthing_never_for_work_or_containers():
+    assert "syncthing" not in features.allowed("work", "desktop")
+    assert "syncthing" not in features.allowed("work", "server")
+    assert "syncthing" not in features.allowed("", "container")
 
 
 def test_container_without_context():

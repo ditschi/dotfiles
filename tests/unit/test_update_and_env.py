@@ -494,6 +494,37 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
     assert calls == ["env", "dotfiles", "tools", "apply"]
 
 
+FEATURE_TABLE = "ansible/group_vars/all/features.yml"
+
+
+def _feature_table(*extra: str) -> str:
+    rows = "".join(f"  {name}:\n    help: x\n    groups: [{name}]\n" for name in extra)
+    return f"feature_table:\n  zsh-full:\n    help: Shell stack\n{rows}"
+
+
+def test_update_writes_groups_of_a_feature_added_with_its_table_row(
+    update_env, monkeypatch
+):
+    """The feature table read before the fast-forward must not hide a new feature."""
+    machine, repo, other, _home, _calls = update_env
+    features = sys.modules["machine_cli.features"]
+    monkeypatch.setattr(features, "TABLE_PATH", repo / FEATURE_TABLE)
+    _push_change(other, FEATURE_TABLE, _feature_table())
+    _git("pull", "-q", cwd=repo)
+    assert "headroom" not in machine.host_dotfile_groups()  # table read and cached
+
+    (other / FEATURE_TABLE).write_text(_feature_table("headroom"))
+    _push_change(
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="desktop").replace(
+            "  - zsh-full\n", "  - zsh-full\n  - headroom\n"
+        ),
+    )
+    assert _update(machine, skip_ansible=True) == 0
+    assert '"headroom"' in machine.mise_local_config.read_text()
+
+
 def _failing_ansible_env(machine, monkeypatch, calls):
     monkeypatch.delattr(
         machine, "cmd_apply"
@@ -1359,6 +1390,43 @@ def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     assert "SHARED" not in host_values
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
     assert (home / ".env.host").stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("blocker", ["locked", "no-context"])
+def test_env_pull_fixes_open_env_files_without_bitwarden(
+    tmp_path, monkeypatch, fake_bw, capsys, blocker
+):
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
+    if blocker == "locked":
+        monkeypatch.setattr(machine, "unlock_bitwarden", lambda *a, **k: False)
+    else:
+        monkeypatch.setattr(machine, "current_context", lambda: "")
+    local = home / ".env.local"
+    local.write_text("A=1\n")
+    local.chmod(0o664)
+    (home / ".env").write_text("B=1\n")
+    (home / ".env").chmod(0o600)
+
+    assert machine.cmd_env_pull() == 0
+    assert local.stat().st_mode & 0o777 == 0o600
+    assert (home / ".env").stat().st_mode & 0o777 == 0o600
+    out = capsys.readouterr()
+    assert "~/.env.local (664 -> 600)" in out.out + out.err
+    assert "~/.env (" not in out.out + out.err
+
+
+def test_env_pull_logs_nothing_when_env_files_are_private(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
+    monkeypatch.setattr(machine, "unlock_bitwarden", lambda *a, **k: False)
+    for name in (".env", ".env.host", ".env.local"):
+        (home / name).write_text("A=1\n")
+        (home / name).chmod(0o600)
+
+    assert machine.cmd_env_pull() == 0
+    out = capsys.readouterr()
+    assert "permissions" not in out.out + out.err
 
 
 def test_env_pull_work_laptop_reads_work_items_only(tmp_path, monkeypatch, fake_bw):

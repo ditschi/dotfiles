@@ -63,6 +63,8 @@ The shell loads exactly these files, in order (later assignments win):
 | `~/.env.host` | This host's Bitwarden item | Generated |
 | `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local; only appended to when you choose "keep locally" |
 
+An env file that group or others may read or write is changed to mode `600`: by the next shell start (or `get-password`), which says so in one line, and by `machine env pull`, `machine setup` and `machine update`, also when Bitwarden is locked. If the mode cannot be changed, the shell warns with the `chmod 600` hint and still loads the file. The zsh health check run leaves the mode alone, so an open file does not make the check fail.
+
 The arrows distinguish fetching from shell loading. The shell loads the three files in order; later assignments win.
 
 ```mermaid

@@ -22,8 +22,16 @@ _RANK = {DEFAULT: 0, OPTIONAL: 1, EXCLUDED: 2}
 GROUP_ALWAYS = ("core", "prompt")
 
 
-@lru_cache(maxsize=None)
-def load_table(path: Path = TABLE_PATH) -> Dict[str, dict]:
+def load_table(path: Optional[Path] = None) -> Dict[str, dict]:
+    """The table as the file is now: `machine update` changes it while the process runs,
+    and groups computed afterwards must see the features the update added."""
+    path = TABLE_PATH if path is None else path
+    stat = path.stat()
+    return _read_table(path, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=4)
+def _read_table(path: Path, _mtime_ns: int, _size: int) -> Dict[str, dict]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return dict(data.get("feature_table") or {})
 

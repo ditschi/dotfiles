@@ -24,9 +24,15 @@ dotfiles_load_envfiles() {
     local envfile perms line key
     for envfile in "$HOME/.env" "$HOME/.env.host" "$HOME/.env.local"; do
         [[ -f $envfile ]] || continue
+        # Group or other bits set: change to 600. Not during the zsh health check run,
+        # whose stderr would fail the check and hide the message (spec env-files).
         perms=$(stat -c %a "$envfile")
-        if [[ $perms -gt 600 ]]; then
-            echo "WARNING: $envfile permissions ($perms) are too open. Should be 600 use 'chmod 600 $envfile'." >&2
+        if [[ -z ${DOTFILES_ZSH_CHECK-} && ${perms: -2} != 00 ]]; then
+            if chmod 600 "$envfile" 2>/dev/null; then
+                echo "Fixed permissions of $envfile ($perms -> 600)." >&2
+            else
+                echo "WARNING: $envfile permissions ($perms) are too open. Should be 600 use 'chmod 600 $envfile'." >&2
+            fi
         fi
         # Files with 'export' lines are sourced; plain KEY=value files are parsed.
         if grep -E '^[[:space:]]*export[[:space:]]+' "$envfile" | grep -vq '^#'; then

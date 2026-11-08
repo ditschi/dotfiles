@@ -31,12 +31,26 @@ context: |
   checkout before the first artifact is written, so the change directory lives in the
   same checkout as its implementation.
 
-  Open questions (every artifact and explore/propose/update conversations): ask
-  unresolved questions and history-derived motivations with the ask_user form, not
-  prose - one selectable option per answer (confirm / reword / reject for proposed
-  wordings), the recommended option as default, plus a choice to confirm all
-  recommendations. Write confirmed answers as plain prose; leave unanswered ones
-  under Open Questions.
+  Open questions (every artifact and explore/propose/update conversations): every
+  unresolved question and every history-derived motivation goes under an "Open
+  Questions" section in this format, so the owner can answer in the file:
+
+    ### Q<n> <short title>
+    <one or two sentences of context>
+    1. (recommended) <option> - <consequence>
+    2. <option> - <consequence>
+
+    Answer:
+
+  IDs are unique within a change and never reused; proposed wordings get the options
+  confirm / reword / reject. The owner writes after "Answer:" an option number, a
+  number plus a note, or free text. In conversations, ask at most the four most
+  important questions with the ask_user form (recommended option as default, plus a
+  choice to confirm all recommendations) and refer to the rest by ID; the owner may
+  also answer in chat as "Q5: 2, rest recommended". When reading the artifacts, treat
+  every filled "Answer:" line as an owner decision: write it into Decisions (or Why)
+  as plain prose with "(owner decision, <date>)" and remove the question. Leave
+  questions with an empty "Answer:" in place.
 
 rules:
   proposal:

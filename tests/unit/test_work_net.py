@@ -146,13 +146,55 @@ def test_hanging_keyring_lookup_is_stopped(tmp_path):
     assert result.returncode == 1
 
 
-def test_open_permissions_warn_on_stderr_only(tmp_path):
+def test_open_permissions_are_fixed_and_reported_on_stderr(tmp_path):
     _keyring(tmp_path, locked=False)
     home = _home(tmp_path, env="PASSWORD=secret\n")
     (home / ".env").chmod(0o644)
     result = _get_password(tmp_path, home)
     assert result.stdout == "secret\n"
+    assert (home / ".env").stat().st_mode & 0o777 == 0o600
+    assert ".env" in result.stderr and "644" in result.stderr
+
+
+@pytest.mark.parametrize("mode", [0o044, 0o604, 0o060])
+def test_group_or_other_bits_alone_are_fixed(tmp_path, mode):
+    _keyring(tmp_path, locked=False)
+    home = _home(tmp_path, env="PASSWORD=secret\n")
+    (home / ".env").chmod(mode)
+    result = _get_password(tmp_path, home)
+    assert result.stdout == "secret\n"
+    assert (home / ".env").stat().st_mode & 0o777 == 0o600
+
+
+def test_stricter_mode_is_left_alone(tmp_path):
+    _keyring(tmp_path, locked=False)
+    home = _home(tmp_path, env="PASSWORD=secret\n")
+    (home / ".env").chmod(0o400)
+    result = _get_password(tmp_path, home)
+    assert result.stdout == "secret\n"
+    assert result.stderr == ""
+    assert (home / ".env").stat().st_mode & 0o777 == 0o400
+
+
+def test_failing_chmod_warns_with_hint_and_still_loads(tmp_path):
+    _keyring(tmp_path, locked=False)
+    _stub(tmp_path / "bin", "chmod", "exit 1\n")
+    home = _home(tmp_path, env="PASSWORD=secret\n")
+    (home / ".env").chmod(0o644)
+    result = _get_password(tmp_path, home)
+    assert result.stdout == "secret\n"
     assert "chmod 600" in result.stderr
+    assert (home / ".env").stat().st_mode & 0o777 == 0o644
+
+
+def test_health_check_run_leaves_permissions_alone(tmp_path):
+    _keyring(tmp_path, locked=False)
+    home = _home(tmp_path, env="PASSWORD=secret\n")
+    (home / ".env").chmod(0o644)
+    result = _get_password(tmp_path, home, DOTFILES_ZSH_CHECK="1")
+    assert result.stdout == "secret\n"
+    assert result.stderr == ""
+    assert (home / ".env").stat().st_mode & 0o777 == 0o644
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -180,6 +222,40 @@ def test_shell_loader_still_exports_env_files(tmp_path, shell):
         check=True,
     )
     assert result.stdout.splitlines() == ["local", "exported"]
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_shell_loader_fixes_open_env_file(tmp_path, shell):
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} is not installed")
+    home = _home(tmp_path, env_local="A=local\n")
+    (home / ".env.local").chmod(0o664)
+    result = subprocess.run(
+        [shell, "-c", '. "$1" >/dev/null; printf "%s\\n" "$A"', "_", str(ENVIRONMENT)],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == "local\n"
+    assert "664 -> 600" in result.stderr
+    assert (home / ".env.local").stat().st_mode & 0o777 == 0o600
+
+
+def test_zsh_check_run_of_shell_loader_prints_nothing(tmp_path):
+    if not shutil.which("zsh"):
+        pytest.skip("zsh is not installed")
+    home = _home(tmp_path, env="A=x\n")
+    (home / ".env").chmod(0o644)
+    result = subprocess.run(
+        ["zsh", "-c", '. "$1" >/dev/null', "_", str(ENVIRONMENT)],
+        env={"HOME": str(home), "PATH": os.environ["PATH"], "DOTFILES_ZSH_CHECK": "1"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stderr == ""
+    assert (home / ".env").stat().st_mode & 0o777 == 0o644
 
 
 WORK_NET = REPO / "home/work/.local/bin/work-net"

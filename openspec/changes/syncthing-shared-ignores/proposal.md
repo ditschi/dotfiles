@@ -11,11 +11,12 @@ Syncthing has no global ignore list for existing folders. A folder's `.stignore`
 ## What Changes
 
 - On hosts with the feature `syncthing`, `machine` makes sure that the local `.stignore` of every folder in the local Syncthing configuration starts with `#include .stglobalignore`, and leaves the device's other lines as they are.
-- On the same hosts, `machine` sets the shared rules as Syncthing's default ignore patterns (`<defaults><ignores>`), so that a new folder gets them from the start.
-- The dotfiles never write or overwrite `.stglobalignore`; its content is owned by the synced folder.
+- On the same hosts, `machine` sets the shared rules as Syncthing's default ignore patterns (`<defaults><ignores>`), keeping the host's other default lines, so that a new folder gets them from the start.
+- The shared rules also cover the Synology folders `@eaDir`, `#recycle`, `#snapshot` and `.claude/worktrees`.
+- The dotfiles never overwrite `.stglobalignore`; its content is owned by the synced folder. When a folder has none and no known device has announced one, `machine` creates it from the repository rule list and adds the include line.
 - The repository gets one copy of the shared rule list, used for the default ignore patterns.
 - `docs/features.md` describes the scheme, how to add an opt-in exception, and the one-time manual setup for hosts without the dotfiles.
-- Unchanged: the feature table values of `syncthing` (preselected on private desktops, excluded for work, on servers and in containers) and the `syncthing` apt package.
+- The feature `syncthing` becomes optional on servers (off by default); it stays preselected on private desktops and excluded for work and in containers. The `syncthing` apt package is unchanged.
 
 ## Capabilities
 
@@ -25,7 +26,7 @@ Syncthing has no global ignore list for existing folders. A folder's `.stignore`
 
 ### Modified Capabilities
 
-None. `feature-selection` keeps its values for `syncthing`; only the help text in the feature table may change, which no requirement fixes.
+- `feature-selection`: `syncthing` becomes optional on private servers instead of excluded.
 
 ## Impact
 
@@ -33,7 +34,7 @@ None. `feature-selection` keeps its values for `syncthing`; only the help text i
 - Data: the shared rule list in the repository (location in design.md).
 - Tests: `tests/unit/test_syncthing_ignores.py`; the step wiring in the existing step tests.
 - Docs: `docs/features.md`, `docs/architecture.md` (module table).
-- Profiles: private desktops with the feature `syncthing` (today ThinkPad-L13-Yoga-Gen-2; see the Assumptions in design.md for ditschi-ThinkPad-T480). Work hosts, servers and containers are not affected, because the feature is excluded there.
+- Profiles: private desktops with the feature `syncthing` (today ThinkPad-L13-Yoga-Gen-2; see the Assumptions in design.md for ditschi-ThinkPad-T480). Servers get it only when the feature is selected; work hosts and containers are not affected, because the feature is excluded there.
 - Outside the dotfiles: the Synology NAS, the Android phone, the Raspberry Pi and the family laptops are set up by hand once.
 
 ## Where the change is made

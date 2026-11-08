@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shlex
+import stat
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -320,7 +321,31 @@ class EnvPullMixin:
         item["notes"] = f"{notes}\n\n{block}" if notes else block
         return self.bw_edit_item(item)
 
+    def fix_env_permissions(self) -> None:
+        """Change env files that group or others may access to 0600 (spec env-files)."""
+        for path in (
+            self.home / ".env",
+            self.home / ".env.host",
+            self.home / ".env.local",
+        ):
+            if not path.is_file():
+                continue
+            mode = stat.S_IMODE(path.stat().st_mode)
+            if not mode & 0o077:
+                continue
+            try:
+                path.chmod(0o600)
+            except OSError as error:
+                warn(
+                    f"{self.display(path)} permissions ({mode:o}) are too open "
+                    f"and could not be changed ({error}); run: chmod 600 {path}"
+                )
+                continue
+            log(f"fixed permissions of {self.display(path)} ({mode:o} -> 600)")
+
     def cmd_env_pull(self, interactive: bool = False) -> int:
+        # Before any Bitwarden step, so it also runs locked, without bw and in containers.
+        self.fix_env_permissions()
         if not self.current_context():
             log("no context (container): skip ~/.env sync")
             return 0

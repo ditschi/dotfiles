@@ -494,6 +494,37 @@ def test_update_applies_when_host_profile_changed_upstream(update_env):
     assert calls == ["env", "dotfiles", "tools", "apply"]
 
 
+FEATURE_TABLE = "ansible/group_vars/all/features.yml"
+
+
+def _feature_table(*extra: str) -> str:
+    rows = "".join(f"  {name}:\n    help: x\n    groups: [{name}]\n" for name in extra)
+    return f"feature_table:\n  zsh-full:\n    help: Shell stack\n{rows}"
+
+
+def test_update_writes_groups_of_a_feature_added_with_its_table_row(
+    update_env, monkeypatch
+):
+    """The feature table read before the fast-forward must not hide a new feature."""
+    machine, repo, other, _home, _calls = update_env
+    features = sys.modules["machine_cli.features"]
+    monkeypatch.setattr(features, "TABLE_PATH", repo / FEATURE_TABLE)
+    _push_change(other, FEATURE_TABLE, _feature_table())
+    _git("pull", "-q", cwd=repo)
+    assert "headroom" not in machine.host_dotfile_groups()  # table read and cached
+
+    (other / FEATURE_TABLE).write_text(_feature_table("headroom"))
+    _push_change(
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="desktop").replace(
+            "  - zsh-full\n", "  - zsh-full\n  - headroom\n"
+        ),
+    )
+    assert _update(machine, skip_ansible=True) == 0
+    assert '"headroom"' in machine.mise_local_config.read_text()
+
+
 def _failing_ansible_env(machine, monkeypatch, calls):
     monkeypatch.delattr(
         machine, "cmd_apply"

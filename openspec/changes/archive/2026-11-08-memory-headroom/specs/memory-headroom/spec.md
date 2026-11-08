@@ -3,22 +3,26 @@
 ## ADDED Requirements
 
 ### Requirement: Swap file on disk grown to the target size
-With the feature `memory-headroom`, the swap file on disk SHALL be at least the target size, 16 GiB by default and configurable per host. A larger swap file SHALL be left as it is. The swap file SHALL keep a lower swap priority than zram and SHALL be activated at boot.
+With the feature `memory-headroom`, the swap file on disk SHALL be at least the target size: the RAM rounded down to whole GiB plus 2 GiB, configurable per host. A larger swap file SHALL be left as it is. The swap file SHALL keep a lower swap priority than zram and SHALL be activated at boot.
 
 #### Scenario: Laptop with a 4 GiB swap file
-- **WHEN** a host with `memory-headroom` has a 4 GiB `/swap.img` and enough free disk space, and `machine apply` runs
+- **WHEN** a host with `memory-headroom` and 14.8 GiB of RAM has a 4 GiB `/swap.img`, enough free disk space and enough free RAM, and `machine apply` runs
 - **THEN** `/swap.img` is 16 GiB, active, listed in `/etc/fstab`, and used after zram
 
 #### Scenario: Swap file already large enough
-- **WHEN** the swap file is 16 GiB or larger
+- **WHEN** the swap file is at least the target size
 - **THEN** it is not changed and nothing is reported as changed
 
-### Requirement: Swap file resized without losing swap
-Growing the swap file SHALL activate the new swap space before the old one is turned off. When any step fails, the old swap file SHALL stay active and no partial file SHALL remain.
+### Requirement: Swap file grown only with room in RAM
+The swap file SHALL be turned off for growing only when free RAM holds its used swap plus 2 GiB. Otherwise it SHALL keep its size, Ansible SHALL print a warning with the commands to grow it by hand, the run SHALL go on, and the next run SHALL try again. When a step fails or the run is interrupted after the file was turned off, the swap file SHALL be turned on again and the failure SHALL be reported.
+
+#### Scenario: Busy host
+- **WHEN** the swap file holds 3 GiB of used swap and 4 GiB of RAM are available
+- **THEN** the swap file keeps its size, a warning names the free RAM and the commands to grow it by hand, and the run does not fail
 
 #### Scenario: mkswap fails
-- **WHEN** preparing the new swap file fails
-- **THEN** the old swap file is still active, the partial file is removed, and the Ansible run reports the failure
+- **WHEN** formatting the grown swap file fails
+- **THEN** the swap file is active again and the Ansible run reports the failure
 
 ### Requirement: Swap file not grown without room
 The swap file SHALL NOT be grown when less than 20 GiB or less than 5 % of the filesystem would remain free afterwards, or when the filesystem does not support a swap file created this way. The host SHALL then keep its swap unchanged and Ansible SHALL print a warning that names the reason, without failing the run.

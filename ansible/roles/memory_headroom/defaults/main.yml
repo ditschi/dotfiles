@@ -1,0 +1,15 @@
+---
+# Swap file on disk: grown in place to the target size, never shrunk. The one active swap file in
+# /proc/swaps wins over this path.
+memory_headroom_swapfile: /swap.img
+# Target size: RAM rounded down to whole GiB plus 2 GiB (the L13 with 14.8 GiB: 16 GiB).
+memory_headroom_swapfile_size_gib: "{{ (ansible_facts.memtotal_mb | int // 1024) + 2 }}"
+# Free RAM needed beyond the swap file's used pages before it is turned off to grow it.
+memory_headroom_swapoff_reserve_gib: 2
+# Not grown when less than this (GiB) or 5 % of the filesystem would remain free.
+memory_headroom_min_free_gib: 20
+memory_headroom_fstab: /etc/fstab
+# systemd-oomd: memory pressure limit for user sessions; no swap-based kills.
+memory_headroom_oomd_pressure_limit: "80%"
+memory_headroom_oomd_dropin: /etc/systemd/system/user@.service.d/90-oomd-limit.conf
+memory_headroom_oomd_swap_dropin: /etc/systemd/system/-.slice.d/90-oomd-no-swap-kill.conf

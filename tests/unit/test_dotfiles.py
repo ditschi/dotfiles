@@ -671,3 +671,25 @@ def test_origin_switches_to_ssh_only_when_it_works(
     assert bool(set_url) == switched
     if switched:
         assert set_url[0][-1] == "git@github.com:ditschi/dotfiles.git"
+
+
+@pytest.mark.parametrize(
+    "prefix", ["app-gnome-com.anthropic.Claude-", "app-com.anthropic.Claude-"]
+)
+def test_memory_headroom_claude_scope_dropins(prefix):
+    """Both Claude scope drop-ins throttle the app and keep it running after an OOM kill.
+
+    `systemd-analyze verify` cannot load scope units from files, so the drop-in is
+    checked here: one `[Scope]` section with exactly these two settings.
+    """
+    dropin = (
+        REPO
+        / "home/memory-headroom/.config/systemd/user"
+        / f"{prefix}.scope.d/50-memory-high.conf"
+    )
+    lines = [
+        line.strip()
+        for line in dropin.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert lines == ["[Scope]", "MemoryHigh=8G", "OOMPolicy=continue"]

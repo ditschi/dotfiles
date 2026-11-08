@@ -119,6 +119,12 @@ feature_table:
   zram-swap:
     help: Compressed swap in RAM (not on Raspberry Pis)
     container: excluded
+  memory-headroom:
+    help: Larger disk swap + slow Claude app instead of OOM kill
+    groups: [memory-headroom]
+    work: optional
+    server: excluded
+    container: excluded
   sshd-home:
     help: authorized_keys from machine/ssh_keys
     work: excluded

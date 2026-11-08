@@ -37,6 +37,7 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 ## Asking the user what to do next
 
 - Whenever you ask what to do next or offer choices, number the options (1, 2, 3, …) so the user can answer with a single number. Mark the recommended option.
+- For questions recorded in an OpenSpec change, use the question IDs from its Open Questions section (`Q5`, option `Q5.2`), so answers in chat and in the file refer to the same thing.
 - When you summarise what was done or is still open for a task list, name the file that holds the task numbers (for example `openspec/changes/<change>/tasks.md`) once in that message, so the numbers can be looked up.
 
 ## File links in chat

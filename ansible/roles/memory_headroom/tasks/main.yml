@@ -1,0 +1,87 @@
+---
+- name: Ensure drop-in and script directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ memory_headroom_oomd_dropin | dirname }}"
+    - "{{ memory_headroom_oomd_swap_dropin | dirname }}"
+    - "{{ machine_lib_dir }}"
+
+- name: Raise the systemd-oomd memory pressure limit for user sessions
+  ansible.builtin.template:
+    src: 90-oomd-limit.conf.j2
+    dest: "{{ memory_headroom_oomd_dropin }}"
+    mode: "0644"
+  notify: Reload systemd for oomd settings
+
+- name: Turn off swap-based systemd-oomd kills
+  ansible.builtin.copy:
+    src: 90-oomd-no-swap-kill.conf
+    dest: "{{ memory_headroom_oomd_swap_dropin }}"
+    mode: "0644"
+  notify: Reload systemd for oomd settings
+
+- name: Install the swap file resize script
+  ansible.builtin.copy:
+    src: swapfile-grow
+    dest: "{{ machine_lib_dir }}/swapfile-grow"
+    mode: "0755"
+
+# Exit code 3 means grown, 0 unchanged or skipped (with a WARNING line, for example
+# when too little RAM is free to turn the swap file off; the next run tries again).
+- name: Grow the swap file on disk
+  ansible.builtin.command:
+    argv:
+      - "{{ machine_lib_dir }}/swapfile-grow"
+      - "{{ memory_headroom_swapfile }}"
+      - "{{ memory_headroom_swapfile_size_gib }}"
+      - "{{ memory_headroom_min_free_gib }}"
+      - "{{ memory_headroom_swapoff_reserve_gib }}"
+  register: memory_headroom_grow
+  changed_when: memory_headroom_grow.rc == 3
+  failed_when: memory_headroom_grow.rc not in [0, 3]
+  when: machine_manage_services | bool
+
+- name: Report why the swap file was not grown
+  ansible.builtin.debug:
+    msg: "{{ memory_headroom_grow.stdout_lines | select('match', 'WARNING') | list }}"
+  when:
+    - memory_headroom_grow.stdout_lines is defined
+    - memory_headroom_grow.stdout_lines | select('match', 'WARNING') | list | length > 0
+
+- name: Use the swap file the script found
+  ansible.builtin.set_fact:
+    memory_headroom_swapfile_path: >-
+      {{ (memory_headroom_grow.stdout_lines | default([]) | select('match', 'path=') | list
+          | first | default('path=' ~ memory_headroom_swapfile))[5:] }}
+
+- name: Check the swap file and /etc/fstab
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ memory_headroom_swapfile_path }}"
+    - "{{ memory_headroom_fstab }}"
+  register: memory_headroom_stat
+
+- name: Read /etc/fstab
+  ansible.builtin.slurp:
+    src: "{{ memory_headroom_fstab }}"
+  register: memory_headroom_fstab_content
+  when: memory_headroom_stat.results[1].stat.exists
+
+# Only for an existing swap file (an entry for a missing file fails at boot); an
+# existing entry for it is kept as it is (options, spacing).
+- name: Activate the swap file at boot
+  ansible.builtin.lineinfile:
+    path: "{{ memory_headroom_fstab }}"
+    line: "{{ memory_headroom_swapfile_path }}\tnone\tswap\tsw\t0\t0"
+    insertafter: EOF
+    create: true
+    mode: "0644"
+  when:
+    - memory_headroom_stat.results[0].stat.exists
+    - >-
+      not (memory_headroom_fstab_content.content | default('') | b64decode
+           is search('(?m)^\s*' ~ (memory_headroom_swapfile_path | regex_escape) ~ '\s+\S+\s+swap\s'))

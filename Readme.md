@@ -162,6 +162,7 @@ ansible/
     cosmic_desktop/       # COSMIC session on Ubuntu 26.04+ from ppa:hepp3n/cosmic-epoch
     lid_switch/ power_profile_switch/ battery_charge_limit/  # laptop features (detected laptops)
     zram_swap/            # compressed swap in RAM (not on Raspberry Pis)
+    memory_headroom/      # larger swap file, oomd limits (feature memory-headroom)
     thinkpad_l13_yoga_gen2/ # model role: S3 suspend, tablet OSK (selected by DMI)
 tests/                    # unit + Docker/CI
 ```

@@ -38,3 +38,6 @@ root = "home/gnome"
 
 [dotfile_groups.cosmic]
 root = "home/cosmic"
+
+[dotfile_groups.memory-headroom]
+root = "home/memory-headroom"

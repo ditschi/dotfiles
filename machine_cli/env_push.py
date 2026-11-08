@@ -36,9 +36,9 @@ class Edit:
     line: Optional[str]  # the local line; None for a removal
     conflict: bool = False  # Bitwarden changed the key to another value since the pull
     reference: Optional[Tuple[str, str]] = None  # the line is a new reference
-    target: Optional[Tuple[str, str]] = (
-        None  # the item sets the key from this reference
-    )
+    # the item sets the key from this reference
+    target: Optional[Tuple[str, str]] = None
+    problem: str = ""  # why the edit cannot be written
 
 
 def key_place(item: dict, key: str) -> Tuple[Optional[int], List[int]]:
@@ -75,15 +75,22 @@ def raw_value(item: dict, key: str) -> Optional[str]:
 
 class EnvPushMixin:
     def _env_item_cached(self, cache: Dict[str, Optional[dict]], name: str):
+        """The env item with exactly this name; None when missing or not unique."""
         if name not in cache:
-            cache[name] = self.bw_get_item_raw(name)
+            found = self.bw_items_named(name) or []
+            cache[name] = found[0] if len(found) == 1 else None
+            if len(found) > 1:
+                warn(f"{len(found)} Bitwarden items are named {name}")
         return cache[name]
 
     def _env_edits(
         self, path: Path, item_name: str, new: str
     ) -> Tuple[List[Edit], Dict[str, Optional[dict]]]:
         """The keys the file adds, changes or removes relative to the last pull."""
-        base = item_lines(parse_env_file(self.env_state_path(path).read_text()))
+        state = parse_env_file(self.env_state_path(path).read_text())
+        base = item_lines(state)
+        # Keys carried in the local-only section stay with the pull's own choices.
+        carried = state.keys() - set(base)
         current = parse_env_file(path.read_text(encoding="utf-8"))
         local = {key: line for key, line, _section in current.assignments}
         upcoming_parsed = parse_env_file(new)
@@ -93,7 +100,7 @@ class EnvPushMixin:
         edits = []
         for key in [*local, *(key for key in base if key not in local)]:
             mine, before, now = local.get(key), base.get(key), upcoming.get(key)
-            if same_line(mine, before):
+            if key in carried or same_line(mine, before):
                 continue
             conflict = not same_line(now, before)
             if conflict and same_line(mine, now):
@@ -110,6 +117,8 @@ class EnvPushMixin:
             if mine is not None:
                 edit.reference = parse_reference(assignment_parts(mine)[2])
             raw_item = self._env_item_cached(items, item)
+            if kind != ADD and raw_item is None:
+                edit.problem = f"Bitwarden {item} not found or not unique"
             if kind == CHANGE and not edit.reference and raw_item:
                 raw = raw_value(raw_item, key)
                 edit.target = parse_reference(raw) if raw is not None else None
@@ -133,6 +142,8 @@ class EnvPushMixin:
     def _reference_problems(self, edits: List[Edit]) -> List[str]:
         problems = []
         for edit in edits:
+            if edit.problem:
+                problems.append(f"{edit.key}: {edit.problem}")
             reference = edit.reference or edit.target
             if not reference:
                 continue
@@ -209,21 +220,16 @@ class EnvPushMixin:
         print(f"\n{self.display(path)} -> Bitwarden:")
         for edit in edits:
             print(self._describe_edit(edit))
-        problems = self._reference_problems(edits)
-        if problems:
-            warn("nothing pushed; these references cannot be resolved:")
-            for problem in problems:
-                print(f"  {problem}")
-            return FAILED
         kept = []
         for edit in edits:
-            if edit.conflict:
+            if edit.kind == REMOVE_KEY:
+                too = " (it was changed there too)" if edit.conflict else ""
+                question = f"Remove {edit.key} from Bitwarden {edit.item}?{too}"
+            elif edit.conflict:
                 question = (
                     f"{edit.key} was changed in Bitwarden {edit.item} too; "
                     "overwrite it with the local value?"
                 )
-            elif edit.kind == REMOVE_KEY:
-                question = f"Remove {edit.key} from Bitwarden {edit.item}?"
             else:
                 kept.append(edit)
                 continue
@@ -232,6 +238,12 @@ class EnvPushMixin:
         if not kept:
             log("nothing left to push")
             return NOTHING_TO_PUSH
+        problems = self._reference_problems(kept)
+        if problems:
+            warn("nothing pushed; these changes cannot be written:")
+            for problem in problems:
+                print(f"  {problem}")
+            return FAILED
         if not system.prompt_yes_no(f"Write {len(kept)} change(s) to Bitwarden?", True):
             log("nothing pushed")
             return DECLINED

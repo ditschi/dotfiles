@@ -1312,6 +1312,8 @@ def test_commit_stages_the_docs_and_agent_instructions(tmp_path, monkeypatch):
 
 def _env_machine(tmp_path, monkeypatch, fake_bw, profile: str, items: dict):
     bw, store = fake_bw
+    # like real items, each carries its name (exact-name lookups rely on it)
+    items = {key: {"name": key, **item} for key, item in items.items()}
     store.write_text(json.dumps({"_session": "s", "items": items}))
     repo = tmp_path / "dotfiles"
     (repo / "home").mkdir(parents=True)
@@ -1350,7 +1352,7 @@ def env_pull():
 def _bw_set_item(fake_bw, name: str, item: dict) -> None:
     _bw, store = fake_bw
     data = json.loads(store.read_text())
-    data["items"][name] = item
+    data["items"][name] = {"name": name, **item}
     store.write_text(json.dumps(data))
 
 
@@ -2733,6 +2735,8 @@ def test_env_pull_pushes_edits_on_request(tmp_path, monkeypatch, fake_bw):
 
 def _push(machine, monkeypatch, *answers, host=False):
     monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    # the pull after the push takes the preselected choice for local-only keys
+    monkeypatch.setattr(machine_system(), "choose", lambda _t, _c, default: default)
     monkeypatch.setattr(machine, "offer_saving_bitwarden_session", lambda: None)
     asked = _yes_no(monkeypatch, *answers)
     return machine.cmd_env_push(host=host), asked
@@ -2902,3 +2906,106 @@ def test_env_push_asks_only_for_real_conflicts(
     questions = [question for question, _default in asked]
     assert any("changed in Bitwarden" in q for q in questions) is conflict
     assert _bw_item(fake_bw, "env/groups/work")["notes"] == f"A=1\n{vault}"
+
+
+def _delete_item(fake_bw, name: str) -> None:
+    _bw, store = fake_bw
+    data = json.loads(store.read_text())
+    del data["items"][name]
+    store.write_text(json.dumps(data))
+
+
+def test_env_pull_keeps_an_edit_of_a_referenced_key_while_unresolved(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _pulled(
+        tmp_path, monkeypatch, fake_bw, "A=1\nPASSWORD={{bw:Work login/password}}"
+    )
+    path = home / ".env"
+    lines = [
+        "PASSWORD=typed" if line.startswith("PASSWORD=") else line
+        for line in path.read_text().splitlines()
+    ]
+    path.write_text("\n".join(lines) + "\n")
+    login = _bw_item(fake_bw, "Work login")
+    _delete_item(fake_bw, "Work login")
+
+    assert machine.cmd_env_pull() == 0
+    assert _loaded(home, "PASSWORD") == "typed"
+    output = capsys.readouterr().out
+    assert "local edits of PASSWORD" in output
+    assert 'PASSWORD references Bitwarden "Work login"' in output
+    assert machine.env_sync_attention() == [
+        "~/.env: local edits of PASSWORD not in Bitwarden (push or discard)",
+        '~/.env: PASSWORD references Bitwarden "Work login" (item not found)',
+    ]
+
+    _bw_set_item(fake_bw, "Work login", login)
+    assert machine.cmd_env_pull() == 0
+    assert _loaded(home, "PASSWORD") == "typed"
+
+
+def test_env_pull_does_not_resolve_a_value_the_loader_would_expand(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _ref_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "A=1\nPASSWORD={{bw:Odd/password}}",
+        Odd=_login("Odd", "a${HOME}b"),
+    )
+
+    assert machine.cmd_env_pull() == 0
+    assert "which the env file loader expands" in (home / ".env").read_text()
+    assert "PASSWORD" not in _sourced(home / ".env")
+
+
+def test_env_push_leaves_local_only_keys_to_the_pull(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    with (home / ".env").open("a") as env:
+        env.write("LOCALKEY=mine\n")
+    assert machine.cmd_env_pull() == 0  # no terminal: carried as local-only
+    _bw_set_item(fake_bw, "env/groups/work", {"id": "work-id", **_item("A=1")})
+    assert machine.cmd_env_pull() == 0  # B deleted in the vault: "# was in"
+    _edit(home, "A=1", "A=local")
+
+    code, _asked = _push(machine, monkeypatch)
+    assert code == 0
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=local"
+    text = (home / ".env").read_text()
+    assert "LOCALKEY=mine" in text and "# was in env/groups/work\nB=2" in text
+
+
+def test_env_push_refuses_an_ambiguous_env_item(tmp_path, monkeypatch, fake_bw, capsys):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    named = machine.bw_items_named
+    monkeypatch.setattr(
+        machine,
+        "bw_items_named",
+        lambda name: named(name) * (2 if name == "env/groups/work" else 1),
+    )
+
+    code, _asked = _push(machine, monkeypatch)
+    assert code == 1
+    assert "B: Bitwarden env/groups/work not found or not unique" in (
+        capsys.readouterr().out
+    )
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=2"
+
+
+def test_env_push_asks_a_removal_question_for_a_removal_conflict(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _bw_set_item(fake_bw, "env/groups/work", {"id": "work-id", **_item("A=1\nB=vault")})
+    _edit(home, "B=2\n", "")
+
+    code, asked = _push(machine, monkeypatch)
+    assert code == 0
+    assert asked[0] == (
+        "Remove B from Bitwarden env/groups/work? (it was changed there too)",
+        False,
+    )
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=vault"

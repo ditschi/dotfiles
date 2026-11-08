@@ -44,11 +44,15 @@ A value in an `env/…` item, in its notes or a custom field, of the form `{{bw:
 - **THEN** the reference is not resolved
 
 ### Requirement: Unresolved reference
-When a reference cannot be resolved, because the item is missing or not unique or the target is missing or empty, the pull SHALL keep the key's previous value from the existing file, or leave the key out when there is none, SHALL warn with the key and the item but never a value, and SHALL record an attention item.
+When a reference cannot be resolved, because the item is missing or not unique, the target is missing or empty, or the value has a line break or `${`, which the loader would change, the pull SHALL keep the key's value from the last pull, or leave the key out when there is none, SHALL warn with the key and the item but never a value, and SHALL record an attention item.
 
 #### Scenario: Referenced item deleted
 - **WHEN** `~/.env` sets `PASSWORD` from a reference and the referenced item no longer exists
 - **THEN** the pull keeps the previous `PASSWORD` value, warns naming `PASSWORD` and the item, and `machine attention` lists it
+
+#### Scenario: Local edit while unresolved
+- **WHEN** the user changed a referenced key in `~/.env` and the reference cannot be resolved at the next pull
+- **THEN** the edit stays an unpushed local edit and is not taken as the key's pulled value
 
 #### Scenario: Two items with the name
 - **WHEN** two items carry the referenced name

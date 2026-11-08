@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
 import stat
@@ -47,7 +48,6 @@ REFERENCE = re.compile(r"^\{\{bw:(.+)/(password|username|field:[^/]+)\}\}$")
 # Stands for a resolved value until the file's format is known (see render_env).
 REF_TOKEN = re.compile(r"@@machine-ref:\d+@@")
 EXPORT = re.compile(r"^\s*export\s+")
-UNRESOLVED = re.compile(r'^# unresolved: (\S+) from Bitwarden "(.+)" \((.+)\): (.+)$')
 SYNTAX_HINT = [
     "# A value may reference another Bitwarden item instead of a copy:",
     "#   KEY={{bw:<item name>/password}}   (or /username, /field:<NAME>)",
@@ -299,13 +299,15 @@ class EnvPullMixin:
                     f"{self.display(path)}: local edits of {', '.join(edits)} "
                     "not in Bitwarden (push or discard)"
                 )
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if match := UNRESOLVED.match(line):
-                    key, name, _target, why = match.groups()
-                    open_items.append(
-                        f'{self.display(path)}: {key} references Bitwarden "{name}" '
-                        f"({why})"
-                    )
+        try:
+            unresolved = json.loads(self.env_unresolved_path.read_text())
+        except (OSError, ValueError):
+            unresolved = []
+        for path, key, name, why in unresolved:
+            open_items.append(
+                f'{self.display(Path(path))}: {key} references Bitwarden "{name}" '
+                f"({why})"
+            )
         return open_items
 
     def _env_generated(self, names: List[str]) -> Tuple[Dict[Path, str], int]:
@@ -369,12 +371,18 @@ class EnvPullMixin:
             return None, f"item has no {target}"
         if "\n" in value:
             return None, "multi-line value"
+        if "${" in value:
+            return None, "value contains ${, which the env file loader expands"
         return value, ""
 
     def _previous_lines(self, path: Path) -> Dict[str, str]:
-        if not path.is_file():
+        """Lines of the last pull, so an unpushed local edit never becomes the base."""
+        source = self.env_state_path(path)
+        if not source.is_file():
+            source = path
+        if not source.is_file():
             return {}
-        parsed = parse_env_file(path.read_text(encoding="utf-8"))
+        parsed = parse_env_file(source.read_text(encoding="utf-8"))
         return {
             key: line
             for key, line, _section in parsed.assignments
@@ -424,6 +432,11 @@ class EnvPullMixin:
             return shlex.quote(resolved) if sourced else resolved
 
         return REF_TOKEN.sub(value, text)
+
+    @property
+    def env_unresolved_path(self) -> Path:
+        """References the last pull could not resolve (keys and items, no values)."""
+        return self.state_dir / "env-generated" / "unresolved.json"
 
     def env_state_path(self, path: Path) -> Path:
         """The content machine last wrote to a generated env file."""
@@ -525,7 +538,10 @@ class EnvPullMixin:
                 *lines,
             ]
         )
-        item = self.bw_get_item_raw(item_name)
+        found = self.bw_items_named(item_name)
+        if found is None or len(found) > 1:
+            return False
+        item = found[0] if found else None
         if item is None:
             created = self.bw_create_item(
                 {
@@ -721,9 +737,16 @@ class EnvPullMixin:
                 f"{self.display(path)}: local edits of {', '.join(keys)} are not in "
                 "Bitwarden; left unchanged; run: machine env push (or machine attention)"
             )
+        write_private(
+            self.env_unresolved_path,
+            json.dumps(
+                [
+                    [str(path), key, name, why]
+                    for path, key, name, why in self.env_unresolved
+                ]
+            ).encode(),
+        )
         for path, key, name, why in self.env_unresolved:
-            if path in held:
-                continue
             warn(
                 f'{self.display(path)}: {key} references Bitwarden "{name}", which '
                 f"cannot be resolved ({why}); kept its previous value, if any; "

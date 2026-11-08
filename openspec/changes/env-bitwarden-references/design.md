@@ -37,7 +37,7 @@ Current state:
 
 **Syntax.** `KEY={{bw:<item name>/<target>}}` with `<target>` = `password`, `username` or `field:<NAME>`, in note lines and custom field values. The owner accepted this syntax. Item names are matched exactly, as for the other items. The generated line is quoted and preceded by `# KEY from Bitwarden "<item>" (<target>)`; the comment is informational only, the pull acts on the value line.
 
-**Resolved values follow the file's loader format.** The loader sources a file with `export` lines and reads any other file as plain `KEY=value` without shell syntax. A resolved value is therefore shell-quoted in a sourced file and written literally in a plain file, so a password with spaces, quotes or `$` arrives unchanged either way; `env/groups/work` is plain. For the same reason the pull parses a plain file by the loader's rules: a line like `PASS=it's a b` is an assignment there, not shell code. A multi-line value cannot be written to a plain file and counts as unresolved.
+**Resolved values follow the file's loader format.** The loader sources a file with `export` lines and reads any other file as plain `KEY=value` without shell syntax. A resolved value is therefore shell-quoted in a sourced file and written literally in a plain file, so a password with spaces, quotes or `$` arrives unchanged either way; `env/groups/work` is plain. For the same reason the pull parses a plain file by the loader's rules: a line like `PASS=it's a b` is an assignment there, not shell code. A multi-line value, or one containing `${` (which the plain loader expands), cannot be written unchanged and counts as unresolved.
 
 **Unresolved reference: keep the previous value and record an attention item** (owner choice). A wrong or empty value never replaces a working one, and the shell never sees the reference text. Leaving the key out is used only when there is no previous value.
 
@@ -47,11 +47,13 @@ Current state:
 
 **Removing keys is offered with "no" preselected** (owner choice), so an accidental Enter never deletes a key from Bitwarden.
 
-**The pull protects unpushed local edits.** It stores the content it last wrote per file (owner-only, under `~/.local/share/machine/`). Changed or missing keys that this content set from an item are unpushed local edits. In a terminal the pull asks push / discard / skip, with skip preselected; without a terminal it leaves that file unchanged and records an attention item (owner choice), so a background update never discards an edit. Added keys keep the existing local-only flow, so a new reference can also go to Bitwarden through "add to Bitwarden"; the appended line is then resolved by the regeneration.
+**The pull protects unpushed local edits.** It stores the content it last wrote per file (owner-only, under `~/.local/share/machine/`). Changed or missing keys that this content set from an item are unpushed local edits. In a terminal the pull asks push / discard / skip, with skip preselected; without a terminal it leaves that file unchanged and records an attention item (owner choice), so a background update never discards an edit. Keys already carried in the local-only section are not pushed; they keep the pull's per-key choices. Added keys keep the existing local-only flow, so a new reference can also go to Bitwarden through "add to Bitwarden"; the appended line is then resolved by the regeneration.
 
 **Conflicts in the push** (owner choice). A key that both Bitwarden and the file changed since the last pull is a conflict only when the two new values differ; its question preselects "no", as for removals. The same new value on both sides needs no write.
 
 **No push without a last-generated state** (owner choice). Before the first pull after the update the push refuses and names `machine env pull` as the next command.
+
+**Writes find env items by exact name.** The push and "add to Bitwarden" write only to the one item whose name matches exactly; a missing or duplicate name writes nothing, because a search could hit a similar item. The previous value of an unresolved reference comes from the last pull, never from the current file, so a local edit cannot become the pulled value.
 
 **Syntax hint in the generated header.** Every generated file shows the syntax and names `machine env push`, so the owner can write a reference without looking it up. The temporary hint the owner placed in the notes of `env/groups/work` is removed when this change lands.
 

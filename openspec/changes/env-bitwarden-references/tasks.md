@@ -33,7 +33,7 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 - [x] 6.1 Run the env pull and attention unit tests touched in groups 2 to 4 and `pytest tests/unit -q`, because the update flow and attention items are shared infrastructure; verify all pass.
 - [x] 6.2 Run `pre-commit run --files <changed paths>` including untracked additions; verify all hooks pass.
 - [x] 6.3 Run `openspec validate env-bitwarden-references --strict`; verify the change is valid.
-- [ ] 6.4 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change touches the update flow and writes to the vault; fix the findings and rerun 6.1 to 6.3 after relevant edits.
+- [x] 6.4 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change touches the update flow and writes to the vault; fix the findings and rerun 6.1 to 6.3 after relevant edits.
 
 ## 7. Single work password in Bitwarden
 

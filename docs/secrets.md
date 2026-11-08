@@ -193,7 +193,8 @@ resolved value, after a comment `# KEY from Bitwarden "<item>" (<target>)`; the
 shell, services and `get-password` never call `bw`. In a file with `export` lines
 the value is shell-quoted, in a plain `KEY=value` file it is written literally,
 as the loader reads it. When a reference cannot be resolved (item missing or not
-unique, target empty), the pull keeps the previous value, writes a
+unique, target empty, or a value with a line break or `${`, which the loader
+would change), the pull keeps the value of the last pull, writes a
 `# unresolved: …` comment and lists it in `machine attention`. The header of every
 generated file repeats the syntax.
 

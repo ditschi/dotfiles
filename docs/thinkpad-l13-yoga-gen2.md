@@ -1,8 +1,8 @@
 # ThinkPad L13 Yoga Gen 2 on Ubuntu
 
-Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `machine apply`.
+Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `machine apply` (Ansible); the touch extensions come with `machine update`.
 
-| What | How it is selected | Role |
+| What | How it is selected | Applied by |
 | --- | --- | --- |
 | S3 suspend, `mouse-reset`, on-screen keyboard in tablet mode | detected model (DMI `ThinkPad L13 Yoga Gen 2`), no feature | `thinkpad_l13_yoga_gen2` |
 | Lid does nothing | feature `lid-switch` (laptops) | `lid_switch` |
@@ -10,7 +10,7 @@ Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `
 | Battery charge thresholds | feature `battery-charge-limit` (laptops) | `battery_charge_limit` |
 | zram swap | feature `zram-swap` | `zram_swap` |
 | Swap file of RAM + 2 GiB, oomd limits, Claude app throttle | feature `memory-headroom` | `memory_headroom` |
-| Touch extensions | feature `touch-device` | `touch_device` |
+| Touch extensions | feature `touch-device` | `machine` (no root, `gext` from mise) |
 
 The laptop features are preselected on every desktop and applied only when Ansible detects a
 laptop; any other laptop gets them too. Only the first row is specific to this model.
@@ -118,7 +118,8 @@ zramctl
 
 ### Touch extensions (feature `touch-device`)
 
-Installed for the login user by role `touch_device`:
+Installed and enabled for the login user by `machine` (on `machine setup` and
+`machine update`), without root, with `gext` from mise:
 
 - **TouchUp**: touch tweaks for GNOME Shell. On the on-screen keyboard it adds key popups,
   extended keys, swipe down to close, a paste button and layout switching by swiping the
@@ -127,8 +128,8 @@ Installed for the login user by role `touch_device`:
 - **Screen Rotate**: a rotate button in the quick settings for turning the screen by hand,
   also in laptop mode.
 
-A new extension is only loaded at the next login. After logging in again, run
-`machine apply` once more, or switch the extensions on in Extension Manager.
+A new extension is only loaded at the next login; `machine` says so after a new install.
+Extensions that are already installed are only enabled.
 
 Not installed: *GJS OSK* (a separate, more compact keyboard with Ctrl, Alt and arrows). It
 replaces the built-in keyboard, so TouchUp's keyboard features would not apply to it.

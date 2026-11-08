@@ -224,17 +224,6 @@
       when:
         - hw_model_l13_yoga_gen2 | bool
 
-- name: Touch device (GNOME extensions for the login user)
-  hosts: "{{ target_hosts | default('all') }}"
-  become: "{{ machine_runs_as_root | bool }}"
-  become_user: "{{ machine_login_user }}"
-  environment: "{{ machine_user_session_env }}"
-  gather_facts: true
-  tags: [touch]
-  roles:
-    - role: touch_device
-      when: "'touch-device' in machine_features"
-
 - name: SSH port + authorized_keys (home fleet)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

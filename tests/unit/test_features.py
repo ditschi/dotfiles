@@ -112,6 +112,14 @@ def test_memory_headroom_selects_its_dotfile_group():
     assert "memory-headroom" not in features.dotfile_groups("private", "desktop")
 
 
+def test_gnome_extensions_group_for_gnome_and_touch_device():
+    gnome = features.dotfile_groups("private", "desktop", ["gnome"])
+    assert {"gnome", "gnome-extensions"} <= set(gnome)
+    touch = features.dotfile_groups("private", "desktop", ["touch-device"])
+    assert "gnome-extensions" in touch and "gnome" not in touch
+    assert "gnome-extensions" not in features.dotfile_groups("private", "desktop", [])
+
+
 def test_dotfile_groups_from_table():
     groups = features.dotfile_groups(
         "private", "desktop", ["thunderbird", "claude-code", "copilot-cli"]

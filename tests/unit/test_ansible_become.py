@@ -23,7 +23,6 @@ ROOT_ON_PURPOSE = {
 LOGIN_USER_TASKS = {
     ("workstation.yml", "Check existing Docker CLI as the login user"),
     ("workstation.yml", "Check existing Compose capability"),
-    ("workstation.yml", "Touch device (GNOME extensions for the login user)"),
 }
 
 

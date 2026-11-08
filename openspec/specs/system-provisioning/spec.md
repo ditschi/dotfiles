@@ -20,11 +20,22 @@ Apt packages per feature SHALL be defined in one table (`packages_by_feature` in
 - **THEN** one entry in `packages_by_feature` and one row in the feature table are enough
 
 ### Requirement: Local roles
-Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `touch_device`, `lid_switch`, `power_profile_switch`, `battery_charge_limit`, `zram_swap` and `cosmic_desktop`; model tuning SHALL be a local role per hardware model, such as `thinkpad_l13_yoga_gen2`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
+Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `lid_switch`, `power_profile_switch`, `battery_charge_limit`, `zram_swap`, `memory_headroom` and `cosmic_desktop`; model tuning SHALL be a local role per hardware model, such as `thinkpad_l13_yoga_gen2`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
 
 #### Scenario: Adding a user-space tool
 - **WHEN** a tool is available as a release binary
 - **THEN** it is added to a group fragment of `mise` and not to Ansible
+
+### Requirement: Local roles need root
+Every local Ansible role SHALL do work that needs root. Work for the login user that needs no root, such as installing or enabling GNOME Shell extensions or writing the user's settings, SHALL NOT be done by Ansible; `machine` and `mise` do it (see `user-tools`).
+
+#### Scenario: Adding a GNOME extension for a feature
+- **WHEN** a feature needs a GNOME Shell extension for the login user
+- **THEN** it is installed by `machine` without root, and no Ansible role or play is added for it
+
+#### Scenario: No touch-device play
+- **WHEN** the workstation playbook runs on a host with `touch-device`
+- **THEN** no play or role of the playbook installs or enables the touch extensions
 
 ### Requirement: LLM CLI features
 The features `claude-code`, `copilot-cli` and `opencode` SHALL install those CLIs, and only a host with the feature SHALL get the CLI. Private hosts SHALL preselect Claude Code and offer Copilot and opencode without preselecting them; work hosts SHALL preselect Claude Code and Copilot; containers SHALL preselect none, so that container CLIs are opt-in.
@@ -220,7 +231,7 @@ For a local Ansible run in a terminal, `machine` SHALL authenticate once through
 - **THEN** the second run starts without a prompt
 
 ### Requirement: Login-user tasks run as the login user
-Tasks that act for the login user (the Docker and Compose checks, the GNOME touch-device extensions) SHALL run as the login user who started `machine`, also when `ansible-playbook` runs as root. The touch-device tasks SHALL reach that user's GNOME session.
+Tasks that act for the login user (the Docker and Compose checks) SHALL run as the login user who started `machine`, also when `ansible-playbook` runs as root.
 
 #### Scenario: Docker check
 - **WHEN** the packages play checks the existing Docker CLI during a run as root
@@ -228,7 +239,7 @@ Tasks that act for the login user (the Docker and Compose checks, the GNOME touc
 
 #### Scenario: Touch device in a GNOME session
 - **WHEN** a host with `touch-device` is applied from a terminal inside the user's GNOME session
-- **THEN** the extensions are listed and enabled in that user's session, not root's
+- **THEN** Ansible does not touch the extensions; `machine` enables them as that user in that user's session, not root's
 
 #### Scenario: authorized_keys owner
 - **WHEN** the role `sshd_home` writes `authorized_keys` during a run as root

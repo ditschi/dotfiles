@@ -1,0 +1,5 @@
+# Managed by Ansible (role memory_headroom, feature memory-headroom).
+# Ubuntu's default is 50 %; the larger swap file makes higher pressure normal, so
+# systemd-oomd acts on a user session only above this limit.
+[Service]
+ManagedOOMMemoryPressureLimit={{ memory_headroom_oomd_pressure_limit }}

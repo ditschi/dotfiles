@@ -9,6 +9,7 @@ Notes for model 20VK (i5-1135G7, Tiger Lake), plus what sets it up. Apply with `
 | Power profile per power source | feature `power-profile-switch` (laptops) | `power_profile_switch` |
 | Battery charge thresholds | feature `battery-charge-limit` (laptops) | `battery_charge_limit` |
 | zram swap | feature `zram-swap` | `zram_swap` |
+| Swap file of RAM + 2 GiB, oomd limits, Claude app throttle | feature `memory-headroom` | `memory_headroom` |
 | Touch extensions | feature `touch-device` | `touch_device` |
 
 The laptop features are preselected on every desktop and applied only when Ansible detects a
@@ -94,6 +95,11 @@ A profile the host does not offer is skipped. Variables: `power_profile_switch_a
 
 Compressed swap in RAM (half of RAM, at most 8 GiB, zstd), used before the swap file on
 disk. Variable: `zram_swap_size`. Not applied on Raspberry Pis.
+
+The swap file on disk (`/swap.img`) is 16 GiB (RAM + 2 GiB) with the feature `memory-headroom`
+(Ubuntu's installer made it 4 GiB). On 2026-11-06 the 7.4 GiB of zram plus 4 GiB on disk ran full and
+the kernel OOM killer ended the Claude desktop app; see [docs/features.md](features.md) for
+what the feature sets.
 
 ```bash
 swapon --show

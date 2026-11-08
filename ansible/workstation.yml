@@ -195,6 +195,21 @@
         - "'zram-swap' in machine_features"
         - not (hw_pi | bool)
 
+- name: Memory headroom (not on Raspberry Pis)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [memory]
+  pre_tasks:
+    - name: Detect hardware facts
+      ansible.builtin.include_tasks: tasks/detect_hardware.yml
+      when: hw_model_l13_yoga_gen2 is not defined
+  roles:
+    - role: memory_headroom
+      when:
+        - "'memory-headroom' in machine_features"
+        - not (hw_pi | bool)
+
 - name: ThinkPad L13 Yoga Gen 2 (detected model)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

@@ -185,6 +185,18 @@ def test_clean_install_from_versioned_host_yaml_home_laptop(host_yaml_container)
     assert host.file("/etc/systemd/logind.conf.d/50-lid-switch.conf").exists
     assert not host.file("/usr/local/bin/thinkpad-charge").exists
     assert host.file("/etc/systemd/zram-generator.conf").exists
+    # memory-headroom: oomd drop-ins; the swap file is never created in a container
+    oomd = host.file("/etc/systemd/system/user@.service.d/90-oomd-limit.conf")
+    assert "ManagedOOMMemoryPressureLimit=80%" in oomd.content_string
+    swap_kill = host.file("/etc/systemd/system/-.slice.d/90-oomd-no-swap-kill.conf")
+    assert "ManagedOOMSwap=auto" in swap_kill.content_string
+    assert host.file("/usr/local/lib/machine/swapfile-grow").exists
+    assert not host.file("/swap.img").exists
+    assert "swap" not in host.file("/etc/fstab").content_string
+    claude = (
+        ".config/systemd/user/app-com.anthropic.Claude-.scope.d/50-memory-high.conf"
+    )
+    assert host.file(f"/home/tester/{claude}").is_symlink
     assert host.file("/etc/systemd/user/tablet-osk.service").exists
     assert not host.file("/etc/ssh/sshd_config.d/99-machine-port.conf").exists
     assert_second_apply_is_idempotent(host)

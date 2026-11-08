@@ -25,6 +25,7 @@ features:
   - power-profile-switch
   - battery-charge-limit
   - zram-swap
+  - memory-headroom
 ssh_allow_from:
   - homeserver
   - netmaster

@@ -95,6 +95,23 @@ def test_editor_command_selects_its_dotfile_group():
     assert "editor-command" in groups
 
 
+def test_memory_headroom_on_desktops_only():
+    assert "memory-headroom" in features.defaults("private", "desktop")
+    offered = features.allowed("work", "desktop")
+    defaults = features.defaults("work", "desktop")
+    assert "memory-headroom" in offered and "memory-headroom" not in defaults
+    for context in ("private", "work"):
+        for device in ("server", "container"):
+            assert "memory-headroom" not in features.allowed(context, device)
+    assert "memory-headroom" not in features.allowed("", "container")
+
+
+def test_memory_headroom_selects_its_dotfile_group():
+    groups = features.dotfile_groups("private", "desktop", ["memory-headroom"])
+    assert "memory-headroom" in groups
+    assert "memory-headroom" not in features.dotfile_groups("private", "desktop")
+
+
 def test_dotfile_groups_from_table():
     groups = features.dotfile_groups(
         "private", "desktop", ["thunderbird", "claude-code", "copilot-cli"]

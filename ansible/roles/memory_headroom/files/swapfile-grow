@@ -1,0 +1,131 @@
+#!/bin/bash
+# Grow the swap file on disk to a target size in place; never shrink it.
+# Usage: swapfile-grow <path> <size-GiB> <min-free-GiB> [<reserve-GiB>]
+# The one active swap file in /proc/swaps wins over <path>. An active swap file can
+# be neither resized nor renamed, so it is turned off first, which moves its pages
+# back into RAM. That is only tried when free RAM holds them plus <reserve-GiB>
+# (default 2); otherwise the script warns and a later run tries again.
+# Exit codes: 0 unchanged (also skipped with a WARNING), 3 changed, 1 failed.
+# Prints "path=<swap file>" so Ansible can write the matching /etc/fstab entry.
+set -euo pipefail
+
+CHANGED=3
+GIB=$((1024 * 1024 * 1024))
+PROC_SWAPS="${SWAPFILE_GROW_PROC_SWAPS:-/proc/swaps}"
+PROC_MEMINFO="${SWAPFILE_GROW_PROC_MEMINFO:-/proc/meminfo}"
+
+[ $# -eq 3 ] || [ $# -eq 4 ] || {
+    echo "usage: swapfile-grow <path> <size-GiB> <min-free-GiB> [<reserve-GiB>]" >&2
+    exit 1
+}
+path=$1
+target=$(($2 * GIB))
+min_free=$(($3 * GIB))
+reserve=$((${4:-2} * GIB))
+
+# Active swap files: name, used KiB and priority. Exactly one wins over the
+# configured path.
+mapfile -t files < <(awk 'NR > 1 && $2 == "file" { print $1 }' "$PROC_SWAPS")
+[ ${#files[@]} -eq 1 ] && path=${files[0]}
+echo "path=$path"
+is_active() {
+    P=$path awk 'NR > 1 && $1 == ENVIRON["P"] { found = 1 } END { exit !found }' "$PROC_SWAPS"
+}
+read -r active used_kib priority < <(
+    P=$path awk 'NR > 1 && $1 == ENVIRON["P"] { print "yes", $4, $5 }' "$PROC_SWAPS"
+) || true
+
+current=0
+[ -e "$path" ] && current=$(stat -c %s "$path")
+if [ "$current" -ge "$target" ]; then
+    # A large enough file without a swap signature is left over from a failed run:
+    # format and activate it, so that the /etc/fstab entry works at boot.
+    if [ "${active:-}" != yes ] && [ "$(blkid -p -s TYPE -o value "$path" 2>/dev/null)" != swap ]; then
+        if ! { mkswap "$path" >/dev/null && swapon -p -1 "$path"; }; then
+            echo "swapfile-grow: $path is no valid swap file and could not be formatted" >&2
+            exit 1
+        fi
+        echo "swap file $path formatted and turned on"
+        exit $CHANGED
+    fi
+    exit 0
+fi
+
+how_to="Grow it by hand when less is going on: sudo swapoff $path && sudo rm $path && sudo fallocate -l $(($2))G $path && sudo chmod 600 $path && sudo mkswap $path && sudo swapon $path (or run machine apply again)."
+
+dir=$(dirname "$path")
+fstype=$(findmnt -n -o FSTYPE --target "$dir")
+case "$fstype" in
+    ext4 | xfs) ;;
+    *)
+        echo "WARNING: swap file not grown: $dir is on $fstype (only ext4 and xfs are supported)"
+        exit 0
+        ;;
+esac
+
+read -r avail size < <(df -B1 --output=avail,size "$dir" | awk 'END { print $1, $2 }')
+left=$((avail - (target - current)))
+if [ "$left" -lt "$min_free" ]; then
+    echo "WARNING: swap file not grown: only $((left / GIB)) GiB would remain free on $dir (minimum $((min_free / GIB)) GiB)"
+    exit 0
+fi
+if [ $((left * 100)) -lt $((size * 5)) ]; then
+    echo "WARNING: swap file not grown: less than 5 % of $dir would remain free ($((left / GIB)) GiB)"
+    exit 0
+fi
+
+if [ "${active:-}" = yes ]; then
+    available=$(($(awk '$1 == "MemAvailable:" { print $2 }' "$PROC_MEMINFO") * 1024))
+    needed=$((used_kib * 1024 + reserve))
+    if [ "$available" -lt "$needed" ]; then
+        echo "WARNING: swap file not grown: turning $path off needs $((needed / GIB)) GiB of free RAM, $((available / GIB)) GiB available. $how_to"
+        exit 0
+    fi
+fi
+
+# swapon -p takes -1 to 32767; a lower, kernel-assigned priority is left to the kernel.
+prio_args=()
+[ "${active:-}" = yes ] && [ "$priority" -ge -1 ] && prio_args=(-p "$priority")
+[ "${active:-}" = yes ] || prio_args=(-p -1)
+
+was_off=false
+created=false
+restore() {
+    local failed=$1
+    trap - INT TERM HUP
+    echo "swapfile-grow: $failed failed. $how_to" >&2
+    if $created && ! is_active; then
+        # A file this run created is never left behind half made.
+        rm -f "$path"
+    elif $was_off && ! is_active; then
+        # Until mkswap, the old swap header (and its size) is still valid.
+        swapon "${prio_args[@]}" "$path" 2>/dev/null ||
+            { mkswap "$path" >/dev/null && swapon "${prio_args[@]}" "$path"; } ||
+            echo "swapfile-grow: $path could not be turned on again" >&2
+    fi
+    exit 1
+}
+trap 'restore "interrupted run"' INT TERM HUP
+
+if [ "${active:-}" = yes ]; then
+    # Set first: a signal right after swapoff must still turn the file on again.
+    was_off=true
+    swapoff "$path" || restore "swapoff of $path"
+fi
+if [ ! -e "$path" ]; then
+    created=true
+    (umask 077 && : >"$path") || restore "creating $path"
+fi
+chmod 600 "$path" || restore "chmod of $path"
+# Extend in place; the blocks already there and the old header stay as they are.
+if ! fallocate -l "$target" "$path" 2>/dev/null; then
+    mib=$((1024 * 1024))
+    dd if=/dev/zero of="$path" bs=1M seek=$((current / mib)) \
+        count=$(((target - current / mib * mib + mib - 1) / mib)) conv=notrunc status=none ||
+        restore "allocating $path"
+fi
+mkswap "$path" >/dev/null || restore "mkswap of $path"
+swapon "${prio_args[@]}" "$path" || restore "swapon of $path"
+trap - INT TERM HUP
+echo "swap file $path grown to $(($2)) GiB"
+exit $CHANGED

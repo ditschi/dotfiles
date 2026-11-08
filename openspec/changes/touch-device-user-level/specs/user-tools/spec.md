@@ -11,7 +11,7 @@ On a host with the feature `touch-device`, `machine` SHALL install the GNOME She
 
 #### Scenario: Touch host without the gnome feature
 - **WHEN** a host has `touch-device` but not `gnome`
-- **THEN** the extension CLI is installed and the touch extensions are installed and enabled, while the extensions of the feature `gnome` are not
+- **THEN** the extension CLI is installed and the touch extensions are installed and enabled, while the extensions of the feature `gnome` are not and the dotfile group `gnome` is not selected
 
 #### Scenario: Extensions installed by the former Ansible role
 - **WHEN** the touch extensions are already in the user's extension directory
@@ -23,4 +23,4 @@ On a host with the feature `touch-device`, `machine` SHALL install the GNOME She
 
 #### Scenario: Touch extension install fails
 - **WHEN** a touch extension cannot be installed (for example no version for the installed GNOME Shell)
-- **THEN** the failure is logged with its reason and the rest of the run completes
+- **THEN** the failure is logged with its reason, the rest of the run completes, and the settings of the `gnome` extensions are still loaded once

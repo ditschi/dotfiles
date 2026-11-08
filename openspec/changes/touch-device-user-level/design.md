@@ -38,21 +38,30 @@ These are the owner's decisions of 2026-11-08 that this change carries out:
 3. **`mise bootstrap` is re-evaluated in 6 to 12 months** (between 2027-05 and 2027-11) against these criteria: validation before a file is written (`sshd -t`, `visudo -c`), conditions per host and per fact, debconf, partial edits of files (as with `lineinfile`), a single sudo authentication per run, and a `mise` binary for the Raspberry Pi Zero.
 4. **The correction lives in the live docs.** The outdated "five root roles" statement of the archived `adopt-mise` design is not edited; `docs/architecture.md` gets a decision note "Ansible stays for root work" with the role count after this change (ten local roles: nine feature roles and the model role `thinkpad_l13_yoga_gen2`, plus the packages play), the decision and the re-evaluation criteria. No live spec repeats the outdated statement, so none needs a correction for it.
 
+Owner decisions of 2026-11-08 on the Open Questions 1 to 3:
+
+5. **Same step and CLI as the `gnome` extensions.** A second tuple (for example `TOUCH_EXTENSIONS = ("touchup@mityax", "screen-rotate@shyzus.github.io")`) next to `GNOME_EXTENSIONS`, installed with `gext -F` by the existing install/enable loop, factored to take a list of UUIDs, when `touch-device` is in the host's features. No `curl` + `gnome-extensions install` logic in Python, no `mise` task, no `machine touch` subcommand.
+6. **New dotfile group `gnome-extensions` holding only `gext`.** `home/gnome/.config/mise/conf.d/60-gnome.toml` moves to `home/gnome-extensions/.config/mise/conf.d/60-gnome-extensions.toml`, `mise.toml` gets `[dotfile_groups.gnome-extensions]`, the feature `gnome` selects `groups: [gnome, gnome-extensions]` and `touch-device` selects `groups: [gnome-extensions]`. The group `gnome` keeps only the dconf files, so a touch host without `gnome` gets `gext` and nothing else of the `gnome` group.
+7. **Separate failure tracking.** A failed touch extension is logged with its reason and does not block the one-time `dconf load` of the `gnome` extension settings, whose marker depends only on the `gnome` extensions.
+8. **Remove `machine_user_session_env`.** `SESSION_ENV`, the extra var, its default in `group_vars/all/login_user.yml` and its assertion in `tests/unit/test_host_profiles.py` go with the role, because nothing else reads them.
+
+Owner decisions of 2026-11-08 on the Open Questions 4 to 6:
+
+9. **Accept the one no-op pending system step** on every host that runs Ansible; no special case for deleted roles in `system_relevance`.
+10. **Hosts with `ansible: false` gain the touch extensions.** Today the role never runs there; after the change `machine` installs them like the `gnome` extensions, with no special handling.
+11. **The `mise bootstrap` re-evaluation is tracked only by the decision note** in `docs/architecture.md` with the date window 2027-05 to 2027-11; no reminder automation.
+
 ## Proposed design (recommendations, not yet confirmed by the owner)
 
-The points below are the agent's recommendations; each is also listed under Open Questions.
+The point below is the agent's recommendation; it follows from Decisions 2 and 5 and was not asked separately.
 
-- **Same step and CLI as the `gnome` extensions.** A second tuple (for example `TOUCH_EXTENSIONS = ("touchup@mityax", "screen-rotate@shyzus.github.io")`) next to `GNOME_EXTENSIONS`, installed by the existing install/enable loop (factored to take a list) when `touch-device` is in the host's features. Rationale: one code path, the same `gext` that already handles shell-version selection and filesystem install, and the same tests. Alternatives: keeping the role's `curl` + `gnome-extensions install` logic in Python (duplicates what `gext` does); a `mise` task (would need its own feature gating and failure handling, which `machine` already has); a `machine touch` subcommand (not needed, and against the memory rule for hardware-specific commands).
-- **Separate failure tracking.** A failed touch extension is logged and does not block the one-time `dconf load` of the `gnome` extension settings, whose marker depends only on the `gnome` extensions.
-- **`touch-device` selects the group `gnome`.** The feature table gets `groups: [gnome]` for `touch-device`, so `gext` is present on a touch host without `gnome`. Groups may be shared between features (as `openspec` is). The group also links the `gnome` dconf files into `~/.config/machine/dconf`; they are only loaded when the feature `gnome` is set. Alternatives: a new group `gnome-extensions` holding only `gext`, selected by both features (cleaner, one more group to move the tool into); requiring `gnome` for `touch-device` (couples two independent features).
-- **Remove `machine_user_session_env`.** `SESSION_ENV`, the extra var, its default in `group_vars/all/login_user.yml` and its assertion in `tests/unit/test_host_profiles.py` go with the role, because nothing else reads them. Alternative: keep it for future login-user tasks (dead code until then, and the new spec requirement forbids such Ansible tasks).
-- **Hosts with `ansible: false` gain the touch extensions.** Today the role never runs there; after the change `machine` installs them like the `gnome` extensions. This follows from the user-level placement and needs no special handling.
 - **No migration code.** The role installed into `~/.local/share/gnome-shell/extensions` as the login user, where `gext -F` installs too, so the new step finds the extensions present and only enables them. Nothing is left in `/etc` or root's home to undo.
 
 ## Risks / Trade-offs
 
 - [One pending system step on every host that runs Ansible, because `ansible/workstation.yml` changes and the deleted role counts as relevant] → Accepted: the run is a normal `machine update` system step that changes nothing; no special case in `system_relevance` for deleted roles.
 - [`gext` picks a different extension version than the role's `shell_version` download] → Both resolve the version for the installed GNOME Shell from extensions.gnome.org; already-installed extensions are not reinstalled, so existing hosts keep their version.
+- [The link `~/.config/mise/conf.d/60-gnome.toml` on existing `gnome` hosts dangles after the file moves to the group `gnome-extensions`] → `mise dot apply --prune` and `sweep_dangling_links` (`machine_cli/dotfiles.py`) remove links into the checkout whose target is gone; checked in the end-to-end validation.
 - [Replaying the new step outside a container writes the real session's dconf and enables extensions there] → Validate end to end with `machine testenv` or the unit tests only; a scratch `HOME` does not isolate dconf, gsettings or `gext enable`.
 - [Enabling re-enables an extension the user switched off by hand] → Same behaviour as the role and as the `gnome` extensions; not changed here.
 
@@ -64,9 +73,9 @@ The points below are the agent's recommendations; each is also listed under Open
 
 ## Open Questions
 
-1. **Reuse the `gnome` extension step and `gext`?** Recommendation: yes (see Proposed design).
-2. **How does a touch host without `gnome` get `gext`?** Recommendation: `groups: [gnome]` for `touch-device`; alternative a new shared group `gnome-extensions`.
-3. **Remove `machine_user_session_env` and `SESSION_ENV`?** Recommendation: remove.
-4. **Accept the one no-op pending system step on every Ansible host?** Recommendation: accept, no special case in the relevance filter.
-5. **Should hosts with `ansible: false` and `touch-device` get the extensions?** Recommendation: yes, it follows from the user-level placement.
-6. **Where does the `mise bootstrap` re-evaluation get tracked?** Recommendation: the decision note in `docs/architecture.md` with the date window; no reminder automation.
+1. ~~Reuse the `gnome` extension step and `gext`?~~ Answered: yes (Decision 5).
+2. ~~How does a touch host without `gnome` get `gext`?~~ Answered: new group `gnome-extensions` (Decision 6).
+3. ~~Remove `machine_user_session_env` and `SESSION_ENV`?~~ Answered: remove (Decision 8).
+4. ~~Accept the one no-op pending system step on every Ansible host?~~ Answered: accept (Decision 9).
+5. ~~Should hosts with `ansible: false` and `touch-device` get the extensions?~~ Answered: yes (Decision 10).
+6. ~~Where does the `mise bootstrap` re-evaluation get tracked?~~ Answered: decision note only (Decision 11).

@@ -11,7 +11,7 @@ The archived `adopt-mise` design still says that replacing "the five root roles"
 ## What Changes
 
 - `machine` installs and enables the touch extensions (TouchUp, Screen Rotate) for hosts with the feature `touch-device`, without root, in the same tool-install step and with the same `gext` CLI from `mise` that installs the `gnome` extensions. It runs on `machine setup`, `machine apply` and every `machine update`, as the `gnome` extensions do.
-- The feature `touch-device` selects the dotfile group `gnome`, so `gext` is installed on a host with `touch-device` even without the feature `gnome`.
+- A new dotfile group `gnome-extensions` holds only `gext` (moved out of the group `gnome`) and is selected by the features `gnome` and `touch-device`, so `gext` is installed on a host with `touch-device` even without the feature `gnome`, without the rest of the `gnome` group.
 - The Ansible role `touch_device` and its play in `ansible/workstation.yml` are removed. The GNOME session variables that `machine` passes to Ansible only for that role (`machine_user_session_env`) are removed with it.
 - No new `machine` subcommand; the step stays gated only by the feature, as today (the play used no hardware facts).
 - Existing hosts need no undo: the extensions already live in the user's extension directory, where the new step finds them and only enables them.
@@ -33,8 +33,8 @@ Affected profiles: desktops (private and work) whose host config selects `touch-
 
 ## Impact
 
-- Code: `machine_cli/mise_tools.py` (touch extensions next to `GNOME_EXTENSIONS`), `machine_cli/tools.py` (`SESSION_ENV` and the `machine_user_session_env` extra var removed), `ansible/group_vars/all/features.yml` (`groups: [gnome]` for `touch-device`), `ansible/group_vars/all/login_user.yml`, `ansible/workstation.yml`; `ansible/roles/touch_device/` deleted.
-- Tests: `tests/unit/test_mise_tools.py`, `tests/unit/test_host_profiles.py`, feature-table tests where they list groups.
+- Code: `machine_cli/mise_tools.py` (touch extensions next to `GNOME_EXTENSIONS`), `machine_cli/tools.py` (`SESSION_ENV` and the `machine_user_session_env` extra var removed), `ansible/group_vars/all/features.yml` (`groups: [gnome, gnome-extensions]` for `gnome`, `groups: [gnome-extensions]` for `touch-device`), `mise.toml` (`[dotfile_groups.gnome-extensions]`), `home/gnome/.config/mise/conf.d/60-gnome.toml` moved to `home/gnome-extensions/.config/mise/conf.d/60-gnome-extensions.toml`, `ansible/group_vars/all/login_user.yml`, `ansible/workstation.yml`; `ansible/roles/touch_device/` deleted.
+- Tests: `tests/unit/test_mise_tools.py`, `tests/unit/test_host_profiles.py`, `tests/unit/test_features.py` and `tests/unit/test_dotfiles.py` (group selection).
 - Docs: `docs/architecture.md`, `docs/features.md`, `docs/update.md`, `docs/thinkpad-l13-yoga-gen2.md`, `ansible/README.md`, `Readme.md`.
 - Update flow: the removed play and role are changes under `ansible/` that count for every host that runs Ansible, so each such host gets one pending system step after this change; that run changes nothing on the system.
 - Where: the worktree `$(machine repo)/.worktrees/touch-device-user-level`, because the change edits `machine_cli/` and `ansible/`, which affect the host's tools on the next `machine` run.

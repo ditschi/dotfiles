@@ -1,5 +1,3 @@
-alias zshtheme="nano $0"
-
 # Prompt: Starship (~/.config/starship.toml, shared with bash) when installed, else a built-in one.
 # The update and disk state (update-state.sh) reach Starship through the exported
 # DOTFILES_UPDATE_SEGMENT and DOTFILES_DISK_SEGMENT (env_var modules); reading the

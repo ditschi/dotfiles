@@ -1,5 +1,3 @@
-alias zshplugins="nano $HOME/.shell/zsh/plugins.txt"
-
 # Plugins are managed by antidote (https://antidote.sh) from ~/.shell/zsh/plugins.txt.
 # Everything up to the first prompt is synchronous; fzf-tab, history-substring-search,
 # autosuggestions and fast-syntax-highlighting load afterwards through zsh-defer.

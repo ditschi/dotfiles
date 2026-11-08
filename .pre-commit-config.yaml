@@ -45,7 +45,18 @@ repos:
           - --case-indent
           - --simplify
           - --write
-        exclude: '\.bashrc|^openspec/changes/(archive/)?[^/]+/spike/'
+        exclude: ^home/core/\.bashrc$|^openspec/changes/(archive/)?[^/]+/spike/
+      # Check only: blocks added by other tools (work Ansible) must not be reformatted
+      # before `machine update` moves them to ~/.bashrc-local.
+      - id: shfmt
+        name: shfmt (.bashrc, check only)
+        args:
+          - --indent
+          - '4'
+          - --case-indent
+          - --simplify
+          - --diff
+        files: ^home/core/\.bashrc$
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
@@ -72,6 +83,11 @@ repos:
         language: system
         files: ^home/core/\.gitconfig$
         pass_filenames: false
+      - id: bashrc-no-managed-blocks
+        name: 'no managed blocks in .bashrc (run `machine update` to move them to ~/.bashrc-local)'
+        entry: '^#.*\bBEGIN\b.*MANAGED BLOCK'
+        language: pygrep
+        files: ^home/core/\.bashrc$
       - id: mise-tools-declared-once
         name: mise tools are declared once (fragments and Ansible packages)
         entry: python3 -m machine_cli.mise_check

@@ -1,5 +1,4 @@
 # shellcheck shell=bash
-alias zshalias='nano "$HOME/.shell/common/aliases.sh"'
 
 # The live checkout is the one ~/.local/bin/machine links into; ~/dotfiles only without it.
 if [ -z "${DOTFILES_REPO:-}" ] && [ -L "$HOME/.local/bin/machine" ]; then

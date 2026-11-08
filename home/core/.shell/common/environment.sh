@@ -19,6 +19,12 @@ if [[ $PATH == */github.copilot-chat/copilotCli* ]]; then
     unset _dotfiles_rest _dotfiles_path _dotfiles_dir _dotfiles_real
 fi
 
+# SSH agent: keep SSH_AUTH_SOCK (forwarding, desktop session), else use the socket of
+# the systemd user unit ssh-agent.socket; never start an agent (spec ssh-agent).
+if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/openssh_agent" ]; then
+    export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/openssh_agent"
+fi
+
 export EDITOR='nano'
 export DOCKER_BUILDKIT=1
 

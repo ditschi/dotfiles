@@ -63,3 +63,14 @@ machine ssh known-hosts add <alias>  # fetch, confirm and store a device's host 
 ```
 
 `machine setup` offers to add the host itself to the host list of its context.
+
+## SSH agent
+
+The dotfiles never start an `ssh-agent`. An interactive bash or zsh keeps an existing `SSH_AUTH_SOCK` (agent forwarding with `ssh -A`, the GNOME session's agent); otherwise it uses `$XDG_RUNTIME_DIR/openssh_agent`, the socket of the systemd user unit `ssh-agent.socket` from `openssh-client`, when it exists; otherwise there is no agent. The keys have no passphrase, so `ssh` does not need one. Where you want an agent on a host without that socket, enable it with `systemctl --user enable --now ssh-agent.socket` or start one by hand with `eval "$(ssh-agent -s)"`.
+
+Before this, every zsh login without an agent started its own, and none was ended. To list and end them:
+
+```bash
+pgrep -u "$USER" -ax ssh-agent        # leftovers show as "ssh-agent -s"; systemd and gcr run theirs with -D
+pkill -u "$USER" -fx 'ssh-agent -s'    # ends only the leftovers
+```

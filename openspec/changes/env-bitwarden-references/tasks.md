@@ -4,8 +4,7 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 
 ## 1. Owner decisions
 
-- [ ] 1.1 Resolve investigation I1 of design.md (store the work account password only once in Bitwarden) with the owner and record the outcome in design.md; if candidate (b) is taken, add its requirements to the delta spec; blocks merging this change; verify that I1 has a recorded outcome and `openspec validate env-bitwarden-references --strict` passes.
-- [x] 1.2 Confirm the assumptions in design.md (conflict default "no", push refuses without last-generated content) with the owner and move them to Decisions or revise the spec; verify that Assumptions lists nothing unconfirmed that changes behaviour.
+- [x] 1.1 Confirm the assumptions in design.md (conflict default "no", push refuses without last-generated content) with the owner and move them to Decisions or revise the spec; verify that Assumptions lists nothing unconfirmed that changes behaviour.
 
 ## 2. Resolving references in the pull
 
@@ -36,7 +35,11 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 - [ ] 6.3 Run `openspec validate env-bitwarden-references --strict`; verify the change is valid.
 - [ ] 6.4 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change touches the update flow and writes to the vault; fix the findings and rerun 6.1 to 6.3 after relevant edits.
 
+## 7. Single work password in Bitwarden
+
+- [ ] 7.1 On a work host, with `PASSWORD` referencing the Microsoft login item, try candidate (a) of investigation I1 (one login item with a `loginfmt` custom field) and record the owner's outcome in design.md; if the items are merged, change the reference with `machine env push`; verify that I1 has a recorded outcome, `get-password` returns the password and `openspec validate env-bitwarden-references --strict` passes.
+
 ## Workflow follow-up
 
-- Owner: replace the literal `PASSWORD` in `env/groups/work` with a reference to the NT-user login item, remove the temporary syntax hint from its notes, then run `machine env pull` on the work host and check that `get-password` and `work-net kerberos kinit` still work.
+- Owner: replace the literal `PASSWORD` in `env/groups/work` with a reference to the Microsoft login item, remove the temporary syntax hint from its notes, then run `machine env pull` on the work host and check that `get-password` and `work-net kerberos kinit` still work.
 - Archive with `/opsx-archive` following the archive guidance in `openspec/config.yaml`.

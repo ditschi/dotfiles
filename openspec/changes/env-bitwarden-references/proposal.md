@@ -31,7 +31,7 @@ Affected contexts: `work` and `private` (both pull their group and host items); 
 - Tests: `tests/unit/` env pull tests with a stubbed `bw`.
 - Docs: `docs/secrets.md` (reference syntax, push, local edits; drop "does not resolve references").
 - Bitwarden vault: the owner replaces the literal `PASSWORD` in `env/groups/work` with a reference and removes the temporary syntax hint from its notes.
-- Blocked by investigation I1 in design.md (store the work account password only once in Bitwarden).
+- Investigation I1 in design.md (store the work account password only once in Bitwarden) is checked at the end, on a work host; it changes only which item `PASSWORD` references.
 
 ## Where the change is made
 

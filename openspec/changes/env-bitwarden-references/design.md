@@ -69,18 +69,18 @@ Current state:
 ## Migration Plan
 
 1. The change lands through `machine update`; items without references behave as before. The first pull after the update stores the last-generated content; until then no file has unpushed edits.
-2. The owner replaces the literal `PASSWORD` in `env/groups/work` with a reference to the NT-user login item and removes the temporary syntax hint from its notes.
+2. The owner replaces the literal `PASSWORD` in `env/groups/work` with a reference to the Microsoft login item and removes the temporary syntax hint from its notes. Until I1 is resolved, the NT-user login item keeps its own copy of the password.
 3. Rollback: revert the commit. Items that contain references then reach `~/.env` as literal reference text, so the owner restores the literal values (the env backups hold them) before rolling back.
 
-## Investigations (blocking)
+## Investigations
 
-These must be resolved before this change is merged.
+I1 does not block the implementation (owner decision): `PASSWORD` first references the Microsoft login item (e-mail address and password). If the two work login items are merged later, only the reference in `env/groups/work` changes, which `machine env push` does. I1 is the last task of this change and is tried on a work host.
 
 I1. **Store the work account password only once in Bitwarden.** Bitwarden has no references between items (linked custom fields point only to fields of the same item), so the two work login items keep two copies. Candidates, none tested or decided:
    - (a) One login item for both accounts: username = NT user, password once, URIs of the NT sites and of the Microsoft login, plus a text custom field named `loginfmt` holding the e-mail address; the browser extension fills custom fields into inputs with the same `name`/`id`, and the Microsoft login's e-mail input is called `loginfmt`. To test: whether the extension fills the e-mail rather than the username into that input, and the limit that mobile autofill does not fill custom fields.
    - (b) Two login items kept equal by `machine`: the Microsoft item carries a marker field naming the source item, and `machine update` copies the password over with `bw edit`. Writes to the vault; the copies differ until the next update.
    - (c) Keep both items; only the `.env` copy goes away through references.
-   Outcome needed: which candidate the owner takes, and whether it adds requirements to this change (candidate b would).
+   Outcome needed: which candidate the owner takes. Candidate (b) needs its own change, because it adds a vault write to `machine update`.
 
 ## Open Questions
 

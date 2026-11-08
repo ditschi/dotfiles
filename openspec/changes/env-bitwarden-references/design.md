@@ -47,6 +47,10 @@ Current state:
 
 **The pull protects unpushed local edits.** It stores the content it last wrote per file (owner-only, under `~/.local/share/machine/`). Changed or missing keys that this content set from an item are unpushed local edits. In a terminal the pull asks push / discard / skip, with skip preselected; without a terminal it leaves that file unchanged and records an attention item (owner choice), so a background update never discards an edit. Added keys keep the existing local-only flow, so a new reference can also go to Bitwarden through "add to Bitwarden"; the appended line is then resolved by the regeneration.
 
+**Conflicts in the push** (owner choice). A key that both Bitwarden and the file changed since the last pull is a conflict only when the two new values differ; its question preselects "no", as for removals. The same new value on both sides needs no write.
+
+**No push without a last-generated state** (owner choice). Before the first pull after the update the push refuses and names `machine env pull` as the next command.
+
 **Syntax hint in the generated header.** Every generated file shows the syntax and names `machine env push`, so the owner can write a reference without looking it up. The temporary hint the owner placed in the notes of `env/groups/work` is removed when this change lands.
 
 **Alternatives considered and rejected:**
@@ -67,11 +71,6 @@ Current state:
 1. The change lands through `machine update`; items without references behave as before. The first pull after the update stores the last-generated content; until then no file has unpushed edits.
 2. The owner replaces the literal `PASSWORD` in `env/groups/work` with a reference to the NT-user login item and removes the temporary syntax hint from its notes.
 3. Rollback: revert the commit. Items that contain references then reach `~/.env` as literal reference text, so the owner restores the literal values (the env backups hold them) before rolling back.
-
-## Assumptions
-
-- The conflict question of the push preselects "no", by analogy with the owner's choice for removals; to be confirmed with the owner (task 1.2).
-- Before the first pull after the update there is no last-generated content; the push then refuses and names `machine env pull` as the next command.
 
 ## Investigations (blocking)
 

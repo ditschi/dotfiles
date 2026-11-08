@@ -5,7 +5,7 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 ## 1. Owner decisions
 
 - [ ] 1.1 Resolve investigation I1 of design.md (store the work account password only once in Bitwarden) with the owner and record the outcome in design.md; if candidate (b) is taken, add its requirements to the delta spec; blocks merging this change; verify that I1 has a recorded outcome and `openspec validate env-bitwarden-references --strict` passes.
-- [ ] 1.2 Confirm the assumptions in design.md (conflict default "no", push refuses without last-generated content) with the owner and move them to Decisions or revise the spec; verify that Assumptions lists nothing unconfirmed that changes behaviour.
+- [x] 1.2 Confirm the assumptions in design.md (conflict default "no", push refuses without last-generated content) with the owner and move them to Decisions or revise the spec; verify that Assumptions lists nothing unconfirmed that changes behaviour.
 
 ## 2. Resolving references in the pull
 
@@ -22,7 +22,7 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 
 - [ ] 4.1 Add `push [--host]` to `machine env` in `machine_cli/machine`: sync, take the keys edited since the last pull, list them by name (references in clear, never values), refuse files with shell code and runs without last-generated content, confirm, write, then pull; verify with unit tests for add, change, declined confirmation and shell code.
 - [ ] 4.2 Write changes into the item: append and replace note lines, update custom fields that set a key, and write a new value of a referenced key into the referenced item's target field; check all references before any write; verify with unit tests, including a reference typo that writes nothing.
-- [ ] 4.3 Offer removals and conflicts with "no" preselected; verify with unit tests that Enter keeps the item unchanged and that keys changed only in Bitwarden are not written back.
+- [ ] 4.3 Offer removals and conflicts with "no" preselected; verify with unit tests that Enter keeps the item unchanged, that the same new value on both sides is no conflict, and that keys changed only in Bitwarden are not written back.
 - [ ] 4.4 Add shell completion for the new subcommand if `machine env` completion lists subcommands; verify with the existing completion tests, or note that none applies.
 
 ## 5. Documentation

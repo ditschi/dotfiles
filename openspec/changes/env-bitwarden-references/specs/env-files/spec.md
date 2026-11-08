@@ -112,7 +112,7 @@ For each key that the file lacks but the item sets, the push SHALL ask whether t
 - **THEN** the key stays in the item and the regenerated `~/.env` sets it again
 
 ### Requirement: Push conflicts
-When the item changed a key since the last pull and the file changes the same key, the push SHALL show the key as a conflict and write it only after a separate confirmation, with "no" preselected. Keys that only Bitwarden changed SHALL NOT be written back.
+When the item changed a key since the last pull and the file changes the same key to a different value, the push SHALL show the key as a conflict and write it only after a separate confirmation, with "no" preselected. When both sides hold the same new value, there is no conflict and nothing is written. Keys that only Bitwarden changed SHALL NOT be written back.
 
 #### Scenario: Changed in the vault only
 - **WHEN** `TOKEN` was changed in Bitwarden after the last pull and the user did not edit it in `~/.env`
@@ -121,3 +121,7 @@ When the item changed a key since the last pull and the file changes the same ke
 #### Scenario: Changed on both sides
 - **WHEN** `TOKEN` was changed in Bitwarden after the last pull and also in `~/.env`, and the user presses Enter at the conflict question
 - **THEN** the item keeps its value
+
+#### Scenario: Same change on both sides
+- **WHEN** `TOKEN` was changed in Bitwarden after the last pull and set to the same new value in `~/.env`
+- **THEN** the push shows no conflict for `TOKEN`, writes nothing for it, and the regenerated `~/.env` has that value

@@ -44,8 +44,30 @@ Applied copy: `~/.local/share/machine/applied-host.yml` (not in git, written onl
 | `machine/hosts/*.yml` | Desired state (context, device, features) |
 | `machine` CLI | Orchestration, UX, secrets, git, calling mise and Ansible |
 | mise | Dotfile groups and user-space tools without root (`home/core/.config/mise/conf.d/*.toml`, pinned by `mise.lock`) |
-| Ansible | apt, `/etc`, Telegraf, stylus-touch-guard, sshd-home |
+| Ansible | Root work only: apt, `/etc`, system services (Telegraf, sshd-home, laptop and memory roles, …) |
 | Inventory | Reachability only — no features |
+
+Work for the login user that needs no root (for example GNOME Shell extensions, also those of the
+feature `touch-device`) is done by `machine` and mise, not by Ansible.
+
+## Decision: Ansible stays for root work
+
+Owner decision of 2026-11-08: the split stays — mise and `machine` for the user level, Ansible
+for root and system work. The root roles are not migrated to `mise bootstrap`. This replaces the
+statement in the archived `adopt-mise` design that replacing "the five root roles" with
+`mise bootstrap` is a later change.
+
+Today Ansible has ten local roles (nine feature roles and the model role
+`thinkpad_l13_yoga_gen2`) plus the packages play.
+
+`mise bootstrap` is re-evaluated between 2027-05 and 2027-11 against these criteria:
+
+- validation before a file is written (`sshd -t`, `visudo -c`)
+- conditions per host and per hardware fact
+- debconf
+- partial edits of files (as with `lineinfile`)
+- a single sudo authentication per run
+- a `mise` binary for the Raspberry Pi Zero
 
 ## Galaxy vs. local roles
 

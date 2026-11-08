@@ -16,7 +16,7 @@ Every local Ansible role SHALL do work that needs root. Work for the login user 
 ## MODIFIED Requirements
 
 ### Requirement: Local roles
-Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `lid_switch`, `power_profile_switch`, `battery_charge_limit`, `zram_swap` and `cosmic_desktop`; model tuning SHALL be a local role per hardware model, such as `thinkpad_l13_yoga_gen2`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
+Larger system features SHALL be local roles that need root: `monitoring`, `sshd_home`, `stylus_touch_guard`, `lid_switch`, `power_profile_switch`, `battery_charge_limit`, `zram_swap`, `memory_headroom` and `cosmic_desktop`; model tuning SHALL be a local role per hardware model, such as `thinkpad_l13_yoga_gen2`. User-space tools SHALL NOT be Ansible roles; they are installed by `mise` (see `user-tools`).
 
 #### Scenario: Adding a user-space tool
 - **WHEN** a tool is available as a release binary

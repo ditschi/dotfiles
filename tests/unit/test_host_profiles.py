@@ -750,7 +750,7 @@ def test_local_run_with_a_valid_ticket_does_not_prompt(tmp_path, monkeypatch):
     assert seen["ansible"][-1][:2] == ["sudo", "-n"]
 
 
-def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypatch):
+def test_local_run_passes_login_user_and_environment(tmp_path, monkeypatch):
     _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
     machine.run_ansible("workstation")
     cmd = seen["ansible"][-1]
@@ -766,10 +766,9 @@ def test_local_run_passes_login_user_session_and_environment(tmp_path, monkeypat
     extra = _extra_vars(cmd)
     assert extra["machine_login_user"] == "alice"
     assert extra["machine_runs_as_root"] is True
-    assert extra["machine_user_session_env"] == {
-        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-        "XDG_RUNTIME_DIR": "/run/user/1000",
-    }
+    assert (
+        "machine_user_session_env" not in extra
+    )  # no Ansible task needs the GNOME session
     assert "machine_user_path" in extra
 
 

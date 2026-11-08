@@ -345,3 +345,149 @@ def test_logout_hint_only_after_a_new_extension(machine, monkeypatch, tmp_path, 
         (user_dir / uuid).mkdir(parents=True, exist_ok=True)
     host.run_tools_install()
     assert "log out and in" not in capsys.readouterr().out
+
+
+def _touch(host, monkeypatch, tmp_path, features=("touch-device",)):
+    _gnome(host, monkeypatch, tmp_path)
+    _profile(host, list(features))
+
+
+def _gext(commands, action):
+    return [
+        c[-1]
+        for c in commands
+        if c[:4] == ["mise", "exec", "--", "gext"] and action in c
+    ]
+
+
+def test_touch_extensions_install_and_enable_once(
+    machine, monkeypatch, tmp_path, capsys
+):
+    host, commands = machine
+    _touch(host, monkeypatch, tmp_path)
+    user_dir = tmp_path / ".local/share/gnome-shell/extensions"
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        if args[-2] == "install":
+            (user_dir / args[-1]).mkdir(parents=True)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    assert _gext(commands, "install") == list(mise_tools.TOUCH_EXTENSIONS)
+    assert _gext(commands, "enable") == list(mise_tools.TOUCH_EXTENSIONS)
+    assert "log out and in" in capsys.readouterr().out
+
+    commands.clear()
+    host.run_tools_install()
+    assert _gext(commands, "install") == []
+    assert "log out and in" not in capsys.readouterr().out
+
+
+def test_touch_extensions_from_the_former_role_are_only_enabled(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _touch(host, monkeypatch, tmp_path)
+    for uuid in mise_tools.TOUCH_EXTENSIONS:
+        (tmp_path / ".local/share/gnome-shell/extensions" / uuid).mkdir(parents=True)
+
+    host.run_tools_install()
+
+    assert _gext(commands, "install") == []
+    assert _gext(commands, "enable") == list(mise_tools.TOUCH_EXTENSIONS)
+
+
+def test_touch_host_without_gnome_gets_no_gnome_extensions(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _touch(host, monkeypatch, tmp_path)
+
+    host.run_tools_install()
+
+    touched = set(_gext(commands, "install")) | set(_gext(commands, "enable"))
+    assert touched == set(mise_tools.TOUCH_EXTENSIONS)
+    assert not any(c[0] == "dconf" for c in commands)
+
+
+def test_no_touch_extensions_without_the_feature_or_gnome_shell(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _gnome(host, monkeypatch, tmp_path)
+
+    host.run_tools_install()
+
+    gnome_commands = _gext(commands, "install") + _gext(commands, "enable")
+    assert gnome_commands  # the gnome host still installs its extensions with gext
+    assert not set(mise_tools.TOUCH_EXTENSIONS) & set(gnome_commands)
+
+    commands.clear()
+    _profile(host, ["touch-device"])
+    monkeypatch.setattr(mise_tools.system, "have", lambda name: name == "mise")
+    host.run_tools_install()
+    assert not any("gext" in c for c in commands)
+
+
+def test_touch_extension_failure_is_logged_and_gnome_settings_still_load(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _touch(host, monkeypatch, tmp_path, features=("gnome", "touch-device"))
+    messages = []
+    monkeypatch.setattr(mise_tools, "log", messages.append)
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        failed = args[-2] == "install" and args[-1] in mise_tools.TOUCH_EXTENSIONS
+        return subprocess.CompletedProcess(
+            args, 1 if failed else 0, stdout="", stderr="no version\n" if failed else ""
+        )
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    assert any(
+        m.startswith("could not install touchup@mityax: no version;") for m in messages
+    )
+    assert ["dconf", "load", "/org/gnome/shell/extensions/gtile/"] in commands
+    commands.clear()
+    host.run_tools_install()
+    assert not any(c[0] == "dconf" for c in commands)  # still loaded only once
+
+
+def test_logout_hint_once_when_gnome_and_touch_extensions_are_new(
+    machine, monkeypatch, tmp_path, capsys
+):
+    host, _commands = machine
+    _touch(host, monkeypatch, tmp_path, features=("gnome", "touch-device"))
+
+    host.run_tools_install()
+
+    assert capsys.readouterr().out.count("log out and in") == 1
+
+
+def test_gnome_extension_failure_does_not_stop_the_touch_extensions(
+    machine, monkeypatch, tmp_path
+):
+    host, commands = machine
+    _touch(host, monkeypatch, tmp_path, features=("gnome", "touch-device"))
+
+    def run(args, **_kw):
+        commands.append(list(args))
+        failed = args[-2] == "install" and args[-1] in mise_tools.GNOME_EXTENSIONS
+        return subprocess.CompletedProcess(
+            args, 1 if failed else 0, stdout="", stderr=""
+        )
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+
+    host.run_tools_install()
+
+    assert set(mise_tools.TOUCH_EXTENSIONS) <= set(_gext(commands, "enable"))
+    assert not any(c[0] == "dconf" for c in commands)

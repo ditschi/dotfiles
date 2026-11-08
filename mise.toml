@@ -36,6 +36,9 @@ root = "home/editor-command"
 [dotfile_groups.gnome]
 root = "home/gnome"
 
+[dotfile_groups.gnome-extensions]
+root = "home/gnome-extensions"
+
 [dotfile_groups.cosmic]
 root = "home/cosmic"
 

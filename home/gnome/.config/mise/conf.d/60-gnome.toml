@@ -1,3 +1,0 @@
-# CLI that `machine` uses to install GNOME Shell extensions (feature `gnome`), without root.
-[tools]
-"pipx:gnome-extensions-cli" = { version = "latest", python = "3.14" }

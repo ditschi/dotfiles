@@ -36,6 +36,11 @@ GNOME_EXTENSIONS = (
 )
 # Shipped by Ubuntu in /usr/share/gnome-shell/extensions: enabled, never installed.
 GNOME_SYSTEM_EXTENSIONS = ("tiling-assistant@ubuntu.com",)
+TOUCH_FEATURE = "touch-device"
+TOUCH_EXTENSIONS = (
+    "touchup@mityax",  # touch tweaks, better built-in on-screen keyboard
+    "screen-rotate@shyzus.github.io",  # rotate button in the quick settings
+)
 GNOME_SETTINGS_DIR = Path("home/gnome/.config/machine/dconf")
 GNOME_SETTINGS_MARKER = Path(".local/state/machine/gnome-extension-settings")
 
@@ -66,11 +71,16 @@ class MiseToolsMixin:
             self.download_thunderbird_extension()
         if FONT_FEATURE in features:
             self.set_terminal_fonts()
+        new_extensions = False
         if GNOME_FEATURE in features:
-            self.ensure_gnome_extensions(env)
+            new_extensions |= self.ensure_gnome_extensions(env)
             # After the extension step, so a first setup sets the font of a just-installed Ddterm.
             if FONT_FEATURE in features:
                 terminal_fonts.set_ddterm_font(self.home)
+        if TOUCH_FEATURE in features:
+            new_extensions |= self.ensure_touch_extensions(env)
+        if new_extensions:
+            log("log out and in to load new GNOME extensions")
 
     def download_thunderbird_extension(self) -> None:
         """Put the pinned bridge extension into downloads/ (gitignored) for a manual install."""
@@ -122,17 +132,41 @@ class MiseToolsMixin:
     def set_terminal_fonts(self) -> None:
         terminal_fonts.set_vscode_font(self.home)
 
-    def ensure_gnome_extensions(self, env: dict) -> None:
-        """Install and enable the GNOME Shell extensions without root, then load their settings once."""
+    def ensure_gnome_extensions(self, env: dict) -> bool:
+        """Install and enable the GNOME Shell extensions without root, then load their settings once.
+
+        Returns whether an extension was newly installed."""
         if not system.have("gnome-shell"):
-            return
+            return False
+        installed, failed = self.ensure_extensions(
+            env, GNOME_EXTENSIONS, GNOME_SYSTEM_EXTENSIONS
+        )
+        if not failed:
+            self.load_gnome_extension_settings()
+        return installed
+
+    def ensure_touch_extensions(self, env: dict) -> bool:
+        """Install and enable the touch extensions (feature `touch-device`) without root.
+
+        Failures are logged and kept apart from the `gnome` settings load."""
+        if not system.have("gnome-shell"):
+            return False
+        installed, _failed = self.ensure_extensions(env, TOUCH_EXTENSIONS)
+        return installed
+
+    def ensure_extensions(
+        self, env: dict, uuids: tuple[str, ...], system_uuids: tuple[str, ...] = ()
+    ) -> tuple[bool, bool]:
+        """Install missing `uuids` with `gext`, enable them and the present `system_uuids`.
+
+        Returns (newly installed, a step failed)."""
         user_dir = self.home / ".local" / "share" / "gnome-shell" / "extensions"
         system_dir = Path("/usr/share/gnome-shell/extensions")
         failed = False
         installed = False
-        for uuid in (*GNOME_EXTENSIONS, *GNOME_SYSTEM_EXTENSIONS):
+        for uuid in (*uuids, *system_uuids):
             present = (user_dir / uuid).is_dir() or (system_dir / uuid).is_dir()
-            if not present and uuid in GNOME_EXTENSIONS:
+            if not present and uuid in uuids:
                 log(f"installing the GNOME extension {uuid}")
                 done = system.run(
                     ["mise", "exec", "--", "gext", "-F", "install", uuid],
@@ -167,10 +201,7 @@ class MiseToolsMixin:
                 check=False,
                 capture=True,
             )
-        if installed:
-            log("log out and in to load new GNOME extensions")
-        if not failed:
-            self.load_gnome_extension_settings()
+        return installed, failed
 
     def load_gnome_extension_settings(self) -> None:
         """`dconf load` of the shipped settings, once per host; later GUI changes are kept."""

@@ -158,7 +158,6 @@ ansible/
     monitoring/           # Telegraf agent configs
     sshd_home/            # authorized_keys
     stylus_touch_guard/   # Yoga stylus/touch (ex helpers-and-automation)
-    touch_device/         # GNOME touch extensions (TouchUp, Screen Rotate)
     cosmic_desktop/       # COSMIC session on Ubuntu 26.04+ from ppa:hepp3n/cosmic-epoch
     lid_switch/ power_profile_switch/ battery_charge_limit/  # laptop features (detected laptops)
     zram_swap/            # compressed swap in RAM (not on Raspberry Pis)

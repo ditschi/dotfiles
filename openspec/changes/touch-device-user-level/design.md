@@ -8,7 +8,7 @@ Current state:
 
 - The play "Touch device" in `ansible/workstation.yml` runs the role `touch_device` with `become: "{{ machine_runs_as_root | bool }}"`, `become_user: "{{ machine_login_user }}"` and `environment: "{{ machine_user_session_env }}"`. Its only gate is `'touch-device' in machine_features`; it uses no hardware facts from `tasks/detect_hardware.yml`. The role reads `gnome-shell --version`, downloads each missing extension from extensions.gnome.org with `curl` and runs `gnome-extensions install --force` and `gnome-extensions enable`. Every task is skipped when `machine_user_session_env` has no `DBUS_SESSION_BUS_ADDRESS`, which is the case for remote (`--limit`) runs and runs without a session.
 - `machine_user_session_env` (from `SESSION_ENV` in `machine_cli/tools.py`, default `{}` in `group_vars/all/login_user.yml`) exists only for this role (archived `ansible-single-sudo` design, decision 3). `machine_login_user` and `machine_runs_as_root` are also used by the Docker checks and `sshd_home` and stay.
-- For the feature `gnome`, `MiseToolsMixin.run_tools_install` (`machine_cli/mise_tools.py`) already installs and enables GNOME Shell extensions without root with `gext -F` from the `mise` group `gnome` (`pipx:gnome-extensions-cli`), skips hosts without `gnome-shell`, logs a failed install with its reason and continues, and prints "log out and in" after a new install. The step runs on `machine setup`, `machine apply` and on every `machine update` (converge step "tool install").
+- For the feature `gnome`, `MiseToolsMixin.run_tools_install` (`machine_cli/mise_tools.py`) already installs and enables GNOME Shell extensions without root with `gext -F` from the `mise` group `gnome` (`pipx:gnome-extensions-cli`), skips hosts without `gnome-shell`, logs a failed install with its reason and continues, and prints "log out and in" after a new install. The step runs on `machine setup` and on every `machine update` (converge step "tool install"), including the automatic update; `machine apply` runs only Ansible.
 - The feature `touch-device` is optional on desktops and excluded on servers and in containers; it selects no dotfile group today.
 - The archived `adopt-mise` design listed `touch_device` among the system roles that were not moved out of Ansible (Non-Goals) and states under Decisions that replacing "the five root roles" with `mise bootstrap` is a separate later change.
 - Update flow: `system_relevance.is_relevant_path` counts every change to a playbook, and a changed file under `roles/<r>/` whose role no playbook names any more counts as well.
@@ -62,6 +62,7 @@ The point below is the agent's recommendation; it follows from Decisions 2 and 5
 - [One pending system step on every host that runs Ansible, because `ansible/workstation.yml` changes and the deleted role counts as relevant] → Accepted: the run is a normal `machine update` system step that changes nothing; no special case in `system_relevance` for deleted roles.
 - [`gext` picks a different extension version than the role's `shell_version` download] → Both resolve the version for the installed GNOME Shell from extensions.gnome.org; already-installed extensions are not reinstalled, so existing hosts keep their version.
 - [The link `~/.config/mise/conf.d/60-gnome.toml` on existing `gnome` hosts dangles after the file moves to the group `gnome-extensions`] → `mise dot apply --prune` and `sweep_dangling_links` (`machine_cli/dotfiles.py`) remove links into the checkout whose target is gone; checked in the end-to-end validation.
+- [The automatic update runs without a GNOME session, while the role skipped every task without `DBUS_SESSION_BUS_ADDRESS`] → The tool step now runs `gext -F enable` for the touch extensions there too, as it already does for the `gnome` extensions; failures are ignored, so the run does not fail.
 - [Replaying the new step outside a container writes the real session's dconf and enables extensions there] → Validate end to end with `machine testenv` or the unit tests only; a scratch `HOME` does not isolate dconf, gsettings or `gext enable`.
 - [Enabling re-enables an extension the user switched off by hand] → Same behaviour as the role and as the `gnome` extensions; not changed here.
 
@@ -73,9 +74,4 @@ The point below is the agent's recommendation; it follows from Decisions 2 and 5
 
 ## Open Questions
 
-1. ~~Reuse the `gnome` extension step and `gext`?~~ Answered: yes (Decision 5).
-2. ~~How does a touch host without `gnome` get `gext`?~~ Answered: new group `gnome-extensions` (Decision 6).
-3. ~~Remove `machine_user_session_env` and `SESSION_ENV`?~~ Answered: remove (Decision 8).
-4. ~~Accept the one no-op pending system step on every Ansible host?~~ Answered: accept (Decision 9).
-5. ~~Should hosts with `ansible: false` and `touch-device` get the extensions?~~ Answered: yes (Decision 10).
-6. ~~Where does the `mise bootstrap` re-evaluation get tracked?~~ Answered: decision note only (Decision 11).
+None; all were answered by the owner on 2026-11-08 (Decisions 5 to 11).

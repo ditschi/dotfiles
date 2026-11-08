@@ -280,11 +280,6 @@ class ToolsMixin:
                             # Local runs start ansible-playbook as root (below); the
                             # login-user tasks then switch to machine_login_user.
                             "machine_runs_as_root": playbook_name != "homelab",
-                            "machine_user_session_env": {
-                                key: os.environ[key]
-                                for key in SESSION_ENV
-                                if os.environ.get(key)
-                            },
                         }
                     ),
                 ]
@@ -397,8 +392,6 @@ class ToolsMixin:
         return [sudo, "-n", "--", "env", *env, playbook_cmd]
 
 
-# Session of the login user for the tasks that run as that user (touch_device).
-SESSION_ENV = ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
 # Environment that the playbook reads on the controller and that sudo would drop.
 ROOT_RUN_ENV = ("MACHINE_HARDWARE", "ANSIBLE_VAULT_PASSWORD_FILE")
 

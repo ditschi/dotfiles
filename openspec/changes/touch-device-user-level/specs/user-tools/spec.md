@@ -6,7 +6,7 @@
 On a host with the feature `touch-device`, `machine` SHALL install the GNOME Shell extensions TouchUp and Screen Rotate in the user's extension directory and enable them, without root and without Ansible, from a `mise`-installed CLI. The feature `touch-device` SHALL make that CLI available also on a host without the feature `gnome`.
 
 #### Scenario: Touch host in a GNOME session
-- **WHEN** `machine setup`, `machine apply` or `machine update` runs on a host with `touch-device` and GNOME Shell
+- **WHEN** `machine setup` or `machine update` runs on a host with `touch-device` and GNOME Shell
 - **THEN** TouchUp and Screen Rotate are installed for the user and enabled, and running it again changes nothing
 
 #### Scenario: Touch host without the gnome feature

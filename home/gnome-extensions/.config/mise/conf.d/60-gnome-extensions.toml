@@ -1,0 +1,3 @@
+# CLI that `machine` uses to install GNOME Shell extensions (features `gnome` and `touch-device`), without root.
+[tools]
+"pipx:gnome-extensions-cli" = { version = "latest", python = "3.14" }

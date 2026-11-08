@@ -23,7 +23,7 @@ feature_table:
     container: excluded
   gnome:
     help: GNOME tools (flameshot, shell extensions, …)
-    groups: [gnome]
+    groups: [gnome, gnome-extensions]
     server: excluded
     container: excluded
   cosmic:
@@ -101,6 +101,7 @@ feature_table:
     container: excluded
   touch-device:
     help: GNOME touch extensions (TouchUp, Screen Rotate)
+    groups: [gnome-extensions]
     desktop: optional
     server: excluded
     container: excluded

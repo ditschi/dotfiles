@@ -64,7 +64,7 @@ Package and system changes are not transactionally rolled back.
 Local Ansible runs authenticate once: `machine` runs `sudo -v` in the terminal (fingerprint
 or password, whatever PAM offers; skipped while the sudo ticket is valid) and then starts
 `ansible-playbook` itself as root, so no task asks again. Tasks for the login user (the
-Docker checks, the GNOME touch-device extensions) switch to that user with `become_user`.
+Docker checks) switch to that user with `become_user`.
 Without a terminal, or with `--no-become`, `machine` uses `sudo -n`: passwordless sudo or a
 valid ticket works, anything else fails at once with a hint to run `machine` in a terminal.
 When `machine` already runs as root (containers), Ansible runs without sudo. Remote runs

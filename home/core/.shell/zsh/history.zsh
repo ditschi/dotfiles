@@ -1,5 +1,3 @@
-alias zshhistory="nano $HOME/.shell/zsh/history.zsh"
-
 export HISTSIZE=60000
 export SAVEHIST=50000
 export HISTFILE=~/.zsh_history

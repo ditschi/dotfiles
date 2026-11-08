@@ -1,5 +1,3 @@
-alias zshwork-ldap="nano $0"
-
 if [[ "${WORK_SETUP}" != "true" ]]; then # set by the shell startup loader
     return
 fi

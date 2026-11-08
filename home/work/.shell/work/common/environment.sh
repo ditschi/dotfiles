@@ -1,5 +1,4 @@
 # shellcheck shell=bash
-alias zshwork='nano "$HOME/.shell/work/common/environment.sh"'
 
 if [[ ${WORK_SETUP} != "true" ]]; then # set by the shell startup loader
     return

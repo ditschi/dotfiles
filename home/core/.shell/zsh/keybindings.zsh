@@ -1,5 +1,3 @@
-alias zshheys="nano $HOME/.shell/zsh/keybindings.zsh"
-
 # The autosuggestion keys (Ctrl+Space accept, Ctrl+_ execute) are bound when
 # zsh-autosuggestions has loaded (dotfiles_after_autosuggest in 02_plugins.zsh).
 

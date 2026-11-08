@@ -67,7 +67,7 @@ A host SHALL receive `core` and `prompt` always, `systemd` unless the device is 
 - **THEN** `copilot-cli`, `kerberos` and `azure-cli` are preselected, `docker` is offered but not preselected, and `unattended-upgrades` is not offered
 
 ### Requirement: Features of the private infrastructure
-`monitoring` and `sshd-home` SHALL be preselected for private desktops and servers. `syncthing` and `thunderbird` SHALL be preselected for private desktops and excluded on servers. `tailscale` SHALL be optional for private desktops and servers. All five SHALL be excluded for work and in containers.
+`monitoring` and `sshd-home` SHALL be preselected for private desktops and servers. `syncthing` SHALL be preselected for private desktops and optional on servers. `thunderbird` SHALL be preselected for private desktops and excluded on servers. `tailscale` SHALL be optional for private desktops and servers. All five SHALL be excluded for work and in containers.
 
 #### Scenario: New private desktop with infrastructure
 - **WHEN** a new host with context `private` and device `desktop` takes the defaults
@@ -75,7 +75,7 @@ A host SHALL receive `core` and `prompt` always, `systemd` unless the device is 
 
 #### Scenario: Private server
 - **WHEN** the menu is shown on a private server
-- **THEN** `syncthing` and `thunderbird` are not listed and `tailscale` is listed without preselection
+- **THEN** `thunderbird` is not listed, and `syncthing` and `tailscale` are listed without preselection
 
 ### Requirement: Menu shows only allowed features
 The feature menu of `machine setup` SHALL list only the features that are not excluded for the host, with the preselected ones marked. Features the host already has SHALL stay selected. Without an applied host config, the features in the host's repository config (`machine/hosts/<hostname>.yml`) SHALL count as the features the host has, when its context and device match the ones chosen in setup.

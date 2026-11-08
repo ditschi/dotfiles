@@ -1361,6 +1361,43 @@ def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     assert (home / ".env.host").stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.parametrize("blocker", ["locked", "no-context"])
+def test_env_pull_fixes_open_env_files_without_bitwarden(
+    tmp_path, monkeypatch, fake_bw, capsys, blocker
+):
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
+    if blocker == "locked":
+        monkeypatch.setattr(machine, "unlock_bitwarden", lambda *a, **k: False)
+    else:
+        monkeypatch.setattr(machine, "current_context", lambda: "")
+    local = home / ".env.local"
+    local.write_text("A=1\n")
+    local.chmod(0o664)
+    (home / ".env").write_text("B=1\n")
+    (home / ".env").chmod(0o600)
+
+    assert machine.cmd_env_pull() == 0
+    assert local.stat().st_mode & 0o777 == 0o600
+    assert (home / ".env").stat().st_mode & 0o777 == 0o600
+    out = capsys.readouterr()
+    assert "~/.env.local (664 -> 600)" in out.out + out.err
+    assert "~/.env (" not in out.out + out.err
+
+
+def test_env_pull_logs_nothing_when_env_files_are_private(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
+    monkeypatch.setattr(machine, "unlock_bitwarden", lambda *a, **k: False)
+    for name in (".env", ".env.host", ".env.local"):
+        (home / name).write_text("A=1\n")
+        (home / name).chmod(0o600)
+
+    assert machine.cmd_env_pull() == 0
+    out = capsys.readouterr()
+    assert "permissions" not in out.out + out.err
+
+
 def test_env_pull_work_laptop_reads_work_items_only(tmp_path, monkeypatch, fake_bw):
     items = {
         "env/groups/work": _item("CLASS=work"),

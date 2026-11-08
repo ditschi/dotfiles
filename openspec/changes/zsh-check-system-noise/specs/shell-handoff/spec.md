@@ -73,7 +73,7 @@ After the strict trial start passed, the system SHALL run a second trial start a
 Error output of the full trial start SHALL NOT count as a failure. When the full trial start otherwise passes but wrote to stderr, the outcome SHALL be a pass, the session SHALL be handed over to zsh, and a one-line warning with the first line of that output SHALL be shown where the check ran.
 
 #### Scenario: System login hook prints a message
-- **WHEN** a global startup file other than `/etc/zsh/zshenv` (for example a company login hook) prints `Kerberos token invalid, refreshing...` to stderr, the strict trial start passes and the full trial start loads the config completely
+- **WHEN** a global startup file other than `/etc/zsh/zshenv` (for example a login hook added by an administrator) prints a line to stderr, the strict trial start passes and the full trial start loads the config completely
 - **THEN** the session is handed over to zsh, a one-line warning shows the message, and the outcome is cached as a pass
 
 #### Scenario: Manual recheck shows the warning

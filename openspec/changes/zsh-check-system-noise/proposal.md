@@ -4,6 +4,8 @@
 
 The zsh startup health check fails on any error output, wherever it comes from. That catches real dotfile errors: for example, an unguarded `. "$HOME/.cargo/env"` in `~/.zshenv` writes to stderr on hosts without cargo, while the startup markers are still set. But it also fails on output from system startup files in `/etc` that the company owns: on a work VM, a system login hook printed `Kerberos token invalid, refreshing...`, and the check cached zsh as broken. The user cannot fix such output without root, and it must not keep them in the bash fallback. The check should stay strict for the dotfiles and stop treating system output as a failure.
 
+**Blocked:** the motivation above rests on the archived note that a system login hook on the work VM printed the Kerberos line. That line was very likely printed by the dotfiles' own shell-start refresh, removed in `7e0588e`, and the owner reports that the work host has no company zsh environment. The change waits for "Required analysis on the work host" in design.md; once it is done, this note is removed and the motivation is updated to its result.
+
 ## What Changes
 
 - The health check starts zsh twice. A strict run, `zsh -l -i +o GLOBAL_RCS`, skips the global startup files `/etc/zsh/zprofile`, `/etc/zsh/zshrc` and `/etc/zsh/zlogin` (not `/etc/zsh/zshenv`, which zsh always reads). It fails, as today, on any error output, a non-zero exit, missing startup markers or a timeout.

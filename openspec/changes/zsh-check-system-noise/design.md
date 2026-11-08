@@ -52,9 +52,29 @@ Nothing to migrate. The helper change invalidates the cached outcome, so the nex
 
 ## Assumptions
 
-- The `Kerberos token invalid, refreshing...` line on the work VM comes from a global zsh startup file other than `/etc/zsh/zshenv` (for example a `zprofile` that sources `/etc/profile.d`). The archived design `2026-11-02-zsh-check-no-lockout` only records that "a system login hook" printed it. Tasks verify the file on the VM; if it is `/etc/zsh/zshenv`, the owner decides how to proceed.
+- The work host (ABTVL421) has no company zsh environment: zsh was installed by the owner and is configured only by the dotfiles (owner, 2026-11-08). Whether the files in `/etc/zsh` there are the unmodified package files, and whether anything there sources `/etc/profile` or `/etc/profile.d`, is not verified; see "Required analysis on the work host".
+- The trigger message probably came from the dotfiles, not from a system file. The archived design `2026-11-02-zsh-check-no-lockout` records that "a system login hook" printed `Kerberos token invalid, refreshing...`. That exact line was printed to stderr by `ensure-kerberos-token`, which `home/work/.shell/work/common/environment.sh` ran at every shell start (since `bd7f455`, 2026-02-24) until `7e0588e` (2026-11-02 13:53, change `work-network-autoconnect`) removed the shell-start refresh. If so, the strict check reported a real dotfile output correctly, and this change may have no trigger on that host. Not verified; see "Required analysis on the work host".
+
+## Required analysis on the work host (blocker)
+
+**Blocker:** the open questions, the implementation (tasks 1 and 2) and the decision whether this change is needed at all wait for this analysis. Once the analysis is done and its results are recorded here, remove this blocker (this paragraph, the blocker notes in Open Questions, proposal.md and tasks.md) and update the change to the results.
+
+Points to clarify on ABTVL421 (results go below each point):
+
+1. **Are the global zsh files stock?** Check `/etc/zsh/zshenv`, `zprofile`, `zshrc`, `zlogin` against the package (`dpkg -V zsh-common zsh`, or compare with the files on the desktop) and whether any of them sources `/etc/profile`, `/etc/profile.d` or other company scripts. If they are stock, no system file can print during a zsh start, apart from whatever Ubuntu's `zshrc` itself does.
+2. **Does the Kerberos message still appear, and from where?** `grep -rn 'token invalid' /etc ~/.local/bin ~/.shell` and check that the live checkout contains `7e0588e` (`git -C "$(machine repo)" merge-base --is-ancestor 7e0588e HEAD`). Also check whether the old cron job from `setup-ensure-kerberos-cron` is still installed (`crontab -l`); it does not print into a shell start, but it is a leftover of the same refresh.
+3. **Current state of the check.** Content of `${XDG_STATE_HOME:-~/.local/state}/dotfiles/zsh-handoff` and the result of `zsh-recheck`. A failure with a reason names the output that matters.
+4. **Strict versus full start with the real config.** Run both starts as the check does (`DOTFILES_ZSH_CHECK=1`, `TERM` set, stdin `/dev/null`, `setsid -w timeout`): `zsh -l -i +o GLOBAL_RCS -c 'print -r -- "$DOTFILES_ZSH_LOADED $DOTFILES_ZSH_DEFERRED_LOADED"'` and the same without `+o GLOBAL_RCS`; record exit status, markers and stderr of each. Output only in the full start comes from a global file (point 1); output only in the strict start is a dotfile dependency on `/etc/zsh/zshrc` (risk in Risks / Trade-offs).
+5. **Same comparison on the development desktop**, so that a dotfile dependency on Ubuntu's `/etc/zsh/zshrc` shows up independently of the work host.
+
+Outcome that decides the next step:
+- No global file prints anything on any host and the Kerberos line is gone: the owner decides whether to drop the change or to keep it as a precaution for future hosts; the motivation in proposal.md is then rewritten without the work VM case.
+- A global file other than `/etc/zsh/zshenv` prints: the change continues as designed.
+- Only `/etc/zsh/zshenv` prints: this design does not help (Non-Goals); the owner decides how to proceed.
 
 ## Open Questions
+
+**Blocked:** these questions wait until the analysis in "Required analysis on the work host" is done, because it decides whether the change is needed at all.
 
 Specs and tasks follow the recommendation; a different answer changes the named scenario.
 

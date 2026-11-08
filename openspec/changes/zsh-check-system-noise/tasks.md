@@ -1,5 +1,13 @@
 # Tasks
 
+## 0. Analysis on the work host (blocker)
+
+Tasks 1 to 3 wait for this group. When it is done, remove this blocker note and the blocker notes in design.md and proposal.md, and update the change to the results.
+
+- [ ] 0.1 On ABTVL421, work through points 1 to 4 of "Required analysis on the work host" in design.md (stock `/etc/zsh` files, origin of the Kerberos line and leftover cron job, current state file and `zsh-recheck`, strict versus full start with the real config); record the results under each point
+- [ ] 0.2 On the development desktop, run point 5 (strict versus full start) and record the result
+- [ ] 0.3 Decide with the owner by the outcome rules in design.md whether the change continues, is dropped or is rethought; update proposal.md, design.md, specs and tasks accordingly and remove the blocker notes; verify with `openspec validate zsh-check-system-noise --strict`
+
 ## 1. Health check with strict and full run
 
 - [ ] 1.1 Confirm the open questions in design.md with the owner and adjust the scenarios "Cached pass with a warning" and "Strict run fails" if an answer differs from the recommendation; verify with `openspec validate zsh-check-system-noise --strict`
@@ -14,8 +22,8 @@
 
 ## 3. Verification on real hosts
 
-- [ ] 3.1 On the development desktop, run the real config as `DOTFILES_ZSH_CHECK=1 zsh -l -i +o GLOBAL_RCS -c 'print …'` with stdin `/dev/null` and record exit status, markers and stderr; any error output that appears only without the global files is a dotfile dependency to guard before archive
-- [ ] 3.2 On the work VM, find which file prints `Kerberos token invalid, refreshing...` (for example `zsh -x -l -i +o GLOBAL_RCS` vs. full start, or grep in `/etc/zsh` and `/etc/profile.d`) and record whether it is `/etc/zsh/zshenv` (assumption in design.md); then run `zsh-recheck` there and verify that the handoff passes, with a warning when the hook prints
+- [ ] 3.1 On the development desktop, run `zsh-recheck` with the implemented helper and verify that it passes; guard any dotfile dependency on `/etc/zsh/zshrc` found in task 0.2
+- [ ] 3.2 On ABTVL421, run `zsh-recheck` with the implemented helper and verify that the handoff passes, with a warning when a global file prints (task 0.1)
 - [ ] 3.3 Run `pytest tests/unit -q`, because the change touches the `machine` update flow and the contract of the shared helper; record the result
 - [ ] 3.4 Run `pre-commit run --files <changed paths>` (including untracked files) and fix findings
 - [ ] 3.5 Run `openspec validate zsh-check-system-noise --strict`

@@ -34,6 +34,92 @@ TO_BITWARDEN = "bitwarden"
 KEEP_LOCALLY = "local"
 REMOVE = "remove"
 SKIP = "skip"
+PUSH = "push"
+DISCARD = "discard"
+# Results of pushing one env file (machine env push).
+PUSHED = "pushed"
+NOTHING_TO_PUSH = "nothing"
+DECLINED = "declined"
+FAILED = "failed"
+
+# A value that names another Bitwarden item: {{bw:<item name>/<target>}}.
+REFERENCE = re.compile(r"^\{\{bw:(.+)/(password|username|field:[^/]+)\}\}$")
+# Stands for a resolved value until the file's format is known (see render_env).
+REF_TOKEN = re.compile(r"@@machine-ref:\d+@@")
+EXPORT = re.compile(r"^\s*export\s+")
+UNRESOLVED = re.compile(r'^# unresolved: (\S+) from Bitwarden "(.+)" \((.+)\): (.+)$')
+SYNTAX_HINT = [
+    "# A value may reference another Bitwarden item instead of a copy:",
+    "#   KEY={{bw:<item name>/password}}   (or /username, /field:<NAME>)",
+    "# Edit this file and run `machine env push` to write changes to Bitwarden.",
+]
+
+
+def assignment_parts(line: str) -> Tuple[str, str, str]:
+    """(prefix up to and including '=', key, raw value) of an assignment line."""
+    match = ASSIGNMENT.match(line)
+    assert match
+    end = match.end()
+    return line[:end], match.group(1), line[end:]
+
+
+def unquoted(raw: str) -> str:
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"":
+        return raw[1:-1]
+    return raw
+
+
+def parse_reference(raw: str) -> Optional[Tuple[str, str]]:
+    """(item name, target) when a raw value is a reference."""
+    match = REFERENCE.match(unquoted(raw))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def reference_value(item: dict, target: str) -> Optional[str]:
+    login = item.get("login") or {}
+    if target in ("password", "username"):
+        value = login.get(target)
+    else:
+        name = target.removeprefix("field:")
+        value = next(
+            (f.get("value") for f in item.get("fields") or [] if f.get("name") == name),
+            None,
+        )
+    return None if value in (None, "") else str(value)
+
+
+def line_value(line: str, sourced: bool) -> str:
+    """The value the shell loader sets for an assignment line."""
+    raw = assignment_parts(line)[2]
+    if not sourced:
+        return raw
+    try:
+        return " ".join(shlex.split(raw, comments=True))
+    except ValueError:
+        return raw
+
+
+def item_lines(parsed: "EnvFile") -> Dict[str, str]:
+    """Key -> last line of the keys that a Bitwarden section of a generated file sets."""
+    return {
+        key: line
+        for key, line, section in parsed.assignments
+        if section not in (None, LOCAL_ONLY) and key not in parsed.local_only
+    }
+
+
+def same_line(a: Optional[str], b: Optional[str]) -> bool:
+    if a is None or b is None:
+        return a is b
+    return a.strip() == b.strip()
+
+
+def is_sourced(text: str) -> bool:
+    """Like the shell loader: a file with an export line is sourced, else parsed."""
+    return any(
+        EXPORT.match(line) for line in text.splitlines() if not line.startswith("#")
+    )
 
 
 @dataclass
@@ -52,6 +138,8 @@ class EnvFile:
 
 def parse_env_file(text: str) -> EnvFile:
     generated = text.startswith(GENERATED_HEADER)
+    # The loader reads a file without export lines as plain KEY=value, not as shell.
+    sourced = is_sourced(text)
     section: Optional[str] = None
     was_in: Optional[str] = None
     lines: List[Tuple[str, Optional[str]]] = []
@@ -70,7 +158,9 @@ def parse_env_file(text: str) -> EnvFile:
             continue
         match = ASSIGNMENT.match(line)
         try:
-            parsable = bool(match) and bool(shlex.split(line, comments=True))
+            parsable = bool(match) and (
+                not sourced or bool(shlex.split(line, comments=True))
+            )
         except ValueError:
             parsable = False
         if parsable:
@@ -195,6 +285,29 @@ class EnvPullMixin:
                 )
         return open_items
 
+    def env_sync_attention(self) -> List[str]:
+        """Unpushed local edits and unresolved references (no Bitwarden)."""
+        if not self.current_context():
+            return []
+        open_items = []
+        for path in self.env_files():
+            if not path.is_file():
+                continue
+            edits = self.env_unpushed_edits(path)
+            if edits:
+                open_items.append(
+                    f"{self.display(path)}: local edits of {', '.join(edits)} "
+                    "not in Bitwarden (push or discard)"
+                )
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if match := UNRESOLVED.match(line):
+                    key, name, _target, why = match.groups()
+                    open_items.append(
+                        f'{self.display(path)}: {key} references Bitwarden "{name}" '
+                        f"({why})"
+                    )
+        return open_items
+
     def _env_generated(self, names: List[str]) -> Tuple[Dict[Path, str], int]:
         env_path = self.home / ".env"
         host_path = self.home / ".env.host"
@@ -202,6 +315,7 @@ class EnvPullMixin:
             path: [
                 GENERATED_HEADER,
                 "# local overrides in ~/.env.local (never overwritten)",
+                *SYNTAX_HINT,
                 "# Bitwarden items (later files/fields win):",
                 *(f"# - {name}" for name in selected),
                 "",
@@ -211,6 +325,9 @@ class EnvPullMixin:
                 (host_path, names[-1:]),
             )
         }
+        self._env_refs: Dict[str, str] = {}
+        self._env_ref_items: Dict[str, Optional[List[dict]]] = {}
+        self.env_unresolved: List[Tuple[Path, str, str, str]] = []
         got = 0
         for name in names:
             body = self.bw_get_item_dotenv(name)
@@ -222,6 +339,7 @@ class EnvPullMixin:
                 ):
                     die(f"BW_SESSION must remain local; remove it from {name}")
                 path = host_path if name == names[-1] else env_path
+                body = self._resolve_references(path, body)
                 chunks[path].extend(["", f"# --- {name} ---", body.rstrip("\n")])
                 got += 1
                 log(f"env from {name}")
@@ -231,6 +349,107 @@ class EnvPullMixin:
             path: "\n".join(lines).rstrip("\n") + "\n" for path, lines in chunks.items()
         }
         return generated, got
+
+    def _referenced_items(self, name: str) -> Optional[List[dict]]:
+        if name not in self._env_ref_items:
+            self._env_ref_items[name] = self.bw_items_named(name)
+        return self._env_ref_items[name]
+
+    def resolve_reference(self, name: str, target: str) -> Tuple[Optional[str], str]:
+        """(value, "") or (None, why it cannot be resolved)."""
+        items = self._referenced_items(name)
+        if items is None:
+            return None, "cannot list Bitwarden items"
+        if not items:
+            return None, "item not found"
+        if len(items) > 1:
+            return None, f"{len(items)} items with this name"
+        value = reference_value(items[0], target)
+        if value is None:
+            return None, f"item has no {target}"
+        if "\n" in value:
+            return None, "multi-line value"
+        return value, ""
+
+    def _previous_lines(self, path: Path) -> Dict[str, str]:
+        if not path.is_file():
+            return {}
+        parsed = parse_env_file(path.read_text(encoding="utf-8"))
+        return {
+            key: line
+            for key, line, _section in parsed.assignments
+            if not parse_reference(assignment_parts(line)[2])
+        }
+
+    def _resolve_references(self, path: Path, body: str) -> str:
+        """Replace reference lines with a comment and a token for the value."""
+        previous: Optional[Dict[str, str]] = None
+        lines = []
+        for line in body.splitlines():
+            if line.lstrip().startswith("#") or not ASSIGNMENT.match(line):
+                lines.append(line)
+                continue
+            prefix, key, raw = assignment_parts(line)
+            reference = parse_reference(raw)
+            if not reference:
+                lines.append(line)
+                continue
+            name, target = reference
+            value, why = self.resolve_reference(name, target)
+            if value is not None:
+                token = f"@@machine-ref:{len(self._env_refs)}@@"
+                self._env_refs[token] = value
+                lines.append(f'# {key} from Bitwarden "{name}" ({target})')
+                lines.append(prefix + token)
+                continue
+            self.env_unresolved.append((path, key, name, why))
+            lines.append(
+                f'# unresolved: {key} from Bitwarden "{name}" ({target}): {why}'
+            )
+            if previous is None:
+                previous = self._previous_lines(path)
+            if key in previous:
+                lines.append(previous[key])
+        return "\n".join(lines)
+
+    def render_env(self, text: str) -> str:
+        """Write resolved values in the format the shell loader reads for this file."""
+        if not REF_TOKEN.search(text):
+            return text
+        sourced = is_sourced(text)
+        refs = getattr(self, "_env_refs", {})
+
+        def value(match: "re.Match[str]") -> str:
+            resolved = refs[match.group(0)]
+            return shlex.quote(resolved) if sourced else resolved
+
+        return REF_TOKEN.sub(value, text)
+
+    def env_state_path(self, path: Path) -> Path:
+        """The content machine last wrote to a generated env file."""
+        return self.state_dir / "env-generated" / path.name.lstrip(".")
+
+    def env_unpushed_edits(self, path: Path, new: Optional[str] = None) -> List[str]:
+        """Keys from an item that the file changed or removed since the last pull.
+
+        With `new` (the content a pull would write now), a key that already equals
+        the new content is not an edit."""
+        state = self.env_state_path(path)
+        if not state.is_file() or not path.is_file():
+            return []
+        current = parse_env_file(path.read_text(encoding="utf-8"))
+        if current.shell_code:
+            return []
+        now = {key: line for key, line, _section in current.assignments}
+        upcoming = item_lines(parse_env_file(new)) if new is not None else None
+        edits = []
+        for key, line in item_lines(parse_env_file(state.read_text())).items():
+            if same_line(now.get(key), line):
+                continue
+            if upcoming is not None and same_line(now.get(key), upcoming.get(key)):
+                continue
+            edits.append(key)
+        return sorted(edits)
 
     def env_local_only(
         self, generated: Dict[Path, str], overlay_text: str
@@ -343,7 +562,45 @@ class EnvPullMixin:
                 continue
             log(f"fixed permissions of {self.display(path)} ({mode:o} -> 600)")
 
-    def cmd_env_pull(self, interactive: bool = False) -> int:
+    def _choose_for_edits(self, path: Path, keys: List[str]) -> str:
+        labels = {
+            PUSH: "push the edits to Bitwarden now (machine env push)",
+            DISCARD: "discard the edits (backup kept)",
+            SKIP: f"skip (leave {self.display(path)} unchanged)",
+        }
+        print(
+            f"\n{self.display(path)} has local edits not in Bitwarden: {', '.join(keys)}"
+        )
+        picked = system.choose("Choose", list(labels.values()), labels[SKIP])
+        return next(choice for choice, label in labels.items() if label == picked)
+
+    def _held_edits(
+        self, names: List[str], generated: Dict[Path, str], ask: bool, discard
+    ) -> Tuple[Dict[Path, List[str]], Dict[Path, str]]:
+        """Files whose unpushed local edits stay; pushes the ones the user chose."""
+        held: Dict[Path, List[str]] = {}
+        pushed = False
+        for path, item in self.env_files().items():
+            if path in discard:
+                continue
+            keys = self.env_unpushed_edits(path, self.render_env(generated[path]))
+            if not keys:
+                continue
+            choice = self._choose_for_edits(path, keys) if ask else SKIP
+            if choice == PUSH:
+                result = self.push_env_file(
+                    path, item, self.render_env(generated[path])
+                )
+                if result in (PUSHED, NOTHING_TO_PUSH):
+                    pushed = True
+                    continue
+            if choice != DISCARD:
+                held[path] = keys
+        if pushed:
+            generated, _got = self._env_generated(names)
+        return held, generated
+
+    def cmd_env_pull(self, interactive: bool = False, discard=()) -> int:
         # Before any Bitwarden step, so it also runs locked, without bw and in containers.
         self.fix_env_permissions()
         if not self.current_context():
@@ -371,10 +628,15 @@ class EnvPullMixin:
             return overlay.read_text() if overlay.is_file() else ""
 
         ask = system.is_tty() and not getattr(self, "unattended", False)
+        held, generated = self._held_edits(names, generated, ask, discard)
         carry: Dict[Path, List[str]] = {}
         unchanged: List[LocalOnly] = []
         to_bitwarden: Dict[str, List[Tuple[Path, str, List[str]]]] = {}
-        reports = self.env_local_only(generated, overlay_text())
+        reports = [
+            report
+            for report in self.env_local_only(generated, overlay_text())
+            if report.path not in held
+        ]
         for report in reports:
             if report.shell_code:
                 choice = self._choose_for_shell_code(report) if ask else SKIP
@@ -412,12 +674,17 @@ class EnvPullMixin:
         backup_dir = self.state_dir / "env-backup"
         backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         backup_dir.chmod(0o700)
-        skipped = {report.path for report in unchanged}
+        skipped = {report.path for report in unchanged} | set(held)
         backups: Dict[Path, Path] = {}
         for path, content in generated.items():
+            if path in held:
+                continue
             if carry.get(path):
                 content += "\n" + "\n".join([LOCAL_ONLY_HEADER, *carry[path]]) + "\n"
+            content = self.render_env(content)
             existing = path.read_text(encoding="utf-8") if path.is_file() else None
+            if path not in skipped:
+                write_private(self.env_state_path(path), content.encode())
             if existing is not None and existing != content:
                 digest = hashlib.sha256(existing.encode()).hexdigest()[:16]
                 backups[path] = backup_dir / f"{path.name.lstrip('.')}.{digest}"
@@ -448,5 +715,18 @@ class EnvPullMixin:
             warn(
                 f"{self.display(report.path)} contains shell code that machine cannot sync; "
                 f"left unchanged{backup}; run: machine attention"
+            )
+        for path, keys in held.items():
+            warn(
+                f"{self.display(path)}: local edits of {', '.join(keys)} are not in "
+                "Bitwarden; left unchanged; run: machine env push (or machine attention)"
+            )
+        for path, key, name, why in self.env_unresolved:
+            if path in held:
+                continue
+            warn(
+                f'{self.display(path)}: {key} references Bitwarden "{name}", which '
+                f"cannot be resolved ({why}); kept its previous value, if any; "
+                "run: machine attention"
             )
         return 0

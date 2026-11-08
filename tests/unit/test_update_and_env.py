@@ -1720,9 +1720,18 @@ def test_parse_env_file_generated_with_local_only_section():
 
 
 def test_parse_env_file_shell_code():
-    parsed = env_pull().parse_env_file("if true; then\nHOST=old\nfi\nBAD='open\n")
+    parsed = env_pull().parse_env_file(
+        "export A=1\nif true; then\nHOST=old\nfi\nBAD='open\n"
+    )
     assert parsed.shell_code == ["if true; then", "fi", "BAD='open"]
-    assert parsed.keys() == {"HOST"}
+    assert parsed.keys() == {"A", "HOST"}
+
+
+def test_parse_env_file_reads_plain_values_like_the_loader():
+    # without export lines the loader takes the text after = literally
+    parsed = env_pull().parse_env_file("HOST=old\nPASS=it's a b\nif true; then\n")
+    assert parsed.shell_code == ["if true; then"]
+    assert parsed.keys() == {"HOST", "PASS"}
 
 
 def _answer(monkeypatch, machine, *answers: str) -> list:
@@ -2480,3 +2489,416 @@ def test_auto_update_starts_the_real_cli_of_the_new_revision(
     assert machine.read_update_state()["state"] == "updated"
     (event,) = _events(machine)
     assert (event["event"], event["outcome"]) == ("update-auto", "applied")
+
+
+# --- references, unpushed local edits, machine env push -------------------
+
+ENVFILES = REPO / "home/core/.shell/common/envfiles.sh"
+
+
+def _loaded(home: Path, key: str) -> str:
+    """The value the real shell loader sets for `key` from the env files."""
+    return subprocess.run(
+        ["bash", "-c", f'. "{ENVFILES}"; dotfiles_load_envfiles; printf %s "${key}"'],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": os.environ["PATH"], "HOME": str(home)},
+    ).stdout
+
+
+def _login(name: str, password: str, username: str = "me", **fields: str) -> dict:
+    return {
+        "id": f"id-{name}",
+        "name": name,
+        "login": {"username": username, "password": password},
+        "fields": [{"name": k, "value": v, "type": 1} for k, v in fields.items()],
+    }
+
+
+def _ref_machine(tmp_path, monkeypatch, fake_bw, notes: str, **extra):
+    items = {
+        "env/groups/work": {"id": "work-id", **_item(notes)},
+        "Work login": _login("Work login", "s3cret pass'\"$x"),
+        "Work login old": _login("Work login old", "old"),
+        **extra,
+    }
+    return _env_machine(tmp_path, monkeypatch, fake_bw, "work-machine", items)
+
+
+def _yes_no(monkeypatch, *answers):
+    """Answer prompt_yes_no in order; None takes the default. Returns the questions."""
+    asked = []
+    pending = list(answers)
+
+    def prompt(question, default=False):
+        asked.append((question, default))
+        answer = pending.pop(0) if pending else None
+        return default if answer is None else answer
+
+    monkeypatch.setattr(machine_system(), "prompt_yes_no", prompt)
+    return asked
+
+
+def test_env_pull_resolves_references_for_the_plain_loader(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _ref_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "A=1\nPASSWORD={{bw:Work login/password}}\n"
+        'LOGIN_USER="{{bw:Work login/username}}"\nTOKEN={{bw:CI/field:api-token}}',
+        CI={
+            "id": "id-CI",
+            "name": "CI",
+            "fields": [{"name": "api-token", "value": "t"}],
+        },
+    )
+
+    assert machine.cmd_env_pull() == 0
+    text = (home / ".env").read_text()
+    assert '# PASSWORD from Bitwarden "Work login" (password)\n' in text
+    assert all("{{bw:" not in line for line in text.splitlines() if line[:1] != "#")
+    assert _loaded(home, "PASSWORD") == "s3cret pass'\"$x"
+    assert _loaded(home, "LOGIN_USER") == "me"
+    assert _loaded(home, "TOKEN") == "t"
+    assert "s3cret" not in capsys.readouterr().out
+
+
+def test_env_pull_quotes_resolved_values_in_a_sourced_file(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _ref_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "export A=1\nexport PASSWORD={{bw:Work login/password}}",
+    )
+
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env")["PASSWORD"] == "s3cret pass'\"$x"
+    assert _loaded(home, "PASSWORD") == "s3cret pass'\"$x"
+
+
+def test_env_pull_header_shows_the_reference_syntax(tmp_path, monkeypatch, fake_bw):
+    machine, home = _ref_machine(tmp_path, monkeypatch, fake_bw, "A=1")
+
+    assert machine.cmd_env_pull() == 0
+    header = (home / ".env").read_text().split("# --- ")[0]
+    assert "KEY={{bw:<item name>/password}}" in header
+    assert "/username" in header and "/field:<NAME>" in header
+    assert "machine env push" in header
+
+
+def test_env_pull_matches_referenced_names_exactly(tmp_path, monkeypatch, fake_bw):
+    machine, home = _ref_machine(
+        tmp_path, monkeypatch, fake_bw, "A=1\nPASSWORD={{bw:Work/password}}"
+    )
+
+    assert machine.cmd_env_pull() == 0
+    text = (home / ".env").read_text()
+    assert (
+        '# unresolved: PASSWORD from Bitwarden "Work" (password): item not found'
+        in text
+    )
+    assert "PASSWORD" not in _sourced(home / ".env")
+
+
+def test_env_pull_keeps_the_previous_value_of_an_unresolved_reference(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _ref_machine(
+        tmp_path, monkeypatch, fake_bw, "A=1\nPASSWORD={{bw:Work login/password}}"
+    )
+    assert machine.cmd_env_pull() == 0
+    _bw, store = fake_bw
+    data = json.loads(store.read_text())
+    del data["items"]["Work login"]
+    store.write_text(json.dumps(data))
+    capsys.readouterr()
+
+    assert machine.cmd_env_pull() == 0
+    assert _loaded(home, "PASSWORD") == "s3cret pass'\"$x"
+    output = capsys.readouterr().out
+    assert 'PASSWORD references Bitwarden "Work login"' in output
+    assert "s3cret" not in output
+    assert machine.env_sync_attention() == [
+        '~/.env: PASSWORD references Bitwarden "Work login" (item not found)'
+    ]
+
+
+def test_env_pull_does_not_resolve_an_ambiguous_reference(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _ref_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "A=1\nPASSWORD={{bw:Dup/password}}",
+        Dup1=_login("Dup", "one"),
+        Dup2=_login("Dup", "two"),
+    )
+
+    assert machine.cmd_env_pull() == 0
+    assert "(password): 2 items with this name" in (home / ".env").read_text()
+    assert "PASSWORD" not in _sourced(home / ".env")
+
+
+def _pulled(tmp_path, monkeypatch, fake_bw, notes="A=1\nB=2", **extra):
+    machine, home = _ref_machine(tmp_path, monkeypatch, fake_bw, notes, **extra)
+    _bw_set_item(fake_bw, "env/hosts/testhost", {"id": "host-id", **_item("H=1")})
+    assert machine.cmd_env_pull() == 0
+    return machine, home
+
+
+def _edit(home: Path, old: str, new: str, name: str = ".env") -> None:
+    path = home / name
+    path.write_text(path.read_text().replace(old, new))
+
+
+def test_env_pull_keeps_unpushed_edits_without_a_terminal(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    edited = (home / ".env").read_text()
+    _bw_set_item(fake_bw, "env/hosts/testhost", {"id": "host-id", **_item("H=new")})
+
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env").read_text() == edited
+    assert _sourced(home / ".env.host")["H"] == "new"
+    assert "local edits of B are not in Bitwarden" in capsys.readouterr().out
+    assert machine.env_sync_attention() == [
+        "~/.env: local edits of B not in Bitwarden (push or discard)"
+    ]
+
+
+def test_env_pull_treats_added_keys_as_local_only_not_as_edits(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    (home / ".env").write_text((home / ".env").read_text() + "NEW=1\n")
+
+    assert machine.env_unpushed_edits(home / ".env") == []
+    assert machine.cmd_env_pull() == 0
+    assert env_pull().LOCAL_ONLY_HEADER in (home / ".env").read_text()
+
+
+def test_env_pull_ignores_an_edit_bitwarden_already_has(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=3")
+    _bw_set_item(fake_bw, "env/groups/work", {"id": "work-id", **_item("A=1\nB=3")})
+
+    assert machine.cmd_env_pull() == 0
+    assert machine.env_unpushed_edits(home / ".env") == []
+
+
+def test_env_pull_asks_for_edits_with_skip_preselected(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    edited = (home / ".env").read_text()
+    asked = _answer(monkeypatch, machine, "skip")
+
+    assert machine.cmd_env_pull() == 0
+    [(choices, default)] = asked
+    assert [c.split(" ")[0] for c in choices] == ["push", "discard", "skip"]
+    assert default.startswith("skip")
+    assert (home / ".env").read_text() == edited
+
+
+def test_env_pull_discards_edits_after_a_backup(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    _answer(monkeypatch, machine, "discard")
+
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env")["B"] == "2"
+    backups = (machine.state_dir / "env-backup").iterdir()
+    assert any("B=local" in p.read_text() for p in backups)
+    assert machine.env_sync_attention() == []
+
+
+def test_env_pull_pushes_edits_on_request(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    _answer(monkeypatch, machine, "push")
+    _yes_no(monkeypatch)
+
+    assert machine.cmd_env_pull() == 0
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=local"
+    assert _sourced(home / ".env")["B"] == "local"
+    assert machine.env_sync_attention() == []
+
+
+def _push(machine, monkeypatch, *answers, host=False):
+    monkeypatch.setattr(machine_system(), "is_tty", lambda: True)
+    monkeypatch.setattr(machine, "offer_saving_bitwarden_session", lambda: None)
+    asked = _yes_no(monkeypatch, *answers)
+    return machine.cmd_env_push(host=host), asked
+
+
+def test_env_push_adds_a_reference_and_resolves_it(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _pulled(
+        tmp_path, monkeypatch, fake_bw, Sonar=_login("Sonar", "sonar-token")
+    )
+    with (home / ".env").open("a") as env:
+        env.write("SONAR_TOKEN={{bw:Sonar/password}}\n")
+
+    code, asked = _push(machine, monkeypatch)
+    assert code == 0
+    assert asked[-1][0] == "Write 1 change(s) to Bitwarden?"
+    notes = _bw_item(fake_bw, "env/groups/work")["notes"]
+    assert notes.endswith("\nSONAR_TOKEN={{bw:Sonar/password}}")
+    assert _loaded(home, "SONAR_TOKEN") == "sonar-token"
+    output = capsys.readouterr().out
+    assert "add     SONAR_TOKEN = {{bw:Sonar/password}}" in output
+    assert "sonar-token" not in output
+
+
+def test_env_push_replaces_a_changed_reference(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "A=1\nPASSWORD={{bw:Work login/password}}",
+        Other=_login("Other", "other-pass"),
+    )
+    path = home / ".env"
+    lines = [
+        "PASSWORD={{bw:Other/password}}" if line.startswith("PASSWORD=") else line
+        for line in path.read_text().splitlines()
+    ]
+    path.write_text("\n".join(lines) + "\n")
+
+    code, _asked = _push(machine, monkeypatch)
+    assert code == 0
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == (
+        "A=1\nPASSWORD={{bw:Other/password}}"
+    )
+    assert _loaded(home, "PASSWORD") == "other-pass"
+
+
+def test_env_push_writes_nothing_when_not_confirmed(tmp_path, monkeypatch, fake_bw):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    edited = (home / ".env").read_text()
+
+    code, _asked = _push(machine, monkeypatch, False)
+    assert code == 0
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=2"
+    assert (home / ".env").read_text() == edited
+
+
+def test_env_push_refuses_shell_code_and_a_missing_pulled_state(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    (home / ".env").write_text((home / ".env").read_text() + "if true; then\nfi\n")
+    assert _push(machine, monkeypatch)[0] == 1
+    assert "contains shell code" in capsys.readouterr().out
+
+    machine.env_state_path(home / ".env").unlink()
+    assert _push(machine, monkeypatch)[0] == 1
+    assert "run: machine env pull" in capsys.readouterr().out
+
+
+def test_env_push_checks_references_before_writing(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2", "B=local")
+    with (home / ".env").open("a") as env:
+        env.write("TYPO={{bw:Sonra/password}}\n")
+
+    code, asked = _push(machine, monkeypatch)
+    assert code == 1 and asked == []
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=1\nB=2"
+    assert (
+        'TYPO: Bitwarden "Sonra" (password): item not found' in capsys.readouterr().out
+    )
+
+
+def test_env_push_writes_a_new_value_into_the_referenced_item(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _pulled(
+        tmp_path, monkeypatch, fake_bw, "A=1\nPASSWORD={{bw:Work login/password}}"
+    )
+    rotated = "rotated"
+    path = home / ".env"
+    lines = [
+        f"PASSWORD={rotated}" if line.startswith("PASSWORD=") else line
+        for line in path.read_text().splitlines()
+    ]
+    path.write_text("\n".join(lines) + "\n")
+
+    code, _asked = _push(machine, monkeypatch)
+    assert code == 0
+    assert _bw_item(fake_bw, "Work login")["login"]["password"] == rotated
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == (
+        "A=1\nPASSWORD={{bw:Work login/password}}"
+    )
+    assert _loaded(home, "PASSWORD") == rotated
+
+
+def test_env_push_updates_a_custom_field(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": {"id": "work-id", **_item("A=1", TOKEN="old")}},
+    )
+    assert machine.cmd_env_pull() == 0
+    _edit(home, "TOKEN=old", "TOKEN=new")
+
+    assert _push(machine, monkeypatch)[0] == 0
+    item = _bw_item(fake_bw, "env/groups/work")
+    assert item["fields"][0]["value"] == "new" and item["notes"] == "A=1"
+
+
+@pytest.mark.parametrize("answer, kept", [(None, True), (True, False)])
+def test_env_push_removes_a_key_only_when_confirmed(
+    tmp_path, monkeypatch, fake_bw, answer, kept
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _edit(home, "B=2\n", "")
+
+    code, asked = _push(machine, monkeypatch, answer)
+    assert code == 0
+    assert asked[0] == ("Remove B from Bitwarden env/groups/work?", False)
+    assert ("B=2" in _bw_item(fake_bw, "env/groups/work")["notes"]) is kept
+    assert ("B" in _sourced(home / ".env")) is kept
+
+
+def test_env_push_does_not_write_back_what_only_bitwarden_changed(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _bw_set_item(fake_bw, "env/groups/work", {"id": "work-id", **_item("A=vault\nB=2")})
+    _edit(home, "B=2", "B=local")
+
+    code, asked = _push(machine, monkeypatch)
+    assert code == 0 and len(asked) == 1
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=vault\nB=local"
+    assert _sourced(home / ".env")["A"] == "vault"
+
+
+@pytest.mark.parametrize("vault, conflict", [("B=same", False), ("B=vault", True)])
+def test_env_push_asks_only_for_real_conflicts(
+    tmp_path, monkeypatch, fake_bw, vault, conflict
+):
+    machine, home = _pulled(tmp_path, monkeypatch, fake_bw)
+    _bw_set_item(
+        fake_bw, "env/groups/work", {"id": "work-id", **_item(f"A=1\n{vault}")}
+    )
+    _edit(home, "B=2", "B=same")
+
+    code, asked = _push(machine, monkeypatch)
+    assert code == 0
+    questions = [question for question, _default in asked]
+    assert any("changed in Bitwarden" in q for q in questions) is conflict
+    assert _bw_item(fake_bw, "env/groups/work")["notes"] == f"A=1\n{vault}"

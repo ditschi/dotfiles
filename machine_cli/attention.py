@@ -192,6 +192,16 @@ class AttentionMixin:
                     lambda: self.cmd_env_pull(interactive=True),
                 )
             )
+        synced = self.env_sync_attention()
+        if synced:
+            items.append(
+                AttentionItem(
+                    "env",
+                    "; ".join(synced),
+                    "Resolve it now (machine env pull)?",
+                    lambda: self.cmd_env_pull(interactive=True),
+                )
+            )
         for kind, text, question, resolve in self.ssh_attention():
             items.append(AttentionItem(kind, text, question, resolve))
         monitoring = self.monitoring_item()

@@ -13,6 +13,7 @@ from .dotfiles import DotfilesMixin
 from .mise_tools import MiseToolsMixin
 from .bw_client import BwClientMixin
 from .env_pull import EnvPullMixin
+from .env_push import EnvPushMixin
 from .ssh_keys import SshKeysMixin
 from .ssh_client import SshClientMixin
 from .commands import CommandsMixin
@@ -31,6 +32,7 @@ class Machine(
     MiseToolsMixin,
     BwClientMixin,
     EnvPullMixin,
+    EnvPushMixin,
     SshKeysMixin,
     SshClientMixin,
     CommandsMixin,

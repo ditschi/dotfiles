@@ -37,6 +37,8 @@ Current state:
 
 **Syntax.** `KEY={{bw:<item name>/<target>}}` with `<target>` = `password`, `username` or `field:<NAME>`, in note lines and custom field values. The owner accepted this syntax. Item names are matched exactly, as for the other items. The generated line is quoted and preceded by `# KEY from Bitwarden "<item>" (<target>)`; the comment is informational only, the pull acts on the value line.
 
+**Resolved values follow the file's loader format.** The loader sources a file with `export` lines and reads any other file as plain `KEY=value` without shell syntax. A resolved value is therefore shell-quoted in a sourced file and written literally in a plain file, so a password with spaces, quotes or `$` arrives unchanged either way; `env/groups/work` is plain. For the same reason the pull parses a plain file by the loader's rules: a line like `PASS=it's a b` is an assignment there, not shell code. A multi-line value cannot be written to a plain file and counts as unresolved.
+
 **Unresolved reference: keep the previous value and record an attention item** (owner choice). A wrong or empty value never replaces a working one, and the shell never sees the reference text. Leaving the key out is used only when there is no previous value.
 
 **Writing back is an explicit command, `machine env push [--host]`.** The owner preferred it over questions inside the pull: the pull stays one-directional apart from the existing local-only flow, and `machine update` asks nothing new. The push takes only the keys edited since the last pull (against the stored last-generated content), so a value changed in Bitwarden meanwhile is not written back; it shows keys and references but never values, checks every reference before writing anything, and pulls afterwards.

@@ -164,8 +164,7 @@ Contents of an `env/…` item:
 
 Existing `.env` contents can be transferred manually into an approved work-vault
 secure note named `env/groups/work`, or the host item for narrower scope.
-Secrets should never be committed to dotfiles. The current pull does not resolve
-references to other Bitwarden items: custom-field values are literal values.
+Secrets should never be committed to dotfiles.
 Vault folders are organizational labels, not enforced access boundaries; namespaced
 item selection does not replace vault/organization permissions.
 
@@ -174,4 +173,54 @@ Don't put work secrets in `env/home-*`. Home hosts never query `env/work-*`.
 ```bash
 machine env status    # which items exist
 machine env pull      # write ~/.env and ~/.env.host; preserve ~/.env.local
+machine env push      # write local edits of ~/.env back (--host: ~/.env.host)
 ```
+
+### References to other items
+
+A value in the notes or a custom field of an `env/…` item can name another
+Bitwarden item instead of holding a copy, so a secret is kept once (for example
+the work password in its login item):
+
+| Reference | Value |
+| --- | --- |
+| `KEY={{bw:<item name>/password}}` | login password |
+| `KEY={{bw:<item name>/username}}` | login username |
+| `KEY={{bw:<item name>/field:<NAME>}}` | custom field `<NAME>` |
+
+The item name must match exactly and exist once. `machine env pull` writes the
+resolved value, after a comment `# KEY from Bitwarden "<item>" (<target>)`; the
+shell, services and `get-password` never call `bw`. In a file with `export` lines
+the value is shell-quoted, in a plain `KEY=value` file it is written literally,
+as the loader reads it. When a reference cannot be resolved (item missing or not
+unique, target empty), the pull keeps the previous value, writes a
+`# unresolved: …` comment and lists it in `machine attention`. The header of every
+generated file repeats the syntax.
+
+### Editing on the host: `machine env push`
+
+Edit `~/.env` (or `~/.env.host`) and run `machine env push` (`--host`). The push
+takes only the keys you added, changed or removed since the last pull, lists them
+by name (references in clear, values never), checks every reference, and after a
+confirmation writes the item and pulls again:
+
+- a new or changed line goes into the item's notes (or its custom field);
+- a reference line replaces the key's line, so changing a reference is one edit;
+- a new value for a key that the item sets from a reference goes into the
+  referenced item (for example a new work password into the login item), and the
+  note keeps the reference;
+- a removed key is removed only when you answer yes (default no);
+- a key changed in Bitwarden since the last pull is a conflict only when both new
+  values differ, and is overwritten only on yes (default no); a key changed only
+  in Bitwarden is never written back.
+
+The push needs a terminal and a previous pull, and refuses files with shell code.
+
+### Unpushed local edits
+
+The pull remembers what it last wrote (`~/.local/share/machine/env-generated/`,
+mode 600). A key from an item that the file now changes or lacks is an unpushed
+local edit; added keys stay local-only keys (see above). In a terminal the pull
+asks once per file: push now, discard (regenerate after a backup) or skip
+(default; the file stays). Without a terminal, for example in the background
+update, the file stays unchanged and `machine attention` offers push or discard.

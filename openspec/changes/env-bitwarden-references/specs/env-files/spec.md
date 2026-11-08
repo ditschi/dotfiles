@@ -11,10 +11,21 @@
 - **WHEN** the user picks "keep locally" for a local-only key
 - **THEN** its line is appended to `~/.env.local` and the existing content of `~/.env.local` is unchanged
 
+### Requirement: Shell code in an env file
+When an existing `~/.env` or `~/.env.host` holds lines that are neither comments nor assignments, the sync SHALL leave that file unchanged and record an attention item. Its choices SHALL be keep locally, remove or skip; there is no Bitwarden choice.
+
+#### Scenario: Conditional block
+- **WHEN** `~/.env.host` contains an `if … fi` block
+- **THEN** `~/.env.host` is unchanged, the other env file is still generated and an attention item names `~/.env.host`
+
+#### Scenario: Quote in a plain file
+- **WHEN** `~/.env` has no `export` line and contains `PASS=it's a b`
+- **THEN** the line is an assignment, as the shell loader reads it, and not shell code
+
 ## ADDED Requirements
 
 ### Requirement: References to other Bitwarden items
-A value in an `env/…` item, in its notes or a custom field, of the form `{{bw:<item name>/<target>}}` SHALL be a reference; `<target>` is `password`, `username` or `field:<NAME>`, and the item name is matched exactly. `machine env pull` SHALL write the referenced value, quoted, into the generated file, after a comment that names the item and the target, and SHALL never write the reference text itself.
+A value in an `env/…` item, in its notes or a custom field, of the form `{{bw:<item name>/<target>}}` SHALL be a reference; `<target>` is `password`, `username` or `field:<NAME>`, and the item name is matched exactly. `machine env pull` SHALL write the referenced value so that the shell loader reads it unchanged, after a comment that names the item and the target, and SHALL never write the reference text itself.
 
 #### Scenario: Password reference
 - **WHEN** the notes of `env/groups/work` contain `PASSWORD={{bw:Work login/password}}` and the login item `Work login` exists once
@@ -23,6 +34,10 @@ A value in an `env/…` item, in its notes or a custom field, of the form `{{bw:
 #### Scenario: Custom field reference
 - **WHEN** a note line is `TOKEN={{bw:CI/field:api-token}}` and the item `CI` has a custom field `api-token`
 - **THEN** `~/.env` sets `TOKEN` to that field's value
+
+#### Scenario: Value with quotes and spaces
+- **WHEN** the referenced password contains spaces, quotes and `$`
+- **THEN** the shell loader sets exactly that password, whether the file is sourced (it has `export` lines) or parsed as plain `KEY=value`
 
 #### Scenario: Similar names
 - **WHEN** a reference names `Work login` and Bitwarden holds only `Work login old`

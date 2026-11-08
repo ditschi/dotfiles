@@ -238,11 +238,17 @@ def host_cmd(action) -> None:
     _exit(Machine().cmd_host(types.SimpleNamespace(action=action)))
 
 
-@app.command(name="env", help="Bitwarden -> ~/.env")
-@click.argument("action", type=click.Choice(["pull", "status"]), default="pull")
-def env_cmd(action) -> None:
+@app.command(name="env", help="Bitwarden <-> ~/.env (pull, push, status)")
+@click.argument("action", type=click.Choice(["pull", "push", "status"]), default="pull")
+@click.option("--host", is_flag=True, help="push: ~/.env.host instead of ~/.env")
+def env_cmd(action, host) -> None:
     cli = Machine()
-    code = cli.cmd_env_status() if action == "status" else cli.cmd_env_pull(interactive=True)
+    if action == "status":
+        code = cli.cmd_env_status()
+    elif action == "push":
+        code = cli.cmd_env_push(host=host)
+    else:
+        code = cli.cmd_env_pull(interactive=True)
     if code:
         cli.event("env", "failed", action)
     _exit(code)

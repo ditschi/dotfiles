@@ -249,6 +249,23 @@ def test_repo_is_in_help_and_completion():
     assert "plain,repo" in result.stdout.split()
 
 
+def test_env_push_is_in_completion():
+    env = {
+        **os.environ,
+        "COMP_WORDS": "machine env pu",
+        "COMP_CWORD": "2",
+        "_MACHINE_COMPLETE": "bash_complete",
+    }
+    result = subprocess.run(
+        [sys.executable, str(MACHINE)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert {"plain,pull", "plain,push"} <= set(result.stdout.split())
+
+
 def test_env_groups_by_context(tmp_path: Path, monkeypatch):
     cli = _cli()
     assert cli.ENV_GROUPS["work"] == ["work"]

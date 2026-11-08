@@ -125,8 +125,20 @@ Installed and enabled for the login user by `machine` (on `machine setup` and
   extended keys, swipe down to close, a paste button and layout switching by swiping the
   space bar. Its other touch features are switched on and off in Extension Manager → TouchUp
   → Settings.
-- **Screen Rotate**: a rotate button in the quick settings for turning the screen by hand,
-  also in laptop mode.
+- **Screen Rotate**: automatic rotation from the accelerometer also in laptop mode, not only
+  in tablet mode. The quick settings toggle "Auto Rotate" switches it off (rotation lock).
+  A "Rotate" button for turning the screen by hand (landscape, portrait, flipped) appears in
+  the quick settings only with the extension setting "manual flip" (Extension Manager →
+  Screen Rotate → Settings). It is not shipped; switch it on per host with:
+
+  ```bash
+  gsettings --schemadir ~/.local/share/gnome-shell/extensions/screen-rotate@shyzus.github.io/schemas \
+    set org.gnome.shell.extensions.screen-rotate manual-flip true
+  ```
+
+  Lying flat, the screen keeps the last orientation. To go to tablet mode, leave the base on
+  the table and fold the lid back: the bottom edge stays at the bottom the whole way. Turning
+  the whole device over can leave it upside down; tilting the top edge up briefly fixes it.
 
 A new extension is only loaded at the next login; `machine` says so after a new install.
 Extensions that are already installed are only enabled.

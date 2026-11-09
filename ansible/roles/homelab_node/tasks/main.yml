@@ -390,7 +390,8 @@
                    'clone_state': 'ok' if homelab_node_git_after.stat.exists
                                   else 'clone-failed' if homelab_node_cloned.rc | default(0) != 0
                                   else 'waiting-for-deploy-key',
-                   'clone_error': homelab_node_cloned.stderr | default('') | trim,
+                   'clone_error': (homelab_node_cloned.stderr | default('') | trim)
+                                  if homelab_node_cloned.rc | default(0) != 0 else '',
                    'deploy_public_key': homelab_node_deploy_pub.content | b64decode | trim}) }}
 
     # --- homelab CLI and Docker -------------------------------------------------

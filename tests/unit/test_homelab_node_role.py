@@ -225,3 +225,12 @@ def test_refused_setup_changes_nothing_but_the_status(tmp_path):
     ]
     # at most the state directory; the status file is bookkeeping
     assert re.search(r"changed=[01]\b", result.stdout), result.stdout
+
+
+def test_git_progress_on_stderr_is_no_clone_error():
+    """git clone writes "Cloning into ..." to stderr also when it succeeds."""
+    task = next(t for t in _tasks() if t.get("name") == "Record the clone state")
+    record = task["ansible.builtin.set_fact"]["homelab_node_status"]
+    assert "'clone_error'" in record
+    error = record.split("'clone_error':", 1)[1]
+    assert "homelab_node_cloned.rc" in error.split("}", 1)[0]

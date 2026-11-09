@@ -207,6 +207,12 @@ class AttentionMixin:
         monitoring = self.monitoring_item()
         if monitoring:
             items.append(monitoring)
+        for text in self.homelab_problems():
+            items.append(
+                AttentionItem(
+                    "homelab", text, "Run `machine apply` now?", self._run_apply
+                )
+            )
         for low in self.low_disks():
             items.append(
                 AttentionItem(

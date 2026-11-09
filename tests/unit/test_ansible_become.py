@@ -18,6 +18,7 @@ ROOT_ON_PURPOSE = {
         "roles/sshd_home/tasks/main.yml",
         "Build list of present pubkey files for ssh_allow_from",
     ),
+    ("roles/homelab_node/tasks/main.yml", "Find the login keys in machine/ssh_keys"),
 }
 
 LOGIN_USER_TASKS = {

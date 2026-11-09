@@ -8,6 +8,11 @@
 #       min_free_percent: 3         with both, low only below both
 #     - path: /mnt/scratch
 #       ignore: true                never reported
+#   homelab:                        optional; settings of the feature homelab-node
+#     host: oracle                  Bitwarden item homelab-age-<host>; default: short hostname
+#     user: ditschi                 deploy user; default: the user running machine, ditschi as root
+#     clone: /opt/homelab           default; another path = existing checkout, used as it is
+#     ci_restrict: true             limit an existing CI key entry to `homelab deploy`
 # Feature defaults and which features a host may have: ansible/group_vars/all/features.yml
 #
 # Fleet (home):

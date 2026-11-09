@@ -1,0 +1,18 @@
+---
+homelab_node_repo: git@github.com:ditschi/homelab.git
+homelab_node_branch: main
+homelab_node_default_clone: /opt/homelab
+# Deploy user when machine runs as root (fresh VM, contabo).
+homelab_node_root_default_user: ditschi
+# sops from the GitHub release; sha256 from sops-v3.13.3.checksums.txt.
+homelab_node_sops_version: 3.13.3
+homelab_node_sops_sha256:
+  amd64: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b # pragma: allowlist secret
+  arm64: 53b0abacd38ef1b12a66d6c100956691b9cefce018d91f81e73ddf7438b94d77 # pragma: allowlist secret
+homelab_node_sops_path: /usr/local/bin/sops
+homelab_node_known_hosts: /etc/ssh/homelab_github_known_hosts
+homelab_node_ci_wrapper: /usr/local/bin/homelab-ci
+homelab_node_keys_dir: "{{ playbook_dir }}/../machine/ssh_keys"
+homelab_node_ci_key_name: homelab-ci
+homelab_node_status_file: /var/lib/machine/homelab-node.json
+homelab_node_deploy_key_name: homelab_deploy_ed25519

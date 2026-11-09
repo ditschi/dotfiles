@@ -137,6 +137,7 @@ Item names (secure note, or login with note + custom fields). Later items and cu
 | This host | `env/hosts/<hostname>` | `env/hosts/ditschi-ThinkPad-L13-Yoga-Gen-2` |
 | Infra | `ansible-vault` | vault password |
 | Telegraf | `influxdb-telegraf-write` | Influx write token for Telegraf (not for shell `.env`) |
+| Homelab node | `homelab-age-<host>` | host age key for sops, hidden field `private_key` (not for shell `.env`) |
 
 **Folders in Bitwarden** (personal vault) or collections (organization), same names:
 
@@ -145,6 +146,8 @@ Item names (secure note, or login with note + custom fields). Later items and cu
 - `infra` — `ansible-vault`, host password hashes, not for shell `.env`
 
 **Telegraf item** `influxdb-telegraf-write` (override: `MACHINE_INFLUX_BW_ITEM`): `machine setup`, `machine apply` and the apply step of `machine update` read it before Ansible on hosts with `monitoring` and hand the values only to Ansible (a private temp file, removed afterwards); they never reach `~/.env*`. Custom fields named like the variables win. For a login item, the password is used as `INFLUX_TOKEN` and the first URI as `INFLUX_URL` when those fields are missing.
+
+**Homelab age key** `homelab-age-<host>` (`<host>` from `homelab.host` in the host config, default the short hostname; folder `homelab`, made by the homelab repo): on hosts with `homelab-node`, `machine setup`, `machine apply` and the apply step of `machine update` read its hidden field `private_key` before Ansible and hand it only to Ansible, the same way as the Telegraf item. The personal key `homelab-age-key` is never read for a server. Without the item the run continues and `machine attention` names it.
 
 | Field | Required | Meaning |
 | --- | --- | --- |

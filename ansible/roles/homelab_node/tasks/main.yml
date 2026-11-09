@@ -1,0 +1,478 @@
+---
+# Base of a homelab Compose host. Never touches containers, Docker settings or the
+# host's data root; what cannot be finished yet goes into the status file, which
+# `machine attention` reads.
+- name: Resolve the homelab settings
+  ansible.builtin.set_fact:
+    homelab_node_settings: >-
+      {{ homelab_node | default({
+           'host': ansible_facts.hostname,
+           'user': (homelab_node_root_default_user if machine_login_user == 'root'
+                    else machine_login_user),
+           'clone': homelab_node_default_clone,
+           'managed_clone': true,
+           'ci_restrict': false,
+           'problems': [],
+         }) }}
+
+- name: Resolve the deploy user of a remote run
+  ansible.builtin.set_fact:
+    homelab_node_settings: >-
+      {{ homelab_node_settings | combine({'user':
+         homelab_node_root_default_user if machine_login_user == 'root' else machine_login_user}) }}
+  when: not homelab_node_settings.user
+
+- name: Start the status record
+  ansible.builtin.set_fact:
+    homelab_node_status:
+      run_at: "{{ now(utc=true).isoformat() }}"
+      host: "{{ homelab_node_settings.host }}"
+      user: "{{ homelab_node_settings.user }}"
+      clone: "{{ homelab_node_settings.clone }}"
+      problems: "{{ homelab_node_settings.problems }}"
+
+- name: Set up the homelab node
+  when: homelab_node_settings.problems | length == 0
+  block:
+    - name: Install git, python3 and PyYAML
+      ansible.builtin.apt:
+        name: [git, python3, python3-yaml, openssh-client]
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+
+    - name: Look up the login user's shell
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ machine_login_user }}"
+        fail_key: false
+
+    - name: Remember the login user's shell for a new deploy user
+      ansible.builtin.set_fact:
+        homelab_node_new_shell: >-
+          {{ (ansible_facts.getent_passwd[machine_login_user] or ['', '', '', '', '', '/bin/bash'])[5]
+             | default('/bin/bash', true) }}
+
+    - name: Look up the deploy user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ homelab_node_settings.user }}"
+        fail_key: false
+
+    - name: Create the deploy user (locked password, no sudo)
+      ansible.builtin.user:
+        name: "{{ homelab_node_settings.user }}"
+        create_home: true
+        shell: "{{ homelab_node_new_shell }}"
+        password_lock: true
+      when: ansible_facts.getent_passwd[homelab_node_settings.user] is none
+
+    - name: Read the deploy user's account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ homelab_node_settings.user }}"
+
+    - name: Remember the deploy user's home and shell
+      ansible.builtin.set_fact:
+        homelab_node_home: "{{ ansible_facts.getent_passwd[homelab_node_settings.user][4] }}"
+        homelab_node_shell: "{{ ansible_facts.getent_passwd[homelab_node_settings.user][5] | default('/bin/sh', true) }}"
+        homelab_node_group: "{{ ansible_facts.getent_passwd[homelab_node_settings.user][2] }}"
+
+    - name: Ensure ~/.ssh of the deploy user
+      ansible.builtin.file:
+        path: "{{ homelab_node_home }}/.ssh"
+        state: directory
+        mode: "0700"
+        owner: "{{ homelab_node_settings.user }}"
+        group: "{{ homelab_node_group }}"
+
+    # --- logins for the owner and CI --------------------------------------------
+    - name: Find the login keys in machine/ssh_keys
+      ansible.builtin.stat:
+        path: "{{ homelab_node_keys_dir }}/{{ item }}.pub"
+      loop: "{{ (ssh_allow_from | default([])) + [homelab_node_ci_key_name] }}"
+      register: homelab_node_key_stats
+      delegate_to: localhost
+      become: false
+
+    - name: Record missing key files
+      ansible.builtin.set_fact:
+        homelab_node_status: >-
+          {{ homelab_node_status | combine({'missing_key_files':
+             homelab_node_key_stats.results | rejectattr('stat.exists')
+             | map(attribute='item') | map('regex_replace', '$', '.pub') | list}) }}
+
+    - name: Allow the owner's keys for the deploy user
+      ansible.posix.authorized_key:
+        user: "{{ homelab_node_settings.user }}"
+        key: "{{ lookup('file', item.stat.path) }}"
+        state: present
+        exclusive: false
+      loop: "{{ homelab_node_key_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - item.stat.exists
+        - item.item != homelab_node_ci_key_name
+
+    - name: Install the CI forced command
+      ansible.builtin.copy:
+        src: homelab-ci
+        dest: "{{ homelab_node_ci_wrapper }}"
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Read the deploy user's authorized_keys
+      ansible.builtin.slurp:
+        src: "{{ homelab_node_home }}/.ssh/authorized_keys"
+      register: homelab_node_authorized
+      failed_when: false
+
+    - name: Find the CI key entry
+      vars:
+        ci_stat: "{{ homelab_node_key_stats.results | selectattr('item', 'equalto', homelab_node_ci_key_name) | first }}"
+        ci_fields: "{{ lookup('file', ci_stat.stat.path).split() if ci_stat.stat.exists else [] }}"
+        ci_body: "{{ ci_fields[1] if ci_fields | length > 1 else '' }}"
+        lines: "{{ ((homelab_node_authorized.content | default('')) | b64decode).splitlines() | reject('match', '\\s*#') | list }}"
+      ansible.builtin.set_fact:
+        homelab_node_ci_key: "{{ lookup('file', ci_stat.stat.path) if ci_body else '' }}"
+        homelab_node_ci_lines: "{{ lines | select('search', ci_body | regex_escape) | list if ci_body else [] }}"
+
+    - name: Allow the CI key only for `homelab deploy`
+      ansible.posix.authorized_key:
+        user: "{{ homelab_node_settings.user }}"
+        key: "{{ homelab_node_ci_key }}"
+        key_options: restrict,command="{{ homelab_node_ci_wrapper }}"
+        state: present
+        exclusive: false
+      when:
+        - homelab_node_ci_key | length > 0
+        - homelab_node_ci_lines | length == 0 or homelab_node_settings.ci_restrict | bool
+
+    - name: Record an unrestricted CI key entry
+      ansible.builtin.set_fact:
+        homelab_node_status: >-
+          {{ homelab_node_status | combine({'ci_key_unrestricted':
+             (homelab_node_ci_lines | length > 0)
+             and not (homelab_node_settings.ci_restrict | bool)
+             and (homelab_node_ci_lines
+                  | select('search', '(^|,)restrict(,|\\s)')
+                  | select('search', 'command="' ~ homelab_node_ci_wrapper ~ '"')
+                  | list | length < homelab_node_ci_lines | length)}) }}
+
+    # --- sops -------------------------------------------------------------------
+    - name: Check the installed sops
+      ansible.builtin.command: "{{ homelab_node_sops_path }} --version"
+      register: homelab_node_sops_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Install the pinned sops
+      when: homelab_node_sops_version not in (homelab_node_sops_installed.stdout | default(''))
+      block:
+        - name: Download sops with its checksum checked
+          vars:
+            arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts.architecture] | default(ansible_facts.architecture) }}"
+          ansible.builtin.get_url:
+            url: "https://github.com/getsops/sops/releases/download/v{{ homelab_node_sops_version }}/sops-v{{ homelab_node_sops_version }}.linux.{{ arch }}"
+            dest: "{{ homelab_node_sops_path }}"
+            checksum: "sha256:{{ homelab_node_sops_sha256[arch] }}"
+            mode: "0755"
+            owner: root
+            group: root
+            force: true
+      rescue:
+        - name: Report the failed sops install
+          ansible.builtin.debug:
+            msg: >-
+              sops {{ homelab_node_sops_version }} was not installed (download or
+              checksum failed): {{ ansible_failed_result.msg | default('?') }}
+
+    - name: Install GitHub's host keys for the homelab clone
+      ansible.builtin.copy:
+        src: github_known_hosts
+        dest: "{{ homelab_node_known_hosts }}"
+        mode: "0644"
+        owner: root
+        group: root
+
+    # --- host age key -----------------------------------------------------------
+    - name: Ensure ~/.config of the deploy user
+      ansible.builtin.file:
+        path: "{{ homelab_node_home }}/.config"
+        state: directory
+        owner: "{{ homelab_node_settings.user }}"
+        group: "{{ homelab_node_group }}"
+      when: homelab_age_private_key is defined
+
+    - name: Ensure the sops key directory
+      ansible.builtin.file:
+        path: "{{ homelab_node_home }}/{{ item }}"
+        state: directory
+        mode: "0700"
+        owner: "{{ homelab_node_settings.user }}"
+        group: "{{ homelab_node_group }}"
+      loop: [.config/sops, .config/sops/age]
+      when: homelab_age_private_key is defined
+
+    - name: Read the existing age key file
+      ansible.builtin.slurp:
+        src: "{{ homelab_node_home }}/.config/sops/age/keys.txt"
+      register: homelab_node_age_file
+      failed_when: false
+      no_log: true
+
+    - name: Compare the age key file
+      ansible.builtin.set_fact:
+        homelab_node_age_has_key: "{{ 'AGE-SECRET-KEY-' in ((homelab_node_age_file.content | default('')) | b64decode) }}"
+        homelab_node_age_same: "{{ homelab_age_private_key is defined and homelab_age_private_key in ((homelab_node_age_file.content | default('')) | b64decode) }}"
+      no_log: true
+
+    - name: Write the host age key
+      ansible.builtin.copy:
+        content: "{{ homelab_age_private_key }}\n"
+        dest: "{{ homelab_node_home }}/.config/sops/age/keys.txt"
+        mode: "0600"
+        owner: "{{ homelab_node_settings.user }}"
+        group: "{{ homelab_node_group }}"
+      when:
+        - homelab_age_private_key is defined
+        - not homelab_node_age_has_key | bool
+      no_log: true
+
+    - name: Record the age key state
+      ansible.builtin.set_fact:
+        homelab_node_status: >-
+          {{ homelab_node_status | combine({'age_key':
+             'written' if (homelab_age_private_key is defined and not homelab_node_age_has_key | bool)
+             else 'missing' if not homelab_node_age_has_key | bool
+             else 'differs' if (homelab_age_private_key is defined and not homelab_node_age_same | bool)
+             else 'ok'}) }}
+
+    # --- clone and deploy key ---------------------------------------------------
+    - name: Check the checkout
+      ansible.builtin.stat:
+        path: "{{ homelab_node_settings.clone }}/.git"
+      register: homelab_node_git
+
+    - name: Record an existing checkout elsewhere
+      ansible.builtin.set_fact:
+        homelab_node_status: >-
+          {{ homelab_node_status | combine({'clone_state':
+             'ok' if homelab_node_git.stat.exists else 'not-a-repo'}) }}
+      when: not homelab_node_settings.managed_clone | bool
+
+    - name: Clone with the read-only deploy key
+      when: homelab_node_settings.managed_clone | bool
+      vars:
+        deploy_key: "{{ homelab_node_home }}/.ssh/{{ homelab_node_deploy_key_name }}"
+        ssh_command: >-
+          ssh -i {{ deploy_key }} -o UserKnownHostsFile={{ homelab_node_known_hosts }}
+          -o StrictHostKeyChecking=yes
+      block:
+        - name: Create the deploy key once
+          ansible.builtin.command:
+            argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, "homelab-deploy@{{ homelab_node_settings.host }}", -f, "{{ deploy_key }}"]
+            creates: "{{ deploy_key }}"
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+
+        - name: Keep the deploy key private
+          ansible.builtin.file:
+            path: "{{ deploy_key }}"
+            mode: "0600"
+            owner: "{{ homelab_node_settings.user }}"
+
+        - name: Check the deploy public key
+          ansible.builtin.stat:
+            path: "{{ deploy_key }}.pub"
+          register: homelab_node_deploy_pub_stat
+
+        - name: Recreate a missing deploy public key from the private key
+          ansible.builtin.shell: ssh-keygen -y -f "$KEY" > "$KEY.pub"
+          environment:
+            KEY: "{{ deploy_key }}"
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+          changed_when: true
+          when: not homelab_node_deploy_pub_stat.stat.exists
+
+        - name: Read the deploy public key
+          ansible.builtin.slurp:
+            src: "{{ deploy_key }}.pub"
+          register: homelab_node_deploy_pub
+
+        - name: Ask GitHub whether it accepts the deploy key alone
+          ansible.builtin.command:
+            argv: [git, ls-remote, --heads, "{{ homelab_node_repo }}", "{{ homelab_node_branch }}"]
+          environment:
+            GIT_SSH_COMMAND: "{{ ssh_command }} -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=15"
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+          register: homelab_node_ls_remote
+          changed_when: false
+          failed_when: false
+          when: not homelab_node_git.stat.exists
+
+        - name: Create the clone directory for the deploy user
+          ansible.builtin.file:
+            path: "{{ homelab_node_settings.clone }}"
+            state: directory
+            mode: "0755"
+            owner: "{{ homelab_node_settings.user }}"
+            group: "{{ homelab_node_group }}"
+          when:
+            - not homelab_node_git.stat.exists
+            - homelab_node_ls_remote.rc | default(1) == 0
+            - homelab_node_ls_remote.stdout | default('') | length > 0
+
+        - name: Clone the homelab repository
+          ansible.builtin.command:
+            argv: [git, clone, --branch, "{{ homelab_node_branch }}", "{{ homelab_node_repo }}", "{{ homelab_node_settings.clone }}"]
+          environment:
+            GIT_SSH_COMMAND: "{{ ssh_command }} -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes"
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+          register: homelab_node_cloned
+          failed_when: false
+          when:
+            - not homelab_node_git.stat.exists
+            - homelab_node_ls_remote.rc | default(1) == 0
+            - homelab_node_ls_remote.stdout | default('') | length > 0
+
+        - name: Check the clone again
+          ansible.builtin.stat:
+            path: "{{ homelab_node_settings.clone }}/.git"
+          register: homelab_node_git_after
+
+        - name: Read the clone's ssh command
+          ansible.builtin.command:
+            argv: [git, -C, "{{ homelab_node_settings.clone }}", config, --get, core.sshCommand]
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+          register: homelab_node_ssh_config
+          changed_when: false
+          failed_when: false
+          when: homelab_node_git_after.stat.exists
+
+        # No IdentitiesOnly: a forwarded agent key is offered first (push with
+        # ssh -A); without an agent only the read-only deploy key is offered.
+        - name: Use the deploy key only in this clone
+          ansible.builtin.command:
+            argv: [git, -C, "{{ homelab_node_settings.clone }}", config, core.sshCommand, "{{ ssh_command }}"]
+          become: true
+          become_user: "{{ homelab_node_settings.user }}"
+          changed_when: true
+          when:
+            - homelab_node_git_after.stat.exists
+            - homelab_node_ssh_config.stdout | default('') != ssh_command
+
+        - name: Report a failed clone
+          ansible.builtin.debug:
+            msg: "git clone into {{ homelab_node_settings.clone }} failed: {{ homelab_node_cloned.stderr | default('') | trim }}"
+          when: homelab_node_cloned.rc | default(0) != 0
+
+        - name: Show the deploy key to add in GitHub
+          ansible.builtin.debug:
+            msg: >-
+              Add this read-only deploy key under github.com/ditschi/homelab →
+              Settings → Deploy keys (write access off), then run `machine apply`
+              again: {{ homelab_node_deploy_pub.content | b64decode | trim }}
+          when:
+            - not homelab_node_git_after.stat.exists
+            - homelab_node_cloned.rc | default(0) == 0
+
+        - name: Record the clone state
+          ansible.builtin.set_fact:
+            homelab_node_status: >-
+              {{ homelab_node_status | combine({
+                   'clone_state': 'ok' if homelab_node_git_after.stat.exists
+                                  else 'clone-failed' if homelab_node_cloned.rc | default(0) != 0
+                                  else 'waiting-for-deploy-key',
+                   'clone_error': homelab_node_cloned.stderr | default('') | trim,
+                   'deploy_public_key': homelab_node_deploy_pub.content | b64decode | trim}) }}
+
+    # --- homelab CLI and Docker -------------------------------------------------
+    - name: Link the homelab CLI for non-interactive SSH sessions
+      ansible.builtin.file:
+        src: "{{ homelab_node_settings.clone }}/scripts/homelab.py"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+        force: true
+        follow: false
+      loop: [homelab, hl]
+
+    - name: Look up the docker group
+      ansible.builtin.getent:
+        database: group
+        key: docker
+        fail_key: false
+
+    - name: Add the deploy user to the docker group
+      ansible.builtin.user:
+        name: "{{ homelab_node_settings.user }}"
+        groups: [docker]
+        append: true
+      when: ansible_facts.getent_group.docker is not none
+
+    - name: Check the docker CLI
+      ansible.builtin.command: docker --version
+      register: homelab_node_docker
+      changed_when: false
+      failed_when: false
+
+    - name: Check the Docker Compose plugin
+      ansible.builtin.command: docker compose version
+      register: homelab_node_compose
+      changed_when: false
+      failed_when: false
+
+    # sshd runs `$SHELL -c <command>`; bash then reads ~/.bashrc (SSH_CLIENT set).
+    - name: Check which sops a non-interactive SSH session of the deploy user runs
+      ansible.builtin.shell: |
+        p=$(sed -n 's/^PATH="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /etc/environment 2>/dev/null)
+        exec env -i HOME="$HL_HOME" USER="$HL_USER" LOGNAME="$HL_USER" SHELL="$HL_SHELL" \
+          PATH="${p:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" \
+          SSH_CLIENT="127.0.0.1 22 22" "$HL_SHELL" -c 'command -v sops; sops --version 2>&1 | head -n 1' </dev/null
+      args:
+        executable: /bin/sh
+      environment:
+        HL_HOME: "{{ homelab_node_home }}"
+        HL_USER: "{{ homelab_node_settings.user }}"
+        HL_SHELL: "{{ homelab_node_shell }}"
+      become: true
+      become_user: "{{ homelab_node_settings.user }}"
+      register: homelab_node_session_sops
+      changed_when: false
+      failed_when: false
+
+    - name: Record the tool checks
+      vars:
+        session_lines: "{{ homelab_node_session_sops.stdout_lines | default([]) }}"
+      ansible.builtin.set_fact:
+        homelab_node_status: >-
+          {{ homelab_node_status | combine({
+               'docker': homelab_node_docker.rc | default(1) == 0,
+               'compose': homelab_node_compose.rc | default(1) == 0,
+               'sops_path': session_lines[0] | default(''),
+               'sops_version': session_lines[1] | default('')}) }}
+
+- name: Ensure the machine state directory
+  ansible.builtin.file:
+    path: "{{ homelab_node_status_file | dirname }}"
+    state: directory
+    mode: "0755"
+
+# Bookkeeping with the run time: not a change of the host.
+- name: Write the status for machine attention
+  ansible.builtin.copy:
+    content: "{{ homelab_node_status | to_nice_json }}\n"
+    dest: "{{ homelab_node_status_file }}"
+    mode: "0644"
+  changed_when: false
+
+- name: Report what is still missing
+  ansible.builtin.debug:
+    msg: "homelab-node: {{ homelab_node_settings.problems | join('; ') }}"
+  when: homelab_node_settings.problems | length > 0

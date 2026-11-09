@@ -249,10 +249,23 @@ class ToolsMixin:
         cmd = ["ansible-playbook", str(playbook), *self.ansible_inventory_args()]
         extra: List[str] = []
         vars_file = extra_vars_file or self.applied_host_path
-        influx_file: Optional[Path] = None
+        # Secrets are read before sudo asks (as before) but written to their private
+        # files only inside the try below, so no failure can leave one behind.
+        secrets: List[tuple] = []
+        local = force_local or not limit
         if vars_file.is_file():
             extra.extend(["--extra-vars", f"@{vars_file}"])
-            if "monitoring" in parse_profile_file(vars_file)["features"]:
+            host = parse_profile_file(vars_file)
+            if "homelab-node" in host["features"]:
+                # The age key reaches only Ansible, like the Influx token. A remote
+                # run resolves the target host's block; the role finds its user.
+                values = self.homelab_ansible_vars(
+                    dict(host["homelab"]),
+                    system.hostname_short() if local else limit,
+                    _login_user() if local else "",
+                )
+                secrets.append(("machine-homelab-", values))
+            if "monitoring" in host["features"]:
                 # Only Ansible gets the token; it never goes to ~/.env*.
                 values = dict(self.influx_credentials() or {})
                 # The run as root gets a fresh environment; values from the
@@ -261,12 +274,12 @@ class ToolsMixin:
                     if key not in values and os.environ.get(key):
                         values[key] = os.environ[key]
                 if values:
-                    influx_file = _private_file(
-                        json.dumps({INFLUX_KEYS[k]: v for k, v in values.items()}),
-                        prefix="machine-influx-",
+                    secrets.append(
+                        (
+                            "machine-influx-",
+                            {INFLUX_KEYS[k]: v for k, v in values.items()},
+                        )
                     )
-                    extra.extend(["--extra-vars", f"@{influx_file}"])
-        local = force_local or not limit
         if local:
             cmd.extend(["--connection", "local", "--limit", "localhost"])
             extra.extend(["-e", "target_hosts=localhost"])
@@ -300,11 +313,15 @@ class ToolsMixin:
             cmd.append("-v")
         cmd.extend(extra)
         log(f"ansible-playbook {playbook_name}.yml")
+        secret_files: List[Path] = []
         try:
+            for prefix, values in secrets:
+                secret_files.append(_private_file(json.dumps(values), prefix=prefix))
+                cmd.extend(["--extra-vars", f"@{secret_files[-1]}"])
             system.run(cmd, cwd=self.ansible_dir)
         finally:
-            if influx_file is not None:
-                influx_file.unlink(missing_ok=True)
+            for secret_file in secret_files:
+                secret_file.unlink(missing_ok=True)
         if force_local or not limit:
             self.record_ansible_applied()
 

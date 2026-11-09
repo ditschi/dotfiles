@@ -130,6 +130,12 @@ feature_table:
     help: authorized_keys from machine/ssh_keys
     work: excluded
     container: excluded
+  homelab-node:
+    help: Homelab Compose host (repo clone, deploy key, sops, age key, homelab CLI)
+    work: excluded
+    desktop: excluded
+    server: optional
+    container: excluded
 
 # The host's features without the ones the table excludes for its context and device
 # (or that no longer exist). Every role and package condition uses this list.

@@ -7,7 +7,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Sequence
+from typing import Dict, Mapping, Optional, Sequence
 
 import yaml
 from rich.console import Console
@@ -108,7 +108,7 @@ def parse_profile_file(path: Path) -> Dict[str, object]:
 
 
 def parse_profile_text(text: str) -> Dict[str, object]:
-    """context, device, features, ssh_allow_from, ansible and disk_space of a host config.
+    """context, device, features, ssh_allow_from, ansible, disk_space and homelab of a host config.
 
     A former `profile:` key is mapped to context and device when they are missing."""
     data = yaml.safe_load(text) or {}
@@ -125,6 +125,8 @@ def parse_profile_text(text: str) -> Dict[str, object]:
         "ansible": data.get("ansible") is not False,
         # Kept as written; machine_cli/disk_space.py checks the entries.
         "disk_space": list(data.get("disk_space") or []),
+        # Kept as written; machine_cli/homelab_node.py resolves the defaults.
+        "homelab": dict(data.get("homelab") or {}),
     }
 
 
@@ -135,6 +137,7 @@ def format_profile_yaml(
     ssh_allow_from: Optional[Sequence[str]] = None,
     ansible: bool = True,
     disk_space: Optional[Sequence[object]] = None,
+    homelab: Optional[Mapping[str, object]] = None,
 ) -> str:
     data: Dict[str, object] = {}
     if context:
@@ -146,6 +149,8 @@ def format_profile_yaml(
     data["ssh_allow_from"] = list(ssh_allow_from or [])
     if disk_space:
         data["disk_space"] = list(disk_space)
+    if homelab:
+        data["homelab"] = dict(homelab)
     return "---\n" + yaml.dump(
         data, Dumper=_IndentDumper, sort_keys=False, default_flow_style=False
     )
@@ -158,9 +163,10 @@ def profile_fingerprint(path: Path) -> str:
     feats = sorted(str(x) for x in (data.get("features") or []))
     allow = sorted(str(x) for x in (data.get("ssh_allow_from") or []))
     disk = json.dumps(data.get("disk_space") or [], sort_keys=True, default=str)
+    homelab = json.dumps(data.get("homelab") or {}, sort_keys=True, default=str)
     return (
         f"{data.get('context')}|{data.get('device')}|{data.get('ansible')}|"
-        f"{','.join(feats)}|{','.join(allow)}|{disk}"
+        f"{','.join(feats)}|{','.join(allow)}|{disk}|{homelab}"
     )
 
 

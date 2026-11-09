@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import features as feature_table
 from . import system
+from .homelab_node import CI_KEY_NAME
 from .core import (
     CONTEXTS,
     DEVICES,
@@ -108,6 +109,13 @@ class ProfileMixin:
                 return list(parse_profile_file(path)["disk_space"])
         return []
 
+    def saved_homelab(self) -> Dict[str, object]:
+        """`homelab` of the repository host config, else of the applied copy."""
+        for path in (self.host_config_path(), self.applied_host_path):
+            if path.is_file():
+                return dict(parse_profile_file(path)["homelab"])
+        return {}
+
     def allowed_features(
         self, features: Sequence[str], context: str, device: str
     ) -> List[str]:
@@ -168,6 +176,7 @@ class ProfileMixin:
                 list(data["ssh_allow_from"]),
                 bool(data["ansible"]),
                 list(data["disk_space"]),
+                dict(data["homelab"]),
             ),
             encoding="utf-8",
         )
@@ -192,7 +201,13 @@ class ProfileMixin:
         )
         ansible = self.saved_ansible() if ansible is None else ansible
         text = format_profile_yaml(
-            context, device, features, allow, ansible, self.saved_disk_space()
+            context,
+            device,
+            features,
+            allow,
+            ansible,
+            self.saved_disk_space(),
+            self.saved_homelab(),
         )
         self.applied_host_path.write_text(text, encoding="utf-8")
         self.applied_host_path.chmod(0o600)
@@ -212,12 +227,14 @@ class ProfileMixin:
         self.host_configs_dir.mkdir(parents=True, exist_ok=True)
         path = self.host_config_path(hostname)
         if path.is_file():
-            disk_space = parse_profile_file(path)["disk_space"]
+            data = parse_profile_file(path)
+            disk_space, homelab = data["disk_space"], data["homelab"]
         else:  # a new file for this host keeps the applied copy's entries
             disk_space = [] if hostname else self.saved_disk_space()
+            homelab = {} if hostname else self.saved_homelab()
         path.write_text(
             format_profile_yaml(
-                context, device, features, ssh_allow_from, ansible, disk_space
+                context, device, features, ssh_allow_from, ansible, disk_space, homelab
             ),
             encoding="utf-8",
         )
@@ -281,7 +298,13 @@ class ProfileMixin:
         path = self.host_config_path()
         ansible = self.saved_ansible()
         new_text = format_profile_yaml(
-            context, device, features, allow_from, ansible, self.saved_disk_space()
+            context,
+            device,
+            features,
+            allow_from,
+            ansible,
+            self.saved_disk_space(),
+            self.saved_homelab(),
         )
         old_text = path.read_text(encoding="utf-8") if path.is_file() else ""
         if old_text == new_text:
@@ -355,7 +378,9 @@ class ProfileMixin:
         hosts: Dict[str, str] = {}
         if self.ssh_class(context) == "home":  # the repo only holds home fleet keys
             for path in sorted((self.repo / "machine" / "ssh_keys").glob("*.pub")):
-                hosts[path.stem] = ""
+                # The homelab CI key is no host; it gets only a forced command.
+                if path.stem != CI_KEY_NAME:
+                    hosts[path.stem] = ""
         hosts.pop(system.hostname_short(), None)
         return hosts
 
@@ -442,4 +467,6 @@ def host_config_changes(old: dict, new: dict) -> list[str]:
             changes.append(label + ", ".join(parts))
     if (old.get("disk_space") or []) != (new.get("disk_space") or []):
         changes.append("disk_space changed")
+    if (old.get("homelab") or {}) != (new.get("homelab") or {}):
+        changes.append("homelab changed")
     return changes

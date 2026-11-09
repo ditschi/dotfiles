@@ -732,7 +732,11 @@ def test_ssh_allow_from_offers_hosts_with_a_repo_key(tmp_path, monkeypatch):
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     keys = repo / "machine" / "ssh_keys"
     keys.mkdir(parents=True)
-    for host in ("homeserver", "testhost"):  # testhost is this machine
+    for host in (
+        "homeserver",
+        "testhost",
+        "homelab-ci",
+    ):  # testhost is this machine; homelab-ci the CI key
         (keys / f"{host}.pub").write_text("ssh-ed25519 AAAA\n", encoding="utf-8")
     monkeypatch.setattr(
         cli_mod.system, "run", lambda *_a, **_k: pytest.fail("no Bitwarden lookup")
@@ -1608,6 +1612,53 @@ def test_disk_space_change_is_taken_over_with_notice(
         {"path": "/mnt/data", "min_free_percent": 3}
     ]
     assert "disk_space changed" in capsys.readouterr().out
+
+
+HOMELAB = {"host": "oracle", "user": "ditschi", "ci_restrict": True}
+
+
+def test_homelab_roundtrip_and_fingerprint(tmp_path: Path):
+    cli = _cli()
+    path = tmp_path / "h.yml"
+    path.write_text(
+        cli.format_profile_yaml(
+            "private", "server", ["homelab-node"], [], True, None, HOMELAB
+        ),
+        encoding="utf-8",
+    )
+    assert cli.parse_profile_file(path)["homelab"] == HOMELAB
+    with_key = cli.profile_fingerprint(path)
+    path.write_text(
+        cli.format_profile_yaml("private", "server", ["homelab-node"], []),
+        encoding="utf-8",
+    )
+    assert "homelab:" not in path.read_text(encoding="utf-8")
+    assert cli.parse_profile_file(path)["homelab"] == {}
+    assert cli.profile_fingerprint(path) != with_key
+
+
+def test_rewrites_keep_homelab(tmp_path: Path, monkeypatch, capsys):
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    host_file = repo / "machine/hosts/testhost.yml"
+    base = "---\ncontext: private\ndevice: server\nfeatures:\n  - homelab-node\nssh_allow_from: []\n"
+    host_file.write_text(base + "homelab:\n  user: ditschi\n", encoding="utf-8")
+    assert machine.sync_host_config_from_repo() is True
+    assert machine.applied_host()["homelab"] == {"user": "ditschi"}
+    machine.write_profile("private", "server", ["homelab-node", "docker"], [])
+    assert machine.applied_host()["homelab"] == {"user": "ditschi"}
+    machine.persist_host_config(
+        "private", "server", ["homelab-node", "docker"], [], yes=True
+    )
+    text = host_file.read_text(encoding="utf-8")
+    assert "docker" in text and "user: ditschi" in text
+    machine.save_host_config_to_repo("private", "server", ["homelab-node"], [])
+    assert "user: ditschi" in host_file.read_text(encoding="utf-8")
+    # a change in the repository is taken over with a notice
+    host_file.write_text(base + "homelab:\n  host: oracle\n", encoding="utf-8")
+    capsys.readouterr()
+    assert machine.sync_host_config_from_repo() is True
+    assert machine.applied_host()["homelab"] == {"host": "oracle"}
+    assert "homelab changed" in capsys.readouterr().out
 
 
 def test_hosts_readme_disk_space_example_parses():

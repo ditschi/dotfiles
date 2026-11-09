@@ -119,6 +119,22 @@ def test_memory_headroom_selects_its_dotfile_group():
     assert "memory-headroom" not in features.dotfile_groups("private", "desktop")
 
 
+def test_homelab_node_optional_on_private_servers_only():
+    offered = features.allowed("private", "server")
+    assert "homelab-node" in offered
+    assert "homelab-node" not in features.defaults("private", "server")
+    for context, device in (
+        ("private", "desktop"),
+        ("work", "server"),
+        ("work", "desktop"),
+        ("private", "container"),
+        ("", "container"),
+    ):
+        assert "homelab-node" not in features.allowed(context, device)
+    groups = features.dotfile_groups("private", "server", ["homelab-node"])
+    assert groups == features.dotfile_groups("private", "server")
+
+
 def test_gnome_extensions_group_for_gnome_and_touch_device():
     gnome = features.dotfile_groups("private", "desktop", ["gnome"])
     assert {"gnome", "gnome-extensions"} <= set(gnome)

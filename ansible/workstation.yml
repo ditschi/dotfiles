@@ -232,3 +232,12 @@
   roles:
     - role: sshd_home
       when: "'sshd-home' in machine_features"
+
+- name: Homelab Compose host (clone, deploy key, sops, age key, homelab CLI)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [homelab]
+  roles:
+    - role: homelab_node
+      when: "'homelab-node' in machine_features"

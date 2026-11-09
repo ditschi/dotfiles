@@ -1,0 +1,31 @@
+#!/usr/bin/python3
+"""Forced command of the homelab CI key: runs only `homelab deploy <sha>`.
+
+sshd puts the requested command into SSH_ORIGINAL_COMMAND; anything else is refused,
+so a leaked CI key can only deploy commits that exist in the repository."""
+
+import os
+import re
+import sys
+
+HOMELAB = "/usr/local/bin/homelab"
+DEPLOY = re.compile(r"homelab deploy ([0-9a-f]{7,40})")
+
+
+def requested_sha(command: str):
+    """The commit id of an allowed command, else None."""
+    match = DEPLOY.fullmatch(command)
+    return match.group(1) if match else None
+
+
+def main() -> int:
+    sha = requested_sha(os.environ.get("SSH_ORIGINAL_COMMAND", ""))
+    if sha is None:
+        sys.stderr.write("homelab-ci: only `homelab deploy <sha>` is allowed\n")
+        return 2
+    os.execv(HOMELAB, ["homelab", "deploy", sha])
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

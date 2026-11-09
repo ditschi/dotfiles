@@ -16,6 +16,8 @@ Adding a feature: one row in the feature table plus either apt packages (`packag
 
 In Docker the device is `container` without context; `MACHINE_CONTEXT_OVERRIDE` and `MACHINE_DEVICE_OVERRIDE` set others (used by `machine testenv` and the tests). `MACHINE_HARDWARE=laptop,pi,pi-zero,vm` replaces the hardware detection in tests (`vm`: a virtual machine, which gets no SMART monitoring).
 
+Optional host config blocks: `disk_space` (low-disk limits) and `homelab` (feature `homelab-node`: homelab host name, deploy user, checkout path, CI key restriction); see [machine/hosts/README.md](../machine/hosts/README.md) and [features.md](features.md#homelab-compose-host-feature-homelab-node). A new VM that only has `root` needs no user of its own for `homelab-node`: bootstrapped as root, the deploy user is `ditschi`, created by the role.
+
 Work modules (`01_work.zsh`) are only linked for the context `work`.
 
 Fresh setup uses the shell's work-account naming rule

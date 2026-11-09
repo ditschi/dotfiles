@@ -22,6 +22,7 @@ from .auto_update import AutoUpdateMixin
 from .attention import AttentionMixin
 from .local_work import LocalWorkMixin
 from .monitoring import MonitoringMixin
+from .homelab_node import HomelabNodeMixin
 from .disk_space import DiskSpaceMixin
 from .syncthing_ignores import SyncthingIgnoresMixin
 
@@ -42,6 +43,7 @@ class Machine(
     AttentionMixin,
     LocalWorkMixin,
     MonitoringMixin,
+    HomelabNodeMixin,
     DiskSpaceMixin,
     SyncthingIgnoresMixin,
 ):

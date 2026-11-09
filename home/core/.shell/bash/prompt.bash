@@ -15,6 +15,14 @@ dotfiles_prompt_state() {
 PROMPT_COMMAND="$PROMPT_COMMAND;dotfiles_prompt_state"
 
 declare -F dotfiles_cache_eval >/dev/null && dotfiles_cache_eval starship-init starship init bash --print-full-init
+
+# Called after ~/.bashrc-local, which may assign PROMPT_COMMAND and drop the Starship hook.
+dotfiles_prompt_restore() {
+    declare -F starship_precmd >/dev/null || return 0
+    [[ $PROMPT_COMMAND == *starship_precmd* ]] && return 0
+    STARSHIP_PROMPT_COMMAND="${STARSHIP_PROMPT_COMMAND:+$STARSHIP_PROMPT_COMMAND;}${PROMPT_COMMAND-}"
+    PROMPT_COMMAND=starship_precmd
+}
 if ! declare -F starship_precmd >/dev/null; then
     debian_chroot=${debian_chroot:-}
     PS1='${DOTFILES_UPDATE_SEGMENT:+$DOTFILES_UPDATE_SEGMENT }${DOTFILES_DISK_SEGMENT:+$DOTFILES_DISK_SEGMENT }${debian_chroot:+($debian_chroot)}\[\033[01;34m\]\w\[\033[00m\] \[\033[01;35m\]❯\[\033[00m\] '

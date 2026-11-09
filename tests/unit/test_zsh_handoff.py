@@ -838,6 +838,89 @@ def test_bash_loader_ignores_unregistered_modules_and_loads_local_last(env):
     assert (home / "load-order").read_text().splitlines() == expected_order
 
 
+# Minimal stand-in for `starship init bash`: same PROMPT_COMMAND wrapping as the real one.
+STARSHIP_STUB = r"""#!/bin/bash
+if [ "$1" = init ]; then
+    cat <<'INIT'
+starship_precmd() {
+    STARSHIP_CMD_STATUS=$?
+    [[ -z ${STARSHIP_PROMPT_COMMAND-} ]] || eval "$STARSHIP_PROMPT_COMMAND"
+    PS1='STARSHIP> '
+}
+if [[ -z ${PROMPT_COMMAND-} ]]; then
+    PROMPT_COMMAND=starship_precmd
+elif [[ $PROMPT_COMMAND != *starship_precmd* ]]; then
+    STARSHIP_PROMPT_COMMAND=$PROMPT_COMMAND
+    PROMPT_COMMAND=starship_precmd
+fi
+INIT
+fi
+"""
+
+LOCAL_PROMPT_OVERRIDES = {
+    "prompt-command": "export PROMPT_COMMAND='history -a;history -r;echo ran >> \"$HOME/local-ran\"'\n",
+    "ps1": "PS1='plain$ '\n",
+    "untouched": "",
+}
+
+
+def bash_prompt_state(tmp_path: Path, local: str, with_starship: bool):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".shell").symlink_to(REPO / "home/core/.shell")
+    (home / ".bashrc-local").write_text(local)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    path = "/usr/bin:/bin"
+    if with_starship:
+        stub = bin_dir / "starship"
+        stub.write_text(STARSHIP_STUB)
+        stub.chmod(0o755)
+        path = f"{bin_dir}:{path}"
+    elif shutil.which("starship", path=path):
+        pytest.skip("Starship is installed in the system path")
+    result = subprocess.run(
+        [shutil.which("bash"), "--rcfile", str(BASHRC), "-i"],
+        input='echo "PS1=[$PS1]"; echo "PC=[$PROMPT_COMMAND]"; '
+        'echo "SPC=[${STARSHIP_PROMPT_COMMAND-}]"\n',
+        env={"HOME": str(home), "PATH": path, "SHLVL": "1", "TERM": "xterm"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    values = dict(
+        line.split("=", 1)
+        for line in result.stdout.splitlines()
+        if line.startswith(("PS1=", "PC=", "SPC="))
+    )
+    return home, values, result
+
+
+@pytest.mark.parametrize("override", ["prompt-command", "ps1"])
+def test_bash_starship_prompt_survives_local_override(override, tmp_path: Path):
+    home, values, _ = bash_prompt_state(
+        tmp_path, LOCAL_PROMPT_OVERRIDES[override], with_starship=True
+    )
+    assert values["PS1"] == "[STARSHIP> ]"
+    assert values["PC"] == "[starship_precmd]"
+    if override == "prompt-command":
+        assert (home / "local-ran").exists()
+
+
+def test_bash_prompt_hook_is_not_wrapped_twice(tmp_path: Path):
+    _, values, _ = bash_prompt_state(tmp_path, "", with_starship=True)
+    assert values["PC"] == "[starship_precmd]"
+    assert "starship_precmd" not in values["SPC"]
+
+
+def test_bash_local_prompt_command_stays_without_starship(tmp_path: Path):
+    _, values, result = bash_prompt_state(
+        tmp_path, LOCAL_PROMPT_OVERRIDES["prompt-command"], with_starship=False
+    )
+    assert "starship_precmd" not in values["PC"] and "local-ran" in values["PC"]
+    assert "dotfiles_prompt_restore" not in result.stderr
+
+
 STATE_SH = REPO / "home/core/.shell/common/update-state.sh"
 
 

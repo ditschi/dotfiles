@@ -120,6 +120,10 @@ def test_shells_start_cleanly(profile_env):
     assert zsh.stderr == "", f"zsh startup wrote to stderr:\n{zsh.stderr}"
     assert zsh.stdout.strip().splitlines()[-1] == f"{values}|g=git"
 
+    # The work Ansible block that `machine` moves into ~/.bashrc-local replaces PROMPT_COMMAND.
+    host.run_test(
+        "printf '%s\\n' \"export PROMPT_COMMAND='history -a;history -r'\" > ~/.bashrc-local"
+    )
     bash = host.run(
         "TERM=xterm bash -i -c "
         "'if command -v starship >/dev/null 2>&1; then "
@@ -142,6 +146,7 @@ def test_shells_start_cleanly(profile_env):
     # Starship drives the bash prompt when installed; without it bash starts cleanly anyway.
     starship_shell, starship_bin = prompt.split("|")
     assert starship_shell == ("none" if starship_bin == "none" else "bash")
+    host.run_test("rm -f ~/.bashrc-local")
 
     zsh_ldap = host.run(f"{STUB_ENV} TERM=xterm zsh -i -c 'whence -w ldapsearch-bosch'")
     bash_ldap = host.run("TERM=xterm bash -i -c 'declare -F ldapsearch-bosch'")

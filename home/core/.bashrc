@@ -12,3 +12,4 @@ esac
 . "$HOME/.shell/bash/handoff.bash"
 . "$HOME/.shell/bash/init.bash"
 [[ ! -f ~/.bashrc-local ]] || source ~/.bashrc-local
+declare -F dotfiles_prompt_restore >/dev/null && dotfiles_prompt_restore

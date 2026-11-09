@@ -4,8 +4,8 @@
 
 Tasks 1 to 3 wait for this group. When it is done, remove this blocker note and the blocker notes in design.md and proposal.md, and update the change to the results.
 
-- [ ] 0.1 On ABTVL421, work through points 1 to 4 of "Required analysis on the work host" in design.md (stock `/etc/zsh` files, origin of the Kerberos line and leftover cron job, current state file and `zsh-recheck`, strict versus full start with the real config); record the results under each point
-- [ ] 0.2 On the development desktop, run point 5 (strict versus full start) and record the result
+- [x] 0.1 On ABTVL421, work through points 1 to 4 of "Required analysis on the work host" in design.md (stock `/etc/zsh` files, origin of the Kerberos line and leftover cron job, current state file and `zsh-recheck`, strict versus full start with the real config); record the results under each point
+- [x] 0.2 On the development desktop, run point 5 (strict versus full start) and record the result
 - [ ] 0.3 Decide with the owner by the outcome rules in design.md whether the change continues, is dropped or is rethought; update proposal.md, design.md, specs and tasks accordingly and remove the blocker notes; verify with `openspec validate zsh-check-system-noise --strict`
 
 ## 1. Health check with strict and full run

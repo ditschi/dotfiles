@@ -628,6 +628,23 @@ def test_ansible_works_rejects_shim_that_cannot_run(tmp_path: Path, monkeypatch)
     assert cli_mod.system.ansible_works()
 
 
+def test_ansible_works_rejects_shim_that_needs_the_user_site(
+    tmp_path: Path, monkeypatch
+):
+    """Root does not see ~/.local, so a pip --user shim fails there (sudo)."""
+    cli_mod, _machine, _repo = _machine_env(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    shim = bin_dir / "ansible-playbook"
+    shim.write_text(
+        '#!/bin/sh\n[ -n "$PYTHONNOUSERSITE" ] && exit 1\nexit 0\n', encoding="utf-8"
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    assert not cli_mod.system.ansible_works()
+
+
 def test_bootstrap_reinstalls_broken_ansible(tmp_path: Path, monkeypatch):
     cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
     commands: list[list[str]] = []

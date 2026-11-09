@@ -63,7 +63,9 @@ def ensure_user_bin_on_path(home: Path) -> None:
 
 
 def ansible_works() -> bool:
-    """True when ansible-playbook exists and its interpreter can still import ansible."""
+    """True when ansible-playbook exists and its interpreter can still import ansible.
+
+    Checked without the user site, as root sees it: local runs start it under sudo."""
     if not have("ansible-playbook"):
         return False
     return (
@@ -72,6 +74,7 @@ def ansible_works() -> bool:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
+            env={**os.environ, "PYTHONNOUSERSITE": "1"},
         ).returncode
         == 0
     )

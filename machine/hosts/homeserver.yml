@@ -11,8 +11,11 @@ features:
   - ssh-host-key
   - zram-swap
   - sshd-home
+  - homelab-node
 ssh_allow_from:
   - ditschi-ThinkPad-L13-Yoga-Gen-2
   - ditschi-ThinkPad-T470
   - netmaster
   - privatecloud
+homelab:
+  clone: /mnt/data-internal/homelab

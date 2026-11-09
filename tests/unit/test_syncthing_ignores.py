@@ -30,9 +30,11 @@ class FakeApi(st.Api):
         self.defaults = list(DEFAULTS if defaults is None else defaults)
         self.status = status  # 0: not running, 403: key rejected
         self.calls = []
+        self.timeouts = []
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, timeout=10):
         self.calls.append((method, path, body))
+        self.timeouts.append(timeout)
         if self.status != 200:
             return self.status, None
         if path.startswith("db/file?"):
@@ -79,7 +81,9 @@ def test_include_and_unignore_on_top_and_local_lines_kept(tmp_path):
     folder = _folder(
         tmp_path, "docs", stignore="(?d)@eaDir\n__*\nKlettern\n", shared="x\n"
     )
-    assert st.ensure_folder(FakeApi(), folder, RULES_TEXT) == "added the include line"
+    assert st.ensure_folder(FakeApi(), folder, RULES_TEXT) == (
+        "added the include line and !/.stglobalignore"
+    )
     assert _stignore(folder) == HEAD + "(?d)@eaDir\n__*\nKlettern\n"
 
 
@@ -148,7 +152,9 @@ def test_allow_list_folder_gets_unignore_shared_file_and_include_at_once(tmp_pat
 
 def test_bom_in_an_otherwise_wired_file_is_removed(tmp_path):
     folder = _folder(tmp_path, "docs", stignore="\ufeff" + HEAD + "a\n", shared="x\n")
-    assert st.ensure_folder(FakeApi(), folder, RULES_TEXT) == "added the include line"
+    assert (
+        st.ensure_folder(FakeApi(), folder, RULES_TEXT) == "removed a byte order mark"
+    )
     assert _stignore(folder) == HEAD + "a\n"
 
 
@@ -419,3 +425,28 @@ def test_step_on_a_server_with_the_feature(host, tmp_path, monkeypatch):
     _profile(machine, ["syncthing"], device="server")
     machine.run_syncthing_ignores()
     assert _stignore(folder) == HEAD
+
+
+@pytest.mark.parametrize(
+    ("stignore", "message"),
+    [
+        # "ALL Documents" on the L13: the include line was already there.
+        ("#include .stglobalignore\n(?d)@eaDir\n", "added !/.stglobalignore"),
+        ("!/.stglobalignore\na\n", "added the include line"),
+        (
+            "a\n!/.stglobalignore\n#include .stglobalignore\n",
+            "moved the include line and !/.stglobalignore to the top",
+        ),
+    ],
+)
+def test_log_names_what_changed(tmp_path, stignore, message):
+    folder = _folder(tmp_path, "docs", stignore=stignore, shared="x\n")
+    assert st.ensure_folder(FakeApi(), folder, RULES_TEXT) == message
+
+
+def test_rescan_request_does_not_wait_for_the_scan(tmp_path):
+    folder = _folder(tmp_path, "docs", stignore="a\n", shared="x\n")
+    api = FakeApi()
+    st.ensure_folder(api, folder, RULES_TEXT)
+    scan = [i for i, c in enumerate(api.calls) if c[1].startswith("db/scan")]
+    assert len(scan) == 1 and api.timeouts[scan[0]] == st.SCAN_TIMEOUT <= 2

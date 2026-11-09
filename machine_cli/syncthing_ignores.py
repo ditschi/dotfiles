@@ -32,7 +32,8 @@ UNIGNORE_LINE = re.compile(r"^\s*!/?\.stglobalignore\s*$")
 # Syncthing names a conflict copy <base>.sync-conflict-<date>-<time>-<device><ext>;
 # for ".stglobalignore" the whole name counts as the extension.
 CONFLICT = re.compile(r"^(.*)\.sync-conflict-\d{8}-\d{6}-[A-Z0-9]{7}(.*)$")
-BOM = "﻿"
+BOM = "\ufeff"
+SCAN_TIMEOUT = 2  # seconds
 
 
 @dataclass
@@ -116,7 +117,9 @@ class Api:
             )
         self.opener = urllib.request.build_opener(*handlers)
 
-    def call(self, method: str, path: str, body: object = None) -> tuple[int, object]:
+    def call(
+        self, method: str, path: str, body: object = None, timeout: float = 10
+    ) -> tuple[int, object]:
         """(status, parsed JSON or text); status 0 when Syncthing does not answer."""
         if not self.base or not self.key:
             return 0, None
@@ -127,7 +130,7 @@ class Api:
             headers={"X-API-Key": self.key},
         )
         try:
-            with self.opener.open(request, timeout=10) as response:
+            with self.opener.open(request, timeout=timeout) as response:
                 text = response.read().decode(errors="replace")
                 status = response.status
         except urllib.error.HTTPError as error:
@@ -230,11 +233,34 @@ def ensure_folder(api: Api, folder: Folder, rules_text: str) -> str:
         done.append(f"created {GLOBAL}")
     if bom or wired(lines, True) != lines:
         _write_lines(stignore, wired(lines, True))
-        done.append("added the include line")
+        done.append(_top_change(lines, bom))
     if done:
-        # Let Syncthing load the changed ignores now instead of at its next scan.
-        api.call("POST", "db/scan?" + urllib.parse.urlencode({"folder": folder.id}))
+        # Let Syncthing load the changed ignores at once instead of at its next scan.
+        # The call returns only when the scan is done, which takes minutes on a large
+        # folder, so do not wait for it.
+        api.call(
+            "POST",
+            "db/scan?" + urllib.parse.urlencode({"folder": folder.id}),
+            timeout=SCAN_TIMEOUT,
+        )
     return " and ".join(done)
+
+
+def _top_change(lines: list[str], bom: bool) -> str:
+    """What putting the two lines on top changed in `lines`, for the log."""
+    added = [
+        name
+        for name, pattern in (
+            ("the include line", INCLUDE_LINE),
+            (UNIGNORE, UNIGNORE_LINE),
+        )
+        if not any(pattern.match(line) for line in lines)
+    ]
+    if added:
+        return "added " + " and ".join(added)
+    if bom and wired(lines, True) == lines:
+        return "removed a byte order mark"
+    return f"moved the include line and {UNIGNORE} to the top"
 
 
 def merged_defaults(rules: list[str], current: list[str]) -> list[str]:

@@ -89,10 +89,41 @@ def run(
     capture: bool = False,
     input_text: Optional[str] = None,
     interactive_stdout: bool = False,
+    tee_stderr: bool = False,
     env: Optional[dict] = None,
 ) -> subprocess.CompletedProcess:
-    """interactive_stdout: capture stdout only so prompts on stderr stay visible."""
+    """interactive_stdout: capture stdout only so prompts on stderr stay visible.
+
+    tee_stderr: pass stderr through as it arrives (also a prompt without a newline)
+    and also return it, for a command that prompts on the terminal. Only stderr is
+    redirected, so it cannot be combined with the capture options."""
     debug("$ " + shlex.join(str(arg) for arg in args))
+    if tee_stderr:
+        if capture or interactive_stdout or input_text is not None:
+            raise ValueError("tee_stderr cannot be combined with capture or input")
+        process = subprocess.Popen(
+            list(args),
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stderr=subprocess.PIPE,
+        )
+        assert process.stderr is not None
+        chunks = []
+        try:
+            while chunk := os.read(process.stderr.fileno(), 4096):
+                text = chunk.decode("utf-8", errors="replace")
+                sys.stderr.write(text)
+                sys.stderr.flush()
+                chunks.append(text)
+        except BaseException:
+            process.kill()
+            raise
+        finally:
+            code = process.wait()
+            process.stderr.close()
+        if check and code:
+            raise subprocess.CalledProcessError(code, list(args))
+        return subprocess.CompletedProcess(list(args), code, None, "".join(chunks))
     return subprocess.run(
         list(args),
         cwd=str(cwd) if cwd else None,

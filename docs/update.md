@@ -76,3 +76,15 @@ before the run and stops with a message naming the command; a correct password d
 replace that permission, so ask the administrator for it. For a host where that is not
 possible, set `ansible: false` in its host config: setup, apply and update then skip
 Ansible, while dotfiles, tools and environment management stay active.
+
+`machine update` and `machine apply` ask for sudo first, before the environment pull, the
+tool install and the other slow steps, but only when Ansible will run: a home-only update
+never asks, nor does a host with `ansible: false` or `--skip-ansible`. The sudo
+permission check for `ansible-playbook` happens at the same point. Right before Ansible
+starts, `machine` checks the ticket again and asks once more only when it expired during
+the steps in between. A mistyped password is asked again by sudo itself (three tries by
+default); when sudo gives up, the message says whether the password was wrong or the user
+has no sudo permission. `machine update` then still runs every step that needs no root,
+skips Ansible and lists `ansible apply` as failed; a changed host config is restored at
+the end, so the next update applies it again. `machine apply` restores the host config
+right away. The background update never runs Ansible and never asks.

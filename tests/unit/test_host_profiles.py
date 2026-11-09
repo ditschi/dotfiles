@@ -172,7 +172,10 @@ def _machine_env(tmp_path: Path, monkeypatch, hostname: str = "testhost"):
     )
     monkeypatch.setenv("MACHINE_STATE_DIR", str(home / ".local/share/machine"))
     monkeypatch.setattr(cli_mod.system, "hostname_short", lambda: hostname)
-    return cli_mod, cli_mod.Machine(), repo
+    machine = cli_mod.Machine()
+    # never ask the real sudo from a test; the sudo tests restore the method
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", lambda _ask: None)
+    return cli_mod, machine, repo
 
 
 def test_apply_syncs_then_runs_ansible(tmp_path: Path, monkeypatch):
@@ -318,6 +321,117 @@ def test_apply_does_not_retry_unchanged_profile_after_failure(tmp_path, monkeypa
         machine.cmd_apply(args)
     assert calls == ["ansible"]
     assert machine.applied_host_path.read_bytes() == original
+
+
+def test_apply_authenticates_sudo_before_bootstrapping_tools(tmp_path, monkeypatch):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    machine.write_profile("work", "desktop", ["zsh-full"], [])
+    (repo / "machine/hosts/testhost.yml").write_bytes(
+        machine.applied_host_path.read_bytes()
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        machine,
+        "authenticate_sudo_for_ansible",
+        lambda ask: calls.append(f"sudo:{ask}"),
+    )
+    monkeypatch.setattr(
+        machine, "ensure_bootstrap_tools", lambda *_a, **_k: calls.append("tools")
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: calls.append("ansible")
+    )
+    monkeypatch.setattr(machine, "health_check_after_apply", lambda: True)
+
+    args = argparse.Namespace(limit="", playbook="workstation", no_become=False)
+    assert machine.cmd_apply(args) == 0
+    assert calls == ["sudo:True", "tools", "sudo:True", "ansible"]
+
+
+def test_apply_asks_again_after_the_tool_install_without_a_recovery_run(
+    tmp_path, monkeypatch
+):
+    """The second sudo failure is a sudo failure: restore the profile, no re-run."""
+    import argparse
+    import subprocess
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/testhost.yml").write_text(
+        "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n"
+        "ssh_allow_from: []\n",
+        encoding="utf-8",
+    )
+    machine.write_profile("private", "desktop", ["zsh-full"], [])
+    asked: list[str] = []
+
+    def sudo(_ask):
+        asked.append("sudo")
+        if len(asked) == 2:
+            raise subprocess.CalledProcessError(1, ["sudo", "-v"], output="expired")
+
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", sudo)
+    monkeypatch.setattr(machine, "ensure_bootstrap_tools", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must not run")
+    )
+    args = argparse.Namespace(limit="", playbook="workstation", no_become=False)
+    with pytest.raises(SystemExit):
+        machine.cmd_apply(args)
+    assert asked == ["sudo", "sudo"]
+    assert machine.current_host() == ("private", "desktop")
+
+
+def test_apply_without_ansible_never_asks_for_sudo(tmp_path, monkeypatch):
+    import argparse
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    machine.write_profile("work", "desktop", ["zsh-full"], [])
+    (repo / "machine/hosts/testhost.yml").write_bytes(
+        machine.applied_host_path.read_bytes()
+    )
+    monkeypatch.setattr(
+        machine,
+        "authenticate_sudo_for_ansible",
+        lambda _ask: pytest.fail("no sudo without Ansible"),
+    )
+    args = argparse.Namespace(
+        limit="", playbook="workstation", no_become=False, skip_ansible=True
+    )
+    assert machine.cmd_apply(args) == 0
+
+
+def test_apply_without_sudo_restores_the_profile_and_runs_no_ansible(
+    tmp_path, monkeypatch
+):
+    import argparse
+    import subprocess
+
+    _cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
+    (repo / "machine/hosts/testhost.yml").write_text(
+        "---\ncontext: private\ndevice: server\nfeatures:\n  - zsh-full\n"
+        "ssh_allow_from: []\n",
+        encoding="utf-8",
+    )
+    machine.write_profile("private", "desktop", ["zsh-full"], [])
+
+    def no_sudo(_ask):
+        raise subprocess.CalledProcessError(1, ["sudo", "-v"], output="wrong password")
+
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", no_sudo)
+    monkeypatch.setattr(
+        machine,
+        "ensure_bootstrap_tools",
+        lambda *_a, **_k: pytest.fail("no tool install without sudo"),
+    )
+    monkeypatch.setattr(
+        machine, "run_ansible", lambda *_a, **_k: pytest.fail("Ansible must not run")
+    )
+    args = argparse.Namespace(limit="", playbook="workstation", no_become=False)
+    with pytest.raises(SystemExit):
+        machine.cmd_apply(args)
+    assert machine.current_host() == ("private", "desktop")
 
 
 def test_apply_reverts_on_health_check_failure(tmp_path: Path, monkeypatch):
@@ -643,11 +757,20 @@ def test_package_table_only_names_known_features():
 
 
 def _sudo_env(
-    tmp_path, monkeypatch, *, ticket=False, allowed=True, root=False, list_err=""
+    tmp_path,
+    monkeypatch,
+    *,
+    ticket=False,
+    allowed=True,
+    root=False,
+    list_err="",
+    validate_rc=0,
+    validate_err="",
 ):
     """Local runs: `sudo -v` once in a terminal, then ansible-playbook as root."""
     cli_mod, machine, repo = _machine_env(tmp_path, monkeypatch)
     (repo / "ansible/workstation.yml").write_text("---\n", encoding="utf-8")
+    monkeypatch.delattr(machine, "authenticate_sudo_for_ansible")
     monkeypatch.setattr(machine, "record_ansible_applied", lambda: None)
     monkeypatch.setattr(cli_mod.system, "is_tty", lambda: True)
     monkeypatch.setattr(cli_mod.system, "is_root", lambda: root)
@@ -663,7 +786,7 @@ def _sudo_env(
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
     monkeypatch.setenv("MACHINE_HARDWARE", "laptop")
     state = {"ticket": ticket}
-    seen = {"sudo": [], "ansible": []}
+    seen = {"sudo": [], "ansible": [], "validate_kw": []}
 
     def fake_run(cmd, **kw):
         cmd = list(cmd)
@@ -671,8 +794,9 @@ def _sudo_env(
             return subprocess.CompletedProcess(cmd, 0 if state["ticket"] else 1)
         if cmd[:2] == ["sudo", "-v"]:
             seen["sudo"].append(cmd)
-            state["ticket"] = True
-            return subprocess.CompletedProcess(cmd, 0)
+            seen["validate_kw"].append(kw)
+            state["ticket"] = validate_rc == 0
+            return subprocess.CompletedProcess(cmd, validate_rc, "", validate_err)
         if cmd[:3] == ["sudo", "-n", "-l"]:
             seen["sudo"].append(cmd)
             return subprocess.CompletedProcess(cmd, 0 if allowed else 1, "", list_err)
@@ -830,6 +954,80 @@ def test_refused_root_run_names_the_command(tmp_path, monkeypatch, capsys):
         machine.run_ansible("workstation")
     err = capsys.readouterr().err
     assert "ansible-playbook" in err and "ansible: false" in err
+    assert seen["ansible"] == []
+
+
+def test_sudo_step_authenticates_and_checks_permission_without_ansible(
+    tmp_path, monkeypatch
+):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    machine.authenticate_sudo_for_ansible(True)
+    assert [c[:2] for c in seen["sudo"]] == [["sudo", "-v"], ["sudo", "-n"]]
+    assert seen["sudo"][1][-1] == "/opt/bin/ansible-playbook"
+    assert seen["ansible"] == []
+    machine.authenticate_sudo_for_ansible(True)  # ticket valid: no second prompt
+    assert [c for c in seen["sudo"] if c[:2] == ["sudo", "-v"]] == [["sudo", "-v"]]
+
+
+def test_sudo_step_as_root_does_nothing(tmp_path, monkeypatch):
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch, root=True)
+    machine.authenticate_sudo_for_ansible(True)
+    assert seen["sudo"] == [] and seen["ansible"] == []
+
+
+def test_sudo_step_without_terminal_never_prompts(tmp_path, monkeypatch, capsys):
+    cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_mod.system, "is_tty", lambda: False)
+    with pytest.raises(subprocess.CalledProcessError):
+        machine.authenticate_sudo_for_ansible(True)
+    assert seen["sudo"] == []
+    assert "interactive `machine update`" in capsys.readouterr().err
+
+
+def test_sudo_step_keeps_the_prompt_visible(tmp_path, monkeypatch):
+    """stderr is read for the cause of a failure, but sudo's messages still show."""
+    _cli_mod, machine, seen = _sudo_env(tmp_path, monkeypatch)
+    machine.authenticate_sudo_for_ansible(True)
+    assert seen["validate_kw"][0].get("tee_stderr") is True
+    assert seen["validate_kw"][0]["env"]["LC_ALL"] == "C"
+
+
+@pytest.mark.parametrize(
+    "stderr, expected",
+    [
+        ("sudo: 3 incorrect password attempts\n", "wrong password"),
+        (
+            "sudo: Authentication failed, try again.\n"
+            "sudo: maximum 3 incorrect authentication attempts\n",
+            "wrong password",
+        ),
+        ("Sorry, user alice may not run sudo on host.\n", "no sudo permission"),
+        ("sudo: I'm sorry bob. I'm afraid I can't do that\n", "no sudo permission"),
+        ("alice is not in the sudoers file.\n", "no sudo permission"),
+        ("sudo: something else\n", "sudo authentication failed; system changes"),
+    ],
+)
+def test_sudo_step_names_the_cause_of_a_failed_authentication(
+    tmp_path, monkeypatch, capsys, stderr, expected
+):
+    _cli_mod, machine, seen = _sudo_env(
+        tmp_path, monkeypatch, validate_rc=1, validate_err=stderr
+    )
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        machine.authenticate_sudo_for_ansible(True)
+    assert expected in capsys.readouterr().err
+    assert expected in caught.value.output
+    assert [c[:2] for c in seen["sudo"]] == [["sudo", "-v"]]  # no permission check
+
+
+def test_ansible_run_after_a_failed_authentication_does_not_start(
+    tmp_path, monkeypatch
+):
+    _cli_mod, machine, seen = _sudo_env(
+        tmp_path, monkeypatch, validate_rc=1, validate_err="3 incorrect password"
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        machine.run_ansible("workstation")
     assert seen["ansible"] == []
 
 
@@ -1441,3 +1639,38 @@ def test_apply_runs_syncthing_ignores_and_a_failure_does_not_stop_it(
     args.user_steps = False
     assert machine.cmd_apply(args) == 0
     assert calls == []
+
+
+def test_run_can_tee_stderr_to_the_terminal_and_return_it(capfd):
+    system = _cli().system
+    result = system.run(
+        ["sh", "-c", "echo prompt-text >&2; exit 3"], check=False, tee_stderr=True
+    )
+    assert result.returncode == 3
+    assert result.stderr == "prompt-text\n"
+    assert "prompt-text" in capfd.readouterr().err
+
+
+def test_tee_stderr_forwards_a_prompt_without_a_newline(capfd):
+    system = _cli().system
+    result = system.run(
+        ["sh", "-c", "printf 'Password: ' >&2; exit 0"], tee_stderr=True
+    )
+    assert result.stderr == "Password: "
+    assert "Password: " in capfd.readouterr().err
+
+
+def test_tee_stderr_honours_check_and_rejects_capture():
+    system = _cli().system
+    with pytest.raises(subprocess.CalledProcessError):
+        system.run(["sh", "-c", "exit 2"], tee_stderr=True)
+    with pytest.raises(ValueError):
+        system.run(["true"], tee_stderr=True, capture=True)
+
+
+def test_tee_stderr_survives_undecodable_bytes():
+    system = _cli().system
+    result = system.run(
+        ["sh", "-c", "printf '\\377bad' >&2"], check=False, tee_stderr=True
+    )
+    assert result.stderr.endswith("bad")

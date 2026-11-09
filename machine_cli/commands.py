@@ -242,13 +242,19 @@ class CommandsMixin:
             log("ansible skipped (--skip-ansible); system changes remain pending")
             return 0
 
-        failed_step = "Ansible"
+        failed_step = "sudo"
         try:
+            # First, so that no sudo prompt interrupts the run later.
+            self.authenticate_sudo_for_ansible(ask_become)
             self.ensure_bootstrap_tools(
                 False,
                 True,
                 not system.in_docker() and os.environ.get("MACHINE_SKIP_BW") != "1",
             )
+            # The tool install can outlast the ticket; ask again before Ansible, so
+            # that a failure here is still a sudo failure without a recovery run.
+            self.authenticate_sudo_for_ansible(ask_become)
+            failed_step = "Ansible"
             self.run_ansible_or_hint(playbook, "", True, ask_become=ask_become)
             failed_step = "health check"
             if not self.health_check_after_apply():
@@ -259,7 +265,9 @@ class CommandsMixin:
             log(f"apply failed: {exc}")
             if backup:
                 self.restore_applied_host(backup)
-                if profile_changed:
+                if failed_step == "sudo":
+                    log("Ansible did not run; the host config was restored")
+                elif profile_changed:
                     log("re-running ansible with the restored host config")
                     try:
                         self.run_ansible(

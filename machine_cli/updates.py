@@ -8,6 +8,7 @@ import fcntl
 import getpass
 import json
 import os
+import subprocess
 import sys
 import time
 import types
@@ -871,6 +872,20 @@ class UpdateMixin:
                 return code
         return self._update_steps(args, set(plan["steps"]))
 
+    def ansible_reason(
+        self, args: types.SimpleNamespace, steps: set[str], profile_changed: bool
+    ) -> str:
+        """Why this update runs Ansible, or "" when it does not."""
+        if not self.saved_ansible():
+            return ""
+        if profile_changed:
+            return "host config changed"
+        if args.system:
+            return "--system"
+        if "system" in steps:
+            return "system files changed"
+        return ""
+
     def _update_steps(self, args: types.SimpleNamespace, steps: set[str]) -> int:
         """Everything after the checkout update: host config, env, dotfiles, tools, Ansible."""
         profile_backup = self.backup_applied_host()
@@ -879,6 +894,18 @@ class UpdateMixin:
         # From here a failing step does not stop the steps that do not need it; the
         # env pull comes first so that its questions come before the tool install.
         runner = Steps()
+        ansible_reason = self.ansible_reason(args, steps, profile_changed)
+        skip_ansible = getattr(args, "skip_ansible", False)
+        sudo_failed = False
+        if ansible_reason and not skip_ansible and self.current_device() != "container":
+            # First, so that no sudo prompt interrupts the run later. A failure only
+            # skips Ansible; the steps that need no root still run.
+            try:
+                self.authenticate_sudo_for_ansible(True)
+            except (subprocess.CalledProcessError, OSError) as exc:
+                reason = getattr(exc, "output", None) or str(exc)
+                runner.fail("ansible apply", reason or "sudo is not available")
+                sudo_failed = True
         runner.run("env pull", self.cmd_env_pull)
 
         # Converge check: runs also when nothing was incoming; idempotent and cheap.
@@ -920,17 +947,12 @@ class UpdateMixin:
 
         if not self.saved_ansible():
             log("ansible: false in the host config; system changes are not applied")
-        elif profile_changed or args.system or "system" in steps:
-            reason = (
-                "host config changed"
-                if profile_changed
-                else "--system" if args.system else "system files changed"
-            )
-            if getattr(args, "skip_ansible", False):
+        elif ansible_reason:
+            if skip_ansible:
                 log(
-                    f"ansible skipped (--skip-ansible); system changes remain pending ({reason})"
+                    f"ansible skipped (--skip-ansible); system changes remain pending ({ansible_reason})"
                 )
-            else:
+            elif runner.ok("ansible apply"):
                 apply_args = types.SimpleNamespace(
                     limit="",
                     playbook="workstation",
@@ -940,9 +962,14 @@ class UpdateMixin:
                     profile_changed=profile_changed,
                     user_steps=False,
                 )
-                log(f"applying system changes ({reason})")
+                log(f"applying system changes ({ansible_reason})")
                 # cmd_apply restores the host config itself before it fails.
                 runner.run("ansible apply", lambda: self.cmd_apply(apply_args))
+
+        if sudo_failed and profile_changed and profile_backup:
+            # The steps above used the new host config. Like a failed apply, it only
+            # counts as applied when Ansible ran with it; the next update retries.
+            self.restore_applied_host(profile_backup)
 
         self.update_failure_file.unlink(missing_ok=True)
         summary = runner.report("update")

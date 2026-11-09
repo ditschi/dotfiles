@@ -322,13 +322,42 @@ class ToolsMixin:
         Ansible run, so callers restore the host config and report the step."""
         if system.is_root():
             return ["ansible-playbook"]
+        sudo, playbook_cmd = self.ensure_sudo_for_ansible(interactive)
+        env = [
+            f"{key}={os.environ[key]}" for key in ROOT_RUN_ENV if os.environ.get(key)
+        ]
+        # Ansible's default search path, with the user's directory instead of root's.
+        collections = os.environ.get("ANSIBLE_COLLECTIONS_PATH") or (
+            f"{Path.home() / '.ansible/collections'}:/usr/share/ansible/collections"
+        )
+        env.append(f"ANSIBLE_COLLECTIONS_PATH={collections}")
+        # Root must not leave root-owned __pycache__ in the user's uv tools or
+        # collections, which would break a later `uv tool upgrade` as the user.
+        env.append("PYTHONDONTWRITEBYTECODE=1")
+        return [sudo, "-n", "--", "env", *env, playbook_cmd]
+
+    def authenticate_sudo_for_ansible(self, ask_become: bool) -> None:
+        """Authenticate sudo and check that it allows ansible-playbook as root.
+
+        Called before the slow steps of update and apply, so that the prompt comes
+        first; nothing to do as root. Raises CalledProcessError, with the reason as
+        its output, when sudo gives up or refuses."""
+        if not system.is_root():
+            self.ensure_sudo_for_ansible(ask_become and system.is_tty())
+
+    def ensure_sudo_for_ansible(self, interactive: bool) -> tuple[str, str]:
+        """The sudo checks for a local run as non-root: (sudo, ansible-playbook path).
+
+        Authenticates once in this terminal (PAM offers fingerprint or password)
+        unless the ticket is still valid; without a terminal only an existing ticket
+        works. Sudo itself asks again after a typo; a failure means it gave up."""
         playbook_cmd = system.which("ansible-playbook") or "ansible-playbook"
         # The ticket belongs to one sudo implementation; use the same one as become.
         sudo = "sudo.ws" if system.have("sudo.ws") else "sudo"
 
         def fail(cmd: List[str], message: str, code: int = 1) -> None:
             logger.error(message)
-            raise subprocess.CalledProcessError(code, cmd)
+            raise subprocess.CalledProcessError(code, cmd, output=message)
 
         if not system.have(sudo):
             fail(
@@ -355,11 +384,18 @@ class ToolsMixin:
             # must reach sudo only, not abort machine.
             previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
             try:
-                result = system.run(validate, check=False)
+                # C locale and stderr read, to tell a wrong password from missing
+                # permission; sudo's messages still reach the terminal.
+                result = system.run(
+                    validate,
+                    check=False,
+                    tee_stderr=True,
+                    env={**os.environ, "LC_ALL": "C"},
+                )
             finally:
                 signal.signal(signal.SIGINT, previous)
             if result.returncode:
-                fail(validate, "sudo authentication failed; system changes not applied")
+                fail(validate, _sudo_failure(result.stderr or ""))
         listing = [sudo, "-n", "-l", playbook_cmd]
         allowed = system.run(listing, check=False, capture=True)
         if allowed.returncode:
@@ -378,18 +414,7 @@ class ToolsMixin:
                 "Ask the administrator to allow it, or set `ansible: false` in the "
                 "host config to skip system changes on this host.",
             )
-        env = [
-            f"{key}={os.environ[key]}" for key in ROOT_RUN_ENV if os.environ.get(key)
-        ]
-        # Ansible's default search path, with the user's directory instead of root's.
-        collections = os.environ.get("ANSIBLE_COLLECTIONS_PATH") or (
-            f"{Path.home() / '.ansible/collections'}:/usr/share/ansible/collections"
-        )
-        env.append(f"ANSIBLE_COLLECTIONS_PATH={collections}")
-        # Root must not leave root-owned __pycache__ in the user's uv tools or
-        # collections, which would break a later `uv tool upgrade` as the user.
-        env.append("PYTHONDONTWRITEBYTECODE=1")
-        return [sudo, "-n", "--", "env", *env, playbook_cmd]
+        return sudo, playbook_cmd
 
 
 # Environment that the playbook reads on the controller and that sudo would drop.
@@ -410,3 +435,29 @@ def _private_file(content: str, prefix: str = "machine-become-") -> Path:
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(content)
     return Path(name)
+
+
+# Texts of `sudo -v` in the C locale when it gives up (checked with classic sudo and
+# sudo-rs 0.2.13, see the change early-sudo-authentication).
+SUDO_WRONG_PASSWORD = re.compile(
+    r"incorrect (password|authentication) attempt", re.IGNORECASE
+)
+SUDO_NO_PERMISSION = re.compile(
+    r"may not run sudo|not in the sudoers file|afraid I can't do that", re.IGNORECASE
+)
+
+
+def _sudo_failure(stderr: str) -> str:
+    """The message for a failed `sudo -v`, naming the cause when sudo says it."""
+    if SUDO_NO_PERMISSION.search(stderr):
+        return (
+            "sudo authentication failed: this user has no sudo permission; system "
+            "changes not applied. Ask the administrator, or set `ansible: false` in "
+            "the host config to skip system changes on this host."
+        )
+    if SUDO_WRONG_PASSWORD.search(stderr):
+        return (
+            "sudo authentication failed: wrong password; system changes not "
+            "applied (run the command again)"
+        )
+    return "sudo authentication failed; system changes not applied"

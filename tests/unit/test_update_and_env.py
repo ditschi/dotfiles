@@ -98,6 +98,8 @@ def update_env(tmp_path: Path, monkeypatch):
     )
     monkeypatch.setattr(machine, "cmd_env_pull", lambda: calls.append("env") or 0)
     monkeypatch.setattr(machine, "cmd_apply", lambda _args: calls.append("apply") or 0)
+    # never ask the real sudo from a test
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", lambda _ask: None)
     return machine, repo, other, home, calls
 
 
@@ -652,6 +654,111 @@ def test_update_skip_ansible_overrides_system_flag(update_env):
     assert _update(machine, system=True, skip_ansible=True) == 0
     assert calls == ["env", "dotfiles", "tools"]
     assert "ansible/roles/x.yml" in machine.pending_system_paths("HEAD")
+
+
+def _recording_sudo(machine, monkeypatch, calls, error=None):
+    def sudo(ask_become):
+        calls.append(f"sudo:{ask_become}")
+        if error:
+            raise error
+
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", sudo)
+
+
+def test_update_authenticates_sudo_before_the_slow_steps(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls)
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine) == 0
+    assert calls == ["sudo:True", "env", "dotfiles", "tools", "apply"]
+
+
+def test_update_with_the_system_flag_authenticates_first(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls)
+
+    assert _update(machine, system=True) == 0
+    assert calls[0] == "sudo:True" and calls[-1] == "apply"
+
+
+def test_home_only_update_never_asks_for_sudo(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls)
+    _push_change(other, "home/dot_new", "x\n")
+
+    assert _update(machine) == 0
+    assert calls == ["env", "dotfiles", "tools"]
+
+
+def test_update_without_ansible_never_asks_for_sudo(update_env, monkeypatch):
+    machine, _repo, _other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls)
+    assert _update(machine, system=True, skip_ansible=True) == 0
+    monkeypatch.setattr(machine, "saved_ansible", lambda: False)
+    assert _update(machine, system=True) == 0
+    assert not [c for c in calls if c.startswith("sudo")]
+
+
+def test_auto_update_never_asks_for_sudo(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls)
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _auto(machine) == 0
+    assert calls == []
+
+
+def test_update_without_sudo_still_runs_the_steps_that_need_no_root(
+    update_env, monkeypatch, capsys
+):
+    machine, _repo, _other, _home, calls = update_env
+    error = subprocess.CalledProcessError(
+        1, ["sudo", "-v"], output="sudo authentication failed: wrong password"
+    )
+    _recording_sudo(machine, monkeypatch, calls, error)
+
+    assert _update(machine, system=True) == 1
+    assert calls == ["sudo:True", "env", "dotfiles", "tools"]  # no apply
+    assert "wrong password" in capsys.readouterr().out
+    reason = machine.read_update_state()["reason"]
+    assert "ansible apply" in reason
+
+
+def test_update_without_sudo_restores_a_changed_host_config(update_env, monkeypatch):
+    machine, repo, other, _home, calls = update_env
+    error = subprocess.CalledProcessError(1, ["sudo", "-v"], output="no permission")
+    _recording_sudo(machine, monkeypatch, calls, error)
+    seen: list[tuple] = []
+    monkeypatch.setattr(
+        machine, "run_dotfiles_apply", lambda: seen.append(machine.current_host())
+    )
+    _push_change(
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
+    )
+
+    assert _update(machine) == 1
+    # the steps that need no root ran with the new host config; then it was restored
+    assert seen == [("private", "server")]
+    assert "device: desktop" in machine.applied_host_path.read_text()
+    assert "apply" not in calls
+
+    # the next update finds the host config changed again and applies it
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", lambda _ask: None)
+    calls.clear()
+    assert _update(machine) == 0
+    assert calls[-1] == "apply"
+
+
+def test_update_survives_an_oserror_at_the_sudo_check(update_env, monkeypatch, capsys):
+    machine, _repo, _other, _home, calls = update_env
+    _recording_sudo(machine, monkeypatch, calls, OSError("sudo vanished"))
+
+    assert _update(machine, system=True) == 1
+    assert calls == ["sudo:True", "env", "dotfiles", "tools"]
+    assert "ansible apply failed: sudo vanished" in capsys.readouterr().out
 
 
 def _conflict(repo: Path, other: Path) -> None:

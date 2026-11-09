@@ -51,7 +51,10 @@ def isolated_machine(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.system, "is_tty", lambda: False)
     # No versioned host file may match, whatever machine the tests run on.
     monkeypatch.setattr(cli.system, "hostname_short", lambda: "unit-test-host")
-    return cli, cli.Machine()
+    machine = cli.Machine()
+    # never ask the real sudo from a test
+    monkeypatch.setattr(machine, "authenticate_sudo_for_ansible", lambda _ask: None)
+    return cli, machine
 
 
 def test_save_bitwarden_settings_preserves_other_local_exports(tmp_path, monkeypatch):

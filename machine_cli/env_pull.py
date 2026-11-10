@@ -184,6 +184,33 @@ class LocalOnly:
     was_in: Dict[str, str] = field(default_factory=dict)
     shell_code: List[str] = field(default_factory=list)
     keep_lines: List[str] = field(default_factory=list)  # kept locally for shell code
+    # key -> item: written by the last pull, unchanged since, no longer in Bitwarden
+    removed: Dict[str, str] = field(default_factory=dict)
+
+
+def deleted_in_bitwarden(
+    pulled: EnvFile, existing: EnvFile, sourced: set
+) -> Dict[str, str]:
+    """Key -> item of keys the last pull wrote, the file left unchanged and no source sets."""
+    items = {key: section for key, _line, section in pulled.assignments}
+    current = item_lines(existing)
+    return {
+        key: items[key]
+        for key, line in item_lines(pulled).items()
+        if key not in sourced and same_line(current.get(key), line)
+    }
+
+
+def without_keys(text: str, keys) -> str:
+    """`text` without the Bitwarden-section assignment lines of `keys`."""
+    kept = [
+        line
+        for line, section in parse_env_file(text).lines
+        if section in (None, LOCAL_ONLY)
+        or not (match := ASSIGNMENT.match(line))
+        or match.group(1) not in keys
+    ]
+    return "\n".join(kept) + ("\n" if text.endswith("\n") else "")
 
 
 def local_only_content(
@@ -478,10 +505,19 @@ class EnvPullMixin:
             if not path.is_file():
                 continue
             existing = parse_env_file(path.read_text(encoding="utf-8"))
-            report = local_only_content(
-                path, item, existing, generated.get(path, ""), sourced
+            state = self.env_state_path(path)
+            removed = (
+                deleted_in_bitwarden(
+                    parse_env_file(state.read_text()), existing, sourced
+                )
+                if state.is_file()
+                else {}
             )
-            if report.keys or report.shell_code:
+            report = local_only_content(
+                path, item, existing, generated.get(path, ""), sourced | set(removed)
+            )
+            report.removed = removed
+            if report.keys or report.shell_code or report.removed:
                 reports.append(report)
         return reports
 
@@ -691,6 +727,11 @@ class EnvPullMixin:
         backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         backup_dir.chmod(0o700)
         skipped = {report.path for report in unchanged} | set(held)
+        removed = {
+            report.path: report.removed
+            for report in reports
+            if report.removed and report.path not in skipped
+        }
         backups: Dict[Path, Path] = {}
         for path, content in generated.items():
             if path in held:
@@ -702,10 +743,12 @@ class EnvPullMixin:
             if path not in skipped:
                 write_private(self.env_state_path(path), content.encode())
             if existing is not None and existing != content:
-                digest = hashlib.sha256(existing.encode()).hexdigest()[:16]
+                # Keys deleted in Bitwarden do not survive in the backup either.
+                backup = without_keys(existing, removed.get(path, {}))
+                digest = hashlib.sha256(backup.encode()).hexdigest()[:16]
                 backups[path] = backup_dir / f"{path.name.lstrip('.')}.{digest}"
                 if not backups[path].exists():
-                    write_private(backups[path], existing.encode())
+                    write_private(backups[path], backup.encode())
                 log(f"backed up existing {path} to {backups[path]}")
             if path not in skipped and existing != content:
                 write_private(path, content.encode())
@@ -713,6 +756,9 @@ class EnvPullMixin:
             f"wrote {', '.join(self.display(p) for p in generated if p not in skipped)} "
             f"from {got} Bitwarden item(s)"
         )
+        for path, keys in removed.items():
+            for key, item in sorted(keys.items()):
+                log(f"removed {key} from {self.display(path)} (no longer in {item})")
         items = self.env_files()
         for path, lines in carry.items():
             keys = sorted(

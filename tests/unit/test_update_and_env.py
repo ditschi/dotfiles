@@ -1475,6 +1475,125 @@ def _item(notes: str = "", **fields: str) -> dict:
     }
 
 
+@pytest.mark.parametrize(
+    "context, device, expected",
+    [
+        ("private", "desktop", ["private", "private-desktop"]),
+        ("private", "server", ["private", "private-server"]),
+        ("private", "container", ["private"]),
+        ("work", "desktop", ["work", "work-desktop"]),
+        ("work", "server", ["work", "work-server"]),
+    ],
+)
+def test_env_item_names_add_the_device_group(
+    tmp_path, monkeypatch, fake_bw, context, device, expected
+):
+    machine, _home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", {})
+    machine.write_profile(context, device, ["zsh-full"], [])
+
+    assert machine.env_item_names() == [
+        *(f"env/groups/{group}" for group in expected),
+        "env/hosts/testhost",
+    ]
+
+
+def test_env_item_names_without_context(tmp_path, monkeypatch, fake_bw):
+    machine, _home = _env_machine(tmp_path, monkeypatch, fake_bw, "container", {})
+
+    assert machine.env_item_names() == []
+
+
+DEVICE_ITEMS = {
+    "env/groups/private": _item("EDITOR=vim"),
+    "env/groups/private-desktop": _item("GITHUB_TOKEN=desktop-token"),
+    "env/groups/private-server": _item("COMPOSE_PROFILES=homelab"),
+    "env/groups/work": _item("GITHUB_TOKEN=work-token"),
+    "env/groups/work-desktop": _item("WORK_DESKTOP=1"),
+    "env/groups/work-server": _item("PROXY_URL=http://proxy"),
+}
+
+
+def _recording_reads(machine, monkeypatch) -> list:
+    read = []
+    original = machine.bw_get_item_raw
+
+    def recording(name):
+        read.append(name)
+        return original(name)
+
+    monkeypatch.setattr(machine, "bw_get_item_raw", recording)
+    return read
+
+
+def test_env_pull_private_desktop_reads_the_desktop_item(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path, monkeypatch, fake_bw, "home-laptop", DEVICE_ITEMS
+    )
+
+    assert machine.cmd_env_pull() == 0
+    values = _sourced(home / ".env")
+    assert values["EDITOR"] == "vim"
+    assert values["GITHUB_TOKEN"] == "desktop-token"
+    assert "COMPOSE_PROFILES" not in values
+    # "add to Bitwarden" from ~/.env still targets the shared group item
+    assert machine.env_files()[home / ".env"] == "env/groups/private"
+
+
+def test_env_pull_private_server_never_reads_the_desktop_item(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path, monkeypatch, fake_bw, "home-server", DEVICE_ITEMS
+    )
+    read = _recording_reads(machine, monkeypatch)
+
+    assert machine.cmd_env_pull() == 0
+    values = _sourced(home / ".env")
+    assert values["EDITOR"] == "vim"
+    assert values["COMPOSE_PROFILES"] == "homelab"
+    assert "GITHUB_TOKEN" not in values
+    assert "env/groups/private-desktop" not in read
+    assert machine.env_files()[home / ".env"] == "env/groups/private"
+
+
+def test_env_pull_work_server_keeps_the_work_token(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path, monkeypatch, fake_bw, "work-machine", DEVICE_ITEMS
+    )
+    machine.write_profile("work", "server", ["zsh-full"], [])
+    read = _recording_reads(machine, monkeypatch)
+
+    assert machine.cmd_env_pull() == 0
+    values = _sourced(home / ".env")
+    assert values["GITHUB_TOKEN"] == "work-token"
+    assert values["PROXY_URL"] == "http://proxy"
+    assert "WORK_DESKTOP" not in values
+    assert "env/groups/work-desktop" not in read
+
+
+def test_env_pull_device_item_wins_over_the_group_item(tmp_path, monkeypatch, fake_bw):
+    items = {
+        "env/groups/private": _item("LAYER=group"),
+        "env/groups/private-server": _item("LAYER=server"),
+    }
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-server", items)
+
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env")["LAYER"] == "server"
+
+
+def test_env_pull_skips_a_missing_device_item(tmp_path, monkeypatch, fake_bw, capsys):
+    items = {"env/groups/private": _item("EDITOR=vim")}
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-server", items)
+
+    assert machine.cmd_env_pull() == 0
+    assert _sourced(home / ".env")["EDITOR"] == "vim"
+    out = capsys.readouterr()
+    assert "no Bitwarden item env/groups/private-server (skip)" in out.out + out.err
+
+
 def test_env_pull_layers_groups_host_and_fields(tmp_path, monkeypatch, fake_bw):
     items = {
         "env/groups/private": _item("SHARED=1\nLAYER=shared\nFIELD_WINS=from-notes"),
@@ -1598,7 +1717,73 @@ def test_env_pull_carries_local_only_keys_over_without_touching_overlay(
     assert (home / ".env").read_text() == text
 
 
-def test_env_pull_remembers_keys_deleted_in_the_vault(tmp_path, monkeypatch, fake_bw):
+def test_env_pull_removes_keys_deleted_in_the_vault(
+    tmp_path, monkeypatch, fake_bw, capsys
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1\nGONE=secret-value")},
+    )
+    assert machine.cmd_env_pull() == 0
+    _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
+
+    assert machine.cmd_env_pull() == 0
+    text = (home / ".env").read_text()
+    assert "GONE" not in text and env_pull().LOCAL_ONLY_HEADER not in text
+    assert machine.env_attention() == [] and machine.env_sync_attention() == []
+    out = capsys.readouterr()
+    assert "removed GONE from ~/.env (no longer in env/groups/work)" in out.out
+    assert "secret-value" not in out.out + out.err
+
+
+def test_env_pull_follows_a_key_moved_to_the_desktop_item(
+    tmp_path, monkeypatch, fake_bw
+):
+    items = {"env/groups/private": _item("EDITOR=vim\nGITHUB_TOKEN=token")}
+    moved = {
+        "env/groups/private": _item("EDITOR=vim"),
+        "env/groups/private-desktop": _item("GITHUB_TOKEN=token"),
+    }
+    for profile, kept in (("home-laptop", True), ("home-server", False)):
+        root = tmp_path / profile
+        root.mkdir()
+        machine, home = _env_machine(root, monkeypatch, fake_bw, profile, items)
+        assert machine.cmd_env_pull() == 0
+        for name, item in moved.items():
+            _bw_set_item(fake_bw, name, item)
+
+        assert machine.cmd_env_pull() == 0
+        assert ("GITHUB_TOKEN" in _sourced(home / ".env")) is kept
+        assert machine.env_attention() == []
+
+
+def test_env_pull_keeps_a_carried_key_with_its_origin(tmp_path, monkeypatch, fake_bw):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1")},
+    )
+    assert machine.cmd_env_pull() == 0
+    carried = f"{env_pull().LOCAL_ONLY_HEADER}\n# was in env/groups/work\nGONE=x\n"
+    with (home / ".env").open("a") as env:
+        env.write(carried)
+
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env").read_text().endswith(carried)
+    [report] = machine.env_local_only(
+        {home / ".env": "A=1\n", home / ".env.host": ""}, ""
+    )
+    assert report.was_in == {"GONE": "env/groups/work"} and report.removed == {}
+
+
+def test_env_pull_without_a_pulled_state_keeps_keys_local_only(
+    tmp_path, monkeypatch, fake_bw
+):
     machine, home = _env_machine(
         tmp_path,
         monkeypatch,
@@ -1607,14 +1792,51 @@ def test_env_pull_remembers_keys_deleted_in_the_vault(tmp_path, monkeypatch, fak
         {"env/groups/work": _item("A=1\nGONE=x")},
     )
     assert machine.cmd_env_pull() == 0
+    machine.env_state_path(home / ".env").unlink()
     _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
 
     assert machine.cmd_env_pull() == 0
     assert "# was in env/groups/work\nGONE=x\n" in (home / ".env").read_text()
-    [report] = machine.env_local_only(
-        {home / ".env": "A=1\n", home / ".env.host": ""}, ""
+
+
+def test_env_pull_backup_leaves_out_keys_deleted_in_the_vault(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "home-server",
+        {"env/groups/private": _item("EDITOR=vim\nGITHUB_TOKEN=token")},
     )
-    assert report.was_in == {"GONE": "env/groups/work"}
+    assert machine.cmd_env_pull() == 0
+    _bw_set_item(fake_bw, "env/groups/private", _item("EDITOR=vim"))
+    _bw_set_item(fake_bw, "env/groups/private-desktop", _item("GITHUB_TOKEN=token"))
+
+    assert machine.cmd_env_pull() == 0
+    backups = list((machine.state_dir / "env-backup").iterdir())
+    assert backups and all("GITHUB_TOKEN=" not in p.read_text() for p in backups)
+    assert any("EDITOR=vim" in p.read_text() for p in backups)
+
+
+def test_env_pull_holds_a_local_edit_of_a_key_deleted_in_the_vault(
+    tmp_path, monkeypatch, fake_bw
+):
+    machine, home = _env_machine(
+        tmp_path,
+        monkeypatch,
+        fake_bw,
+        "work-machine",
+        {"env/groups/work": _item("A=1\nEDITOR=vim")},
+    )
+    assert machine.cmd_env_pull() == 0
+    _edit(home, "EDITOR=vim", "EDITOR=nano")
+    before = (home / ".env").read_text()
+    _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
+
+    assert machine.cmd_env_pull() == 0
+    assert (home / ".env").read_text() == before
+    assert any("EDITOR" in item for item in machine.env_sync_attention())
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -1897,10 +2119,11 @@ def test_env_pull_hints_at_a_key_deleted_in_the_vault(
         monkeypatch,
         fake_bw,
         "work-machine",
-        {"env/groups/work": _item("A=1\nGONE=x")},
+        {"env/groups/work": _item("A=1")},
     )
     assert machine.cmd_env_pull() == 0
-    _bw_set_item(fake_bw, "env/groups/work", _item("A=1"))
+    with (home / ".env").open("a") as env:
+        env.write(f"{env_pull().LOCAL_ONLY_HEADER}\n# was in env/groups/work\nGONE=x\n")
     asked = _answer(monkeypatch, machine, "skip")
 
     assert machine.cmd_env_pull() == 0
@@ -2971,6 +3194,25 @@ def test_env_push_updates_a_custom_field(tmp_path, monkeypatch, fake_bw):
     assert item["fields"][0]["value"] == "new" and item["notes"] == "A=1"
 
 
+def test_env_push_writes_a_key_back_to_its_device_item(tmp_path, monkeypatch, fake_bw):
+    items = {
+        "env/groups/private": {"id": "private-id", **_item("EDITOR=vim")},
+        "env/groups/private-desktop": {
+            "id": "desktop-id",
+            **_item("GITHUB_TOKEN=old"),
+        },
+    }
+    machine, home = _env_machine(tmp_path, monkeypatch, fake_bw, "home-laptop", items)
+    assert machine.cmd_env_pull() == 0
+    _edit(home, "GITHUB_TOKEN=old", "GITHUB_TOKEN=new")
+
+    assert _push(machine, monkeypatch)[0] == 0
+    assert (
+        _bw_item(fake_bw, "env/groups/private-desktop")["notes"] == "GITHUB_TOKEN=new"
+    )
+    assert _bw_item(fake_bw, "env/groups/private")["notes"] == "EDITOR=vim"
+
+
 @pytest.mark.parametrize("answer, kept", [(None, True), (True, False)])
 def test_env_push_removes_a_key_only_when_confirmed(
     tmp_path, monkeypatch, fake_bw, answer, kept
@@ -3074,14 +3316,14 @@ def test_env_push_leaves_local_only_keys_to_the_pull(tmp_path, monkeypatch, fake
         env.write("LOCALKEY=mine\n")
     assert machine.cmd_env_pull() == 0  # no terminal: carried as local-only
     _bw_set_item(fake_bw, "env/groups/work", {"id": "work-id", **_item("A=1")})
-    assert machine.cmd_env_pull() == 0  # B deleted in the vault: "# was in"
+    assert machine.cmd_env_pull() == 0  # B deleted in the vault: removed
     _edit(home, "A=1", "A=local")
 
     code, _asked = _push(machine, monkeypatch)
     assert code == 0
     assert _bw_item(fake_bw, "env/groups/work")["notes"] == "A=local"
     text = (home / ".env").read_text()
-    assert "LOCALKEY=mine" in text and "# was in env/groups/work\nB=2" in text
+    assert "LOCALKEY=mine" in text and "B=2" not in text
 
 
 def test_env_push_refuses_an_ambiguous_env_item(tmp_path, monkeypatch, fake_bw, capsys):

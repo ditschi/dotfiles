@@ -19,6 +19,7 @@ from .homelab_node import CI_KEY_NAME
 from .core import (
     CONTEXTS,
     DEVICES,
+    ENV_DEVICE_GROUPS,
     ENV_GROUPS,
     SSH_CLASS,
     log,
@@ -137,6 +138,9 @@ class ProfileMixin:
         groups = ENV_GROUPS.get(self.current_context(), [])
         if not groups:
             return []
+        device = self.current_device()
+        if device in ENV_DEVICE_GROUPS:
+            groups = [*groups, *(f"{group}-{device}" for group in groups)]
         return [
             *(f"env/groups/{group}" for group in groups),
             f"env/hosts/{system.hostname_short()}",

@@ -59,7 +59,7 @@ The shell loads exactly these files, in order (later assignments win):
 
 | File | Contents | Ownership |
 | --- | --- | --- |
-| `~/.env` | The context's Bitwarden group item | Generated |
+| `~/.env` | The context's Bitwarden group item and the device group item | Generated |
 | `~/.env.host` | This host's Bitwarden item | Generated |
 | `~/.env.local` | Local overrides, certificate/proxy exports, `BW_SESSION` | Local; only appended to when you choose "keep locally" |
 
@@ -108,16 +108,27 @@ and may expire. Pull refuses vault items containing a `BW_SESSION` assignment.
 `~/.env.local` is never rewritten; it only gets lines appended when you choose
 "keep locally" below.
 
+The pull compares each key in three versions: the last pull (kept under
+`~/.local/share/machine/env-generated/`), the current file and Bitwarden now.
+
+- Changed or deleted in Bitwarden, unchanged locally: the file follows Bitwarden.
+  A deleted key is removed without asking (`removed <KEY> from ~/.env (no longer
+  in <item>)`), and the backup of that pull leaves its line out. This is how
+  moving a key to a device item reaches every affected host.
+- Changed or removed locally: an unpushed local edit (see "Unpushed local edits"
+  below), also when Bitwarden changed or deleted the key; `machine env push`
+  sends a local removal to Bitwarden.
+
 A key in `~/.env` or `~/.env.host` that neither its Bitwarden item nor
-`~/.env.local` sets is *local-only*. The pull never stops because of it and never
-moves it without asking:
+`~/.env.local` sets, and that the last pull did not write unchanged, is
+*local-only*. The pull never stops because of it and never moves it without asking:
 
 - In a terminal (`machine env pull`, `machine update`, `machine setup`, without
   `--yes`) it asks per key: add to the Bitwarden item of that file
   (`~/.env` → `env/groups/<group>`, `~/.env.host` → `env/hosts/<hostname>`;
   the line is appended to the item's notes under `# added from <host> on <date>`),
   keep locally (append to `~/.env.local`), remove, or skip. "Skip" is
-  preselected. A key that its item no longer sets is shown with that item
+  preselected. A key carried over with a recorded origin is shown with that item
   ("was in …; deleted there?").
 - Skipped keys, and all keys without a terminal, stay set: they are written
   unchanged into a section `# --- local only: … ---` at the end of the generated
@@ -128,12 +139,16 @@ moves it without asking:
 Warnings name the keys, the file, the item and the backup, never the values.
 
 The group follows the context (`ENV_GROUPS` in `machine_cli/core.py`): `private` → `private`, `work` → `work`, a container without context → none.
+Desktops and servers also read a device group item after it (`ENV_DEVICE_GROUPS`): `env/groups/<group>-desktop` on the device `desktop`, `env/groups/<group>-server` on the device `server`. Both go into `~/.env`, and the device item wins for identical keys. So per context there are three items: one for every host, one with keys only for desktops, one with keys only for servers. A missing device item is skipped. The code knows no key names; which hosts get a key is decided only by the item it is in.
+
+To move a key to a device item (for example `GITHUB_TOKEN`, which private servers must not hold): first create the device item with the key, then remove the key from the group item. The next pull on each host follows (see below). Private servers do not get `GITHUB_TOKEN`: it is in `env/groups/private-desktop`. Work hosts keep the work token from `env/groups/work`.
 
 Item names (secure note, or login with note + custom fields). Later items and custom fields win for identical keys:
 
 | Layer | Item name | Example |
 | --- | --- | --- |
 | Group | `env/groups/<group>` | `env/groups/work`, `env/groups/private` |
+| Device | `env/groups/<group>-<device>` (`desktop`, `server`) | `env/groups/private-desktop`, `env/groups/private-server` |
 | This host | `env/hosts/<hostname>` | `env/hosts/ditschi-ThinkPad-L13-Yoga-Gen-2` |
 | Infra | `ansible-vault` | vault password |
 | Telegraf | `influxdb-telegraf-write` | Influx write token for Telegraf (not for shell `.env`) |

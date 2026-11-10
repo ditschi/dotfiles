@@ -33,6 +33,8 @@ LEGACY_PROFILES = {
 }
 # Bitwarden env groups per context: items env/groups/<group>.
 ENV_GROUPS = {"private": ["private"], "work": ["work"], "": []}
+# Devices that also read env/groups/<group>-<device> (keys only for that device).
+ENV_DEVICE_GROUPS = ("desktop", "server")
 SSH_CLASS = {"private": "home", "work": "work", "": ""}
 
 

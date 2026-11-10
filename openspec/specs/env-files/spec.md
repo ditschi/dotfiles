@@ -54,7 +54,7 @@ When an env file grants any permission to group or others, the loader SHALL chan
 - **THEN** a warning with the `chmod 600` hint is printed and the file is loaded
 
 ### Requirement: Local-only keys are carried over
-A key that an existing `~/.env` or `~/.env.host` sets, but that neither generated file nor `~/.env.local` sets, is a local-only key. The sync SHALL write the generated file anyway and SHALL carry each unresolved local-only key over, unchanged, into a marked local-only section at the end of that file.
+A key that an existing `~/.env` or `~/.env.host` sets, but that neither generated file nor `~/.env.local` sets, is a local-only key, unless the last pull wrote it from a Bitwarden item and the file left it unchanged. The sync SHALL write the generated file anyway and SHALL carry each unresolved local-only key over, unchanged, into a marked local-only section at the end of that file.
 
 #### Scenario: Key not in Bitwarden
 - **WHEN** `~/.env` sets `OPENROUTER_API_KEY`, no Bitwarden item or `~/.env.local` sets it, and the user does not resolve it
@@ -91,14 +91,14 @@ On a terminal and without `--yes`, `machine env pull`, `machine update` and `mac
 - **THEN** the key is carried over into the local-only section and an attention item is recorded
 
 ### Requirement: Skip is preselected
-The preselected choice for a local-only key SHALL be "skip", so that confirming without a choice changes nothing. When a generated file had the key in a Bitwarden section and that item no longer sets it, the prompt SHALL say which item set it before; this origin SHALL be kept when the key is carried over.
+The preselected choice for a local-only key SHALL be "skip", so that confirming without a choice changes nothing. When a local-only key has a recorded Bitwarden origin, the prompt SHALL say which item set it before; this origin SHALL be kept when the key is carried over.
 
 #### Scenario: Confirming the default
 - **WHEN** the user presses Enter at the prompt for a local-only key
 - **THEN** the key is carried over into the local-only section and nothing is moved
 
 #### Scenario: Key deleted in the vault
-- **WHEN** a generated `~/.env` has a key in the section of `env/groups/private` and the item no longer sets it
+- **WHEN** the local-only section holds a key with the origin `env/groups/private` and the item still does not set it
 - **THEN** the prompt says the key was in `env/groups/private`, and after a skip the next prompt still says so
 
 ### Requirement: Adding a key to Bitwarden
@@ -143,3 +143,65 @@ During the zsh health check run, the loader SHALL NOT change the mode of an env 
 #### Scenario: Nothing to fix
 - **WHEN** all env files have mode `600`
 - **THEN** `machine env pull` logs no permission change
+
+### Requirement: Device group item
+On a host with a context, `machine env pull` SHALL read the group item `env/groups/<context>` and then the device group item into `~/.env`: `env/groups/<context>-desktop` on the device `desktop`, `env/groups/<context>-server` on the device `server`. A key in the device item SHALL win over the same key in the group item. A missing device item SHALL be skipped like any missing item.
+
+#### Scenario: Pull on a private desktop
+- **WHEN** `env/groups/private` sets `EDITOR`, `env/groups/private-desktop` sets `GITHUB_TOKEN`, and `machine env pull` runs on a private desktop
+- **THEN** `~/.env` sets `EDITOR` and `GITHUB_TOKEN`
+
+#### Scenario: Pull on a private server
+- **WHEN** the same items exist and `machine env pull` runs on a private server
+- **THEN** `~/.env` sets `EDITOR`, does not set `GITHUB_TOKEN`, and `env/groups/private-desktop` is not read
+
+#### Scenario: Pull on a work server
+- **WHEN** `env/groups/work` sets `GITHUB_TOKEN`, `env/groups/work-server` sets `PROXY_URL`, and `machine env pull` runs on a work server
+- **THEN** `~/.env` sets `GITHUB_TOKEN` and `PROXY_URL`, and `env/groups/work-desktop` is not read
+
+#### Scenario: Server item
+- **WHEN** `env/groups/private-server` sets `COMPOSE_PROFILES` and the host is a private server
+- **THEN** `~/.env` sets `COMPOSE_PROFILES`, and a private desktop does not
+
+#### Scenario: Device item missing
+- **WHEN** `env/groups/private-server` does not exist and the host is a private server
+- **THEN** the pull writes `~/.env` from `env/groups/private` and logs the missing item as skipped
+
+### Requirement: A key deleted in Bitwarden follows Bitwarden
+When the last pull wrote a key from a Bitwarden item, the file still holds that line unchanged, and no source read on the host sets the key now, the next pull SHALL remove the key without asking, on every host. It SHALL NOT be carried over as a local-only key. Logs SHALL name the key, never its value.
+
+#### Scenario: Key moved in Bitwarden
+- **WHEN** the owner moves `GITHUB_TOKEN` from `env/groups/private` to `env/groups/private-desktop` and `machine env pull` runs without a terminal
+- **THEN** private desktops still set it, private servers no longer do, and `machine attention` names no local-only key for it
+
+#### Scenario: Key deleted in Bitwarden on a desktop
+- **WHEN** `EDITOR` is deleted from `env/groups/private` and `~/.env` on a desktop holds the line from the last pull unchanged
+- **THEN** the next pull removes `EDITOR` from `~/.env`
+
+### Requirement: A local edit of a deleted key is a conflict
+When the file changed a key since the last pull and Bitwarden no longer sets it, the pull SHALL treat it as a local edit: in a terminal it SHALL offer push, discard or skip; without a terminal it SHALL leave the file unchanged and record an attention item.
+
+#### Scenario: Edited locally, deleted in Bitwarden
+- **WHEN** `EDITOR` was changed in `~/.env` after the last pull and deleted from `env/groups/private`, and the pull runs without a terminal
+- **THEN** `~/.env` is unchanged and `machine attention` names the local edit of `EDITOR`
+
+### Requirement: A local removal goes back with push
+When the file removed a key since the last pull and Bitwarden still sets it, the pull SHALL treat it as a local edit, and `machine env push` SHALL offer to remove the key from the item that sets it.
+
+#### Scenario: Removed locally
+- **WHEN** the owner deletes the `EDITOR` line from `~/.env` and runs `machine env push`
+- **THEN** push asks whether to remove `EDITOR` from `env/groups/private`
+
+### Requirement: Backup leaves out keys deleted in Bitwarden
+The backup that a pull makes of an env file SHALL NOT contain the lines it removes because Bitwarden no longer sets them.
+
+#### Scenario: Backup after the token moved
+- **WHEN** a pull on a private server removes `GITHUB_TOKEN` from `~/.env`
+- **THEN** the new backup of `~/.env` does not set `GITHUB_TOKEN`
+
+### Requirement: Push returns a key to its device item
+`machine env push` SHALL write a changed key back to the item whose section in `~/.env` holds it, including a device group item.
+
+#### Scenario: Change the token on a desktop
+- **WHEN** the owner changes `GITHUB_TOKEN` in `~/.env` on a private desktop and runs `machine env push`
+- **THEN** `env/groups/private-desktop` holds the new value and `env/groups/private` is unchanged

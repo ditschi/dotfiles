@@ -64,6 +64,10 @@ sudo pam-auth-update --disable fprintd-custom-timeout
 
 Test in a new terminal and keep the old one open: `sudo -k; sudo true`.
 
+`max-tries=3` allows three finger attempts, each with its own `timeout`. If an attempt times
+out without a finger, PAM goes straight to the password. Only a finger that does not match
+uses up an attempt. A bad scan ("swipe again") does not.
+
 Through `common-auth` this also applies to `su`, TTY login and polkit dialogs. Over SSH, sudo
 also waits for the finger first (`pam_fprintd` does not detect remote sessions).
 

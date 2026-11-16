@@ -74,12 +74,17 @@ def test_outdated_item_follows_key_vault(tmp_path, monkeypatch, fake_bw, az, cap
     assert NEW not in shown.out + shown.err
 
 
-def test_equal_passwords_write_nothing(tmp_path, monkeypatch, fake_bw, az):
+def test_equal_passwords_write_nothing(tmp_path, monkeypatch, fake_bw, az, capsys):
     machine, _home, store = work_client(tmp_path, monkeypatch, fake_bw)
     put_login(store, USER_A, NEW)
+    put_login(store, USER_B, NEW)
     before = store.read_text()
     machine.sync_techuser_passwords()
     assert store.read_text() == before
+    shown = capsys.readouterr()
+    assert (
+        "technical user passwords: 0 updated, 2 already equal" in shown.out + shown.err
+    )
 
 
 def test_missing_item_is_reported_not_created(

@@ -162,6 +162,7 @@ class TechuserSyncMixin:
             return 1 if interactive else 0
         system.run(["bw", "sync"], capture=True, check=False)
         failed = False
+        counts = {"updated": 0, "equal": 0, "failed": 0}
         for user, (vault, secret) in users.items():
             password, reason = self.keyvault_secret(vault, secret)
             if password is None:
@@ -173,31 +174,38 @@ class TechuserSyncMixin:
                     )
                     return 1 if interactive else 0
                 warn(f"{user}: Key Vault {vault}: {reason}")
-                failed = True
+                counts["failed"] += 1
                 continue
-            failed |= not self._sync_techuser_item(user, password)
+            counts[self._sync_techuser_item(user, password)] += 1
+        failed = bool(counts["failed"])
         self.clear_azure_notice()
+        log(
+            "technical user passwords: "
+            f"{counts['updated']} updated, {counts['equal']} already equal"
+            + (f", {counts['failed']} not synced" if failed else "")
+        )
         return 1 if failed and interactive else 0
 
-    def _sync_techuser_item(self, user: str, password: str) -> bool:
+    def _sync_techuser_item(self, user: str, password: str) -> str:
+        """ "updated", "equal" or "failed"."""
         items = self.bw_items_named(user)
         if items is None:
             warn(f"cannot list Bitwarden items; {user} not synced")
-            return False
+            return "failed"
         logins = [item for item in items if item.get("type") == BW_LOGIN]
         if not logins:
             warn(f"no Bitwarden login item named {user}; nothing created")
-            return False
+            return "failed"
         if len(logins) > 1:
             warn(f"several Bitwarden login items named {user}; left alone")
-            return False
+            return "failed"
         item = logins[0]
         login = item.setdefault("login", {})
         if login.get("password") == password:
-            return True
+            return "equal"
         login["password"] = password
         if not self.bw_edit_item(item):
             warn(f"could not update the Bitwarden item {user}")
-            return False
+            return "failed"
         log(f"{user}: Bitwarden password updated from Key Vault")
-        return True
+        return "updated"

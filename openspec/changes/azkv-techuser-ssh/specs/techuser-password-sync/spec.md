@@ -73,6 +73,13 @@ When the sync could not read Key Vault because `az` is not logged in or the vaul
 - **WHEN** Key Vault answers that the client address is not allowed
 - **THEN** the same item is recorded, because the vault is out of reach
 
+### Requirement: Outcome is reported
+A sync that reached Key Vault SHALL end with one line that names how many items were updated, were already equal and could not be synced, so that a silent success is distinguishable from a skipped sync.
+
+#### Scenario: Nothing to change
+- **WHEN** every Bitwarden password already equals Key Vault
+- **THEN** the sync prints that no item was updated and how many were already equal
+
 ### Requirement: Passwords never appear in output
 The sync SHALL log user names, item names and outcomes only, and SHALL NOT write a password to a file, a log or a command line.
 

@@ -64,6 +64,24 @@ machine ssh known-hosts add <alias>  # fetch, confirm and store a device's host 
 
 `machine setup` offers to add the host itself to the host list of its context.
 
+## Technical users (work)
+
+Work hosts log in to the CI agents as technical users, with the key first and the password as fallback. The password is read live from Azure Key Vault, so nothing is typed or stored. Which users, and in which vault, is the key `AZKV_TECHUSERS` of the Bitwarden item `env/groups/work` (see [Secrets](secrets.md#technical-user-passwords-work-azure-key-vault)).
+
+The `work` dotfile group links a thin `~/.local/bin/ssh` in front of the real `ssh`. It asks `ssh -G` which user the target resolves to; only when that user is in `AZKV_TECHUSERS` does it set `ssh-askpass-azkv` as askpass program, so ssh calls it only when it needs a password, that is, after key authentication failed. Every other connection runs the real `ssh` unchanged. `scp`, `rsync`, `git` and `ssh-copy-id` call `ssh` through `PATH` and behave the same. A `SSH_ASKPASS` that is already set (for example by an editor's remote feature) is not replaced.
+
+The helper answers only password prompts that name that user (`user@host's password:`, `(user@host) Password:`); a jump host for another account, password-change prompts, host-key questions and passphrases are asked in the terminal. For these users the wrapper sets `NumberOfPasswordPrompts=1`, so a wrong password from Key Vault is sent only once. When Key Vault cannot be read (not logged in with `az login`, no VPN, no access), it says so in one line and asks for the password in the terminal.
+
+The wrapper needs `~/.local/bin` before the real `ssh` in `PATH`; the login shells of the dotfiles do that. Check with `command -v ssh`.
+
+To authorize the key of a technical user on an agent, run `ssh-copy-id` as that user; it uses the same password source:
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519_<techuser>.pub <techuser>@<agent>
+```
+
+A key that is already authorized is skipped. The key authorizes this machine only; each machine with its own key repeats the step, and a re-imaged agent loses it, in which case the password fallback still works.
+
 ## SSH agent
 
 The dotfiles never start an `ssh-agent`. An interactive bash or zsh keeps an existing `SSH_AUTH_SOCK` (agent forwarding with `ssh -A`, the GNOME session's agent); otherwise it uses `$XDG_RUNTIME_DIR/openssh_agent`, the socket of the systemd user unit `ssh-agent.socket` from `openssh-client`, when it exists; otherwise there is no agent. The keys have no passphrase, so `ssh` does not need one. Where you want an agent on a host without that socket, enable it with `systemctl --user enable --now ssh-agent.socket` or start one by hand with `eval "$(ssh-agent -s)"`.

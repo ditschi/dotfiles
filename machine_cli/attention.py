@@ -28,6 +28,14 @@ class AttentionMixin:
             print("Output of the failed check:")
             print(self.update_failure_file.read_text(encoding="utf-8").rstrip())
 
+    def _az_login_and_sync(self) -> int:
+        if not system.have("az"):
+            self.clear_azure_notice()
+            return 0
+        if system.run(["az", "login"], check=False).returncode:
+            return 1
+        return self.sync_techuser_passwords(interactive=True)
+
     def update_item(self) -> Optional[AttentionItem]:
         """The update item from the live plan (no fetch), or None when nothing waits."""
         state = self.read_update_state()
@@ -180,6 +188,15 @@ class AttentionMixin:
                     "Bitwarden session expired or locked; log in again",
                     "Log in now (machine env pull)?",
                     lambda: self.cmd_env_pull(interactive=True),
+                )
+            )
+        if self.azure_notice_path.is_file():
+            items.append(
+                AttentionItem(
+                    "azure",
+                    "az login needed or Key Vault unreachable; technical user passwords not synced",
+                    "Log in now (az login)?",
+                    self._az_login_and_sync,
                 )
             )
         env = self.env_attention()

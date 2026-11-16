@@ -3391,3 +3391,39 @@ def test_update_syncthing_failure_still_runs_ansible(update_env, monkeypatch):
 
     assert _update(machine) == 1
     assert calls == ["env", "dotfiles", "tools", "syncthing", "apply"]
+
+
+def test_manual_update_syncs_technical_user_passwords_before_env_pull(
+    update_env, monkeypatch
+):
+    machine, _repo, _other, _home, calls = update_env
+    monkeypatch.setattr(
+        machine, "sync_techuser_passwords", lambda **_: calls.append("techuser") or 0
+    )
+
+    assert _update(machine) == 0
+    assert calls.index("techuser") < calls.index("env")
+
+
+def test_failing_technical_user_sync_does_not_fail_the_update(update_env, monkeypatch):
+    machine, _repo, _other, _home, _calls = update_env
+
+    def boom(**_):
+        raise SystemExit("bw exploded")
+
+    monkeypatch.setattr(machine, "sync_techuser_passwords", boom)
+
+    assert _update(machine) == 0
+
+
+def test_background_update_does_not_sync_technical_user_passwords(
+    update_env, monkeypatch
+):
+    machine, _repo, _other, _home, _calls = update_env
+    monkeypatch.setattr(
+        machine,
+        "sync_techuser_passwords",
+        lambda *a, **k: pytest.fail("the background update must not sync"),
+    )
+
+    _auto(machine)

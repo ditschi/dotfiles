@@ -906,6 +906,9 @@ class UpdateMixin:
                 reason = getattr(exc, "output", None) or str(exc)
                 runner.fail("ansible apply", reason or "sudo is not available")
                 sudo_failed = True
+        # Before the env pull, so that {{bw:<user>/password}} references resolve to
+        # the passwords just copied from Key Vault.
+        runner.run("technical user passwords", self.sync_techuser_passwords_step)
         runner.run("env pull", self.cmd_env_pull)
 
         # Converge check: runs also when nothing was incoming; idempotent and cheap.

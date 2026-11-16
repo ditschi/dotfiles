@@ -16,6 +16,7 @@ from .env_pull import EnvPullMixin
 from .env_push import EnvPushMixin
 from .ssh_keys import SshKeysMixin
 from .ssh_client import SshClientMixin
+from .techuser_sync import TechuserSyncMixin
 from .commands import CommandsMixin
 from .updates import UpdateMixin
 from .auto_update import AutoUpdateMixin
@@ -37,6 +38,7 @@ class Machine(
     EnvPushMixin,
     SshKeysMixin,
     SshClientMixin,
+    TechuserSyncMixin,
     CommandsMixin,
     UpdateMixin,
     AutoUpdateMixin,

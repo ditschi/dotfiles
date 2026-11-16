@@ -318,6 +318,23 @@ def ssh_known_hosts_add_cmd(alias) -> None:
     _ssh_run("known-hosts", lambda cli: cli.add_known_host(alias))
 
 
+@app.group(name="secrets", help="Keep secrets in Bitwarden equal to their source")
+def secrets_group() -> None:
+    pass
+
+
+@secrets_group.command(
+    name="sync",
+    help="copy the technical users' passwords from Azure Key Vault to Bitwarden",
+)
+def secrets_sync_cmd() -> None:
+    cli = Machine()
+    code = cli.sync_techuser_passwords(interactive=True)
+    if code:
+        cli.event("secrets", "failed", "sync")
+    _exit(code)
+
+
 @app.command(help="update state, local changes and host config (-v: in full)")
 @click.option("-v", "--verbose", is_flag=True, help="also list files and show the configs")
 def status(verbose) -> None:

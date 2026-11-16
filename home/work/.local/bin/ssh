@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ssh wrapper (work group): when the target resolves to a technical user of
+# AZKV_TECHUSERS, ssh gets the Key Vault helper as askpass program; every other
+# connection runs the real ssh unchanged. scp, rsync, git and ssh-copy-id call
+# `ssh` through PATH and so behave the same.
+set -uf
+
+self=$(readlink -f "${BASH_SOURCE[0]}")
+real=
+while IFS= read -r candidate; do
+    [ "$(readlink -f "$candidate")" = "$self" ] && continue
+    real=$candidate
+    break
+done < <(type -ap ssh)
+if [ -z "$real" ]; then
+    echo "ssh: no ssh found in PATH besides this wrapper" >&2
+    exit 127
+fi
+
+# Plain env files keep quotes around a value literally.
+techusers=${AZKV_TECHUSERS:-}
+techusers=${techusers//[\"\']/}
+extra=()
+unset AZKV_ASKPASS_USER
+if [ -n "$techusers" ]; then
+    user=$("$real" -G "$@" 2>/dev/null | awk '$1 == "user" { print $2; exit }')
+    for entry in $techusers; do
+        if [ -n "$user" ] && [ "${entry%%=*}" = "$user" ]; then
+            export AZKV_ASKPASS_USER=$user
+            if [ -z "${SSH_ASKPASS:-}" ]; then
+                export SSH_ASKPASS
+                SSH_ASKPASS="$(dirname "$self")/ssh-askpass-azkv"
+                export SSH_ASKPASS_REQUIRE=prefer
+                # a wrong Key Vault password must not be sent again and again
+                extra=(-o NumberOfPasswordPrompts=1)
+            fi
+        fi
+    done
+fi
+
+exec "$real" ${extra[@]+"${extra[@]}"} "$@"

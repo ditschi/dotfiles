@@ -175,6 +175,22 @@ Item names (secure note, or login with note + custom fields). Later items and cu
 
 Missing item or locked vault: the run continues without credentials and keeps an existing Telegraf output.
 
+### Technical-user passwords (work, Azure Key Vault)
+
+The passwords of the technical users of the CI agents live in Azure Key Vault, which is always the current source. The key `AZKV_TECHUSERS` in the Bitwarden item `env/groups/work` names them, so no vault name is in the repository:
+
+```
+AZKV_TECHUSERS="<user>=<vault>/<secret> <user2>=<vault2>/<secret2>"
+```
+
+The vault name expands to `https://<vault>.vault.azure.net`. `ssh` reads the password from there when it needs one (see [SSH](ssh.md#technical-users-work)); it is never stored. For the browser and for creating tokens, Bitwarden keeps a login item named like the user, which follows Key Vault:
+
+```bash
+machine secrets sync   # Key Vault -> the existing Bitwarden login items; Azure always wins
+```
+
+The manual `machine update` runs the same step on a host that has the key, before the env pull, so that references such as `SYSUSER_X_PASSWORD={{bw:<user>/password}}` in the env item resolve to the current password in the same run. A user added to `AZKV_TECHUSERS` is synced from the next update after the pull that brought the entry. It needs `az` (logged in, with access to the vaults) and an unlocked Bitwarden; the background update never does. Only a differing password is written, the old one is normally kept in the item's password history in Bitwarden (not verified for the CLI), and items are never created: a missing or duplicate item is reported by name. When `az` is not logged in or a vault is unreachable (for example without VPN), nothing is written and `machine attention` offers `az login`.
+
 Contents of an `env/…` item:
 
 - **Notes:** existing `.env` as text (`KEY=value`, one line per variable)

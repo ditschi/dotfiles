@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# SSH_ASKPASS helper: answers the password prompt of a technical user with the secret
+# from Azure Key Vault. AZKV_ASKPASS_USER (set by the ssh wrapper) names the user;
+# AZKV_TECHUSERS maps it to <vault>/<secret>. Everything else goes to the terminal.
+set -uf
+
+prompt=${1:-}
+tty=${AZKV_ASKPASS_TTY:-/dev/tty}
+
+from_terminal() {
+    { : <"$tty"; } 2>/dev/null || exit 1
+    printf '%s' "$prompt" >>"$tty"
+    case ${prompt,,} in
+        *password* | *passphrase* | *pin*)
+            read -r -s answer <"$tty"
+            printf '\n' >>"$tty"
+            ;;
+        *) read -r answer <"$tty" ;;
+    esac
+    # ssh reads only the exit status of a confirmation (host key question)
+    if [ "${SSH_ASKPASS_PROMPT:-}" = confirm ]; then
+        case ${answer,,} in y | yes) exit 0 ;; *) exit 1 ;; esac
+    fi
+    printf '%s\n' "$answer"
+    exit 0
+}
+
+# Informational message: ssh only wants it shown.
+if [ "${SSH_ASKPASS_PROMPT:-}" = none ]; then
+    printf '%s\n' "$prompt" >&2
+    exit 0
+fi
+# Confirmations and passphrases are not ours, nor are password-change prompts.
+[ -z "${SSH_ASKPASS_PROMPT:-}" ] || from_terminal
+lower=${prompt,,}
+case $lower in
+    *passphrase* | *"new password"* | *retype* | *"current password"*) from_terminal ;;
+    *password*) ;;
+    *) from_terminal ;;
+esac
+
+user=${AZKV_ASKPASS_USER:-}
+[ -n "$user" ] || from_terminal
+# ssh names the account in the prompt; a hop for another account is not ours.
+case $lower in *"${user,,}@"*) ;; *) from_terminal ;; esac
+
+# Plain env files keep quotes around a value literally.
+techusers=${AZKV_TECHUSERS:-}
+techusers=${techusers//[\"\']/}
+entry=
+for candidate in $techusers; do
+    [ "${candidate%%=*}" = "$user" ] && entry=${candidate#*=}
+done
+case $entry in */*) ;; *) from_terminal ;; esac
+
+vault=${entry%%/*}
+secret=${entry#*/}
+case $vault$secret in *[!A-Za-z0-9-]*) from_terminal ;; esac
+
+if password=$(timeout 30 az keyvault secret show \
+    --id "https://$vault.vault.azure.net/secrets/$secret" \
+    --query value -o tsv 2>/dev/null) && [ -n "$password" ]; then
+    printf '%s\n' "$password"
+    exit 0
+fi
+
+echo "ssh-askpass-azkv: cannot read the password of $user from Key Vault (az login?); asking here" >&2
+from_terminal

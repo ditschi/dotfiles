@@ -66,6 +66,51 @@ def test_upgrades_azure_cli_when_present(machine):
     assert not any("install" in c and "azure-cli" in c for c in commands)
 
 
+def _azure_upgrade_result(monkeypatch, host, output, code=0):
+    def run(args, **_kw):
+        if args[-3:] == ["tool", "upgrade", "azure-cli"]:
+            return subprocess.CompletedProcess(args, code, stdout="", stderr=output)
+        out = "azure-cli v2.0\n" if args[-2:] == ["tool", "list"] else ""
+        return subprocess.CompletedProcess(args, 0, stdout=out, stderr="")
+
+    monkeypatch.setattr(mise_tools.system, "run", run)
+    _profile(host, ["azure-cli"])
+
+
+def test_azure_cli_check_is_silent_when_nothing_is_newer(machine, monkeypatch, capsys):
+    host, _ = machine
+    _azure_upgrade_result(monkeypatch, host, "Nothing to upgrade\n")
+
+    host.run_tools_install()
+
+    shown = capsys.readouterr()
+    assert "Azure CLI" not in shown.out + shown.err
+    assert "Nothing to upgrade" not in shown.out + shown.err
+
+
+def test_azure_cli_upgrade_is_shown(machine, monkeypatch, capsys):
+    host, _ = machine
+    _azure_upgrade_result(monkeypatch, host, "Updated azure-cli v2.92.0 -> v2.93.0\n")
+
+    host.run_tools_install()
+
+    shown = capsys.readouterr()
+    assert "upgrading the Azure CLI" in shown.out + shown.err
+    assert "Updated azure-cli v2.92.0 -> v2.93.0" in shown.out + shown.err
+
+
+def test_failed_azure_cli_upgrade_shows_the_reason_and_fails(
+    machine, monkeypatch, capsys
+):
+    host, _ = machine
+    _azure_upgrade_result(monkeypatch, host, "error: no network\n", code=2)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        host.run_tools_install()
+
+    assert "error: no network" in capsys.readouterr().out
+
+
 def test_no_azure_cli_without_the_feature(machine):
     host, commands = machine
     _profile(host, [])

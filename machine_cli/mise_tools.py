@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import stat
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -232,18 +233,36 @@ class MiseToolsMixin:
         )
         installed = AZURE_PACKAGE in (listed.stdout or "")
         if installed:
-            args = ["uv", "tool", "upgrade", AZURE_PACKAGE]
-        else:
-            args = [
+            self.upgrade_azure_cli(env)
+            return
+        log("installing the Azure CLI")
+        system.run(
+            [
+                "mise",
+                "exec",
+                "--",
                 "uv",
                 "tool",
                 "install",
                 AZURE_PACKAGE,
                 "--python-preference",
                 "only-managed",
-            ]
-        log(("upgrading" if installed else "installing") + " the Azure CLI")
-        system.run(["mise", "exec", "--", *args], env=env)
+            ],
+            env=env,
+        )
+
+    def upgrade_azure_cli(self, env: dict) -> None:
+        """Silent when uv finds nothing newer; a real upgrade is shown."""
+        args = ["mise", "exec", "--", "uv", "tool", "upgrade", AZURE_PACKAGE]
+        result = system.run(args, env=env, check=False, capture=True)
+        output = ((result.stdout or "") + (result.stderr or "")).strip()
+        if result.returncode == 0 and "Nothing to upgrade" in output:
+            return
+        log("upgrading the Azure CLI")
+        if output:
+            print(output)
+        if result.returncode:
+            raise subprocess.CalledProcessError(result.returncode, args)
 
     def _tools_install_quiet(self) -> bool:
         if not (system.have("mise") and self.mise_local_config.is_file()):

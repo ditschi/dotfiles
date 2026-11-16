@@ -80,7 +80,7 @@ To authorize the key of a technical user on an agent, run `ssh-copy-id` as that 
 ssh-copy-id -i ~/.ssh/id_ed25519_<techuser>.pub <techuser>@<agent>
 ```
 
-A key that is already authorized is skipped. The key authorizes this machine only; each machine with its own key repeats the step, and a re-imaged agent loses it, in which case the password fallback still works.
+A key that is already authorized is skipped. Always pass `-i`: without it `ssh-copy-id` installs every key of the agent and of `~/.ssh/id*.pub`, also personal ones, into the account of the technical user. The key authorizes this machine only; each machine with its own key repeats the step, and a re-imaged agent loses it, in which case the password fallback still works.
 
 ## SSH agent
 

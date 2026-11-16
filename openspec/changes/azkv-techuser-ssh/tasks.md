@@ -19,7 +19,7 @@ Validation order follows AGENTS.md: the targeted tests of each group, then pre-c
 
 ## 3. Integration
 
-- [ ] 3.1 After linking the work group, the owner runs `ssh <agent>` on an agent without the key authorized and confirms that no password is asked, that an agent with the key makes no `az` call, and that `ssh-copy-id` installs the key (design.md Q3); verify by the owner's report.
+- [x] 3.1 After linking the work group, the owner runs `ssh <agent>` on an agent without the key authorized and confirms that no password is asked, that an agent with the key makes no `az` call, and that `ssh-copy-id` installs the key (design.md Q3); verified by the owner's report of 2026-11-16: `ssh-copy-id` skipped two agents that had the keys and installed them on a third without a password prompt.
 - [x] 3.2 Run `pytest tests/unit/test_techuser_ssh.py tests/unit/test_techuser_sync.py tests/unit/test_bitwarden_session.py tests/unit/test_ssh_client.py -q`, then `pre-commit run --files <changed paths>`, then `openspec validate azkv-techuser-ssh --strict`; verify all pass.
 - [x] 3.3 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent) and fix the findings before archive; verify that no open findings remain.
 

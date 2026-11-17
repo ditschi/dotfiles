@@ -259,3 +259,37 @@ local edit; added keys stay local-only keys (see above). In a terminal the pull
 asks once per file: push now, discard (regenerate after a backup) or skip
 (default; the file stays). Without a terminal, for example in the background
 update, the file stays unchanged and `machine attention` offers push or discard.
+
+## `~/.netrc` from Bitwarden
+
+`machine env pull` (so also `machine setup` and `machine update`) writes
+`~/.netrc` (mode 600) from the secure notes `netrc/groups/<group>` (`work` or
+`private`, as for the env items) and `netrc/hosts/<hostname>`. The notes are an
+ordinary netrc, one block per host. There is no include directive in a netrc, so
+the host item comes first, then the group item, in one file; blocks are not
+merged, dropped or reordered (a machine in both items appears twice, and the tools
+that read the file decide which block applies). `login` and `password` values are
+literal or use the
+references above (item names may contain spaces):
+
+```text
+machine artifactory-02.example.com
+  login {{bw:Work login/field:loginfmt}}
+  password {{bw:Work login/field:artifactory02-token}}
+```
+
+Bitwarden is the truth: the file is replaced as a whole, after a backup in
+`~/.local/share/machine/env-backup/` (`netrc.<digest>`), so hosts that are not in
+the notes disappear from `~/.netrc`. Comment lines are kept. A block is skipped, and
+listed in `machine attention`, when a reference cannot be resolved or a value
+contains whitespace, a quote or a backslash (a netrc cannot hold it unchanged).
+With no netrc item, a locked vault or items that cannot be listed, the file stays
+as it is. A block for `github.com` is written, with a warning: curl then skips the
+git credential helpers for it.
+
+Local edits work as for the env files: the pull remembers what it wrote and asks
+push, discard or skip for changed, removed or new host blocks (without a terminal it
+leaves the file and records an attention item), and `machine env push` writes them
+to the notes, a changed referenced value to the referenced item. A changed block
+goes back to the item it came from; a new block goes to `netrc/groups/<group>`
+(`--host`: `netrc/hosts/<hostname>`).

@@ -219,6 +219,16 @@ class AttentionMixin:
                     lambda: self.cmd_env_pull(interactive=True),
                 )
             )
+        netrc = self.netrc_attention()
+        if netrc:
+            items.append(
+                AttentionItem(
+                    "netrc",
+                    "; ".join(netrc),
+                    "Resolve it now (machine env pull)?",
+                    lambda: self.cmd_env_pull(interactive=True),
+                )
+            )
         for kind, text, question, resolve in self.ssh_attention():
             items.append(AttentionItem(kind, text, question, resolve))
         monitoring = self.monitoring_item()

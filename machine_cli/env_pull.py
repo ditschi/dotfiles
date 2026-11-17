@@ -653,6 +653,14 @@ class EnvPullMixin:
         return held, generated
 
     def cmd_env_pull(self, interactive: bool = False, discard=()) -> int:
+        # ~/.netrc follows the env files and runs only once Bitwarden was unlocked.
+        self._netrc_ready = False
+        code = self._pull_env_files(interactive, discard)
+        if not self._netrc_ready:
+            return code
+        return self.sync_netrc(interactive, discard) or code
+
+    def _pull_env_files(self, interactive: bool = False, discard=()) -> int:
         # Before any Bitwarden step, so it also runs locked, without bw and in containers.
         self.fix_env_permissions()
         if not self.current_context():
@@ -667,6 +675,7 @@ class EnvPullMixin:
         if not self.unlock_bitwarden():
             log("Bitwarden not unlocked; skip ~/.env sync (run machine env pull)")
             return 1 if interactive else 0
+        self._netrc_ready = True
         self.offer_saving_bitwarden_session()
         system.run(["bw", "sync"], capture=True)
         names = self.env_item_names()

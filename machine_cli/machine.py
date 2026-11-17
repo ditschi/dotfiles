@@ -14,6 +14,7 @@ from .mise_tools import MiseToolsMixin
 from .bw_client import BwClientMixin
 from .env_pull import EnvPullMixin
 from .env_push import EnvPushMixin
+from .netrc_sync import NetrcSyncMixin
 from .ssh_keys import SshKeysMixin
 from .ssh_client import SshClientMixin
 from .techuser_sync import TechuserSyncMixin
@@ -36,6 +37,7 @@ class Machine(
     BwClientMixin,
     EnvPullMixin,
     EnvPushMixin,
+    NetrcSyncMixin,
     SshKeysMixin,
     SshClientMixin,
     TechuserSyncMixin,

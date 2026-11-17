@@ -259,11 +259,19 @@ class EnvPushMixin:
             return 0
         files = list(self.env_files().items())
         path, item_name = files[-1] if host else files[0]
-        if not path.is_file():
-            warn(f"{self.display(path)} does not exist; nothing to push")
-            return 1
-        if not self.env_state_path(path).is_file():
-            warn(f"{self.display(path)} has no pulled state yet; run: machine env pull")
+        netrc_item = self.netrc_item_names()[-1 if host else 0]
+        netrc_ready = self.netrc_path.is_file() and self.netrc_state_path.is_file()
+        env_ready = path.is_file() and self.env_state_path(path).is_file()
+        if not env_ready and not netrc_ready:
+            if not path.is_file():
+                warn(f"{self.display(path)} does not exist; nothing to push")
+            else:
+                warn(
+                    f"{self.display(path)} has no pulled state yet; "
+                    "run: machine env pull"
+                )
+            if self.netrc_path.is_file():
+                warn("~/.netrc has no pulled state yet; run: machine env pull")
             return 1
         if not system.is_tty() or getattr(self, "unattended", False):
             warn("machine env push asks before writing; run it in a terminal")
@@ -271,8 +279,28 @@ class EnvPushMixin:
         if not self.require_bitwarden() or not self.unlock_bitwarden():
             return 1
         system.run(["bw", "sync"], capture=True)
-        generated, _got = self._env_generated(self.env_item_names())
-        result = self.push_env_file(path, item_name, self.render_env(generated[path]))
-        if result in (FAILED, DECLINED):
-            return 1 if result == FAILED else 0
-        return self.cmd_env_pull(interactive=True, discard={path})
+        failed = False
+        discard = set()
+        if env_ready:
+            generated, _got = self._env_generated(self.env_item_names())
+            result = self.push_env_file(
+                path, item_name, self.render_env(generated[path])
+            )
+            if result == FAILED:
+                failed = True
+            elif result != DECLINED:
+                discard.add(path)
+        if netrc_ready:
+            new = self.netrc_generated()
+            if new is None:
+                warn("~/.netrc not pushed: Bitwarden netrc items unavailable")
+                failed = True
+            else:
+                result = self.push_netrc_file(new, netrc_item)
+                if result == FAILED:
+                    failed = True
+                elif result != DECLINED:
+                    discard.add(self.netrc_path)
+        if failed or not discard:
+            return 1 if failed else 0
+        return self.cmd_env_pull(interactive=True, discard=discard)

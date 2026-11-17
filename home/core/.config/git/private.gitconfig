@@ -9,6 +9,11 @@
     # empty value drops earlier helpers (store), so tokens never land in ~/.git-credentials
     helper =
 
+# Run the credential helper before the first request. Otherwise curl sends a
+# github.com entry of ~/.netrc up front and Git never asks the helper (Git 2.46+).
+[http "https://github.com/"]
+    proactiveAuth = basic
+
 # The token helper itself, written by `machine` from the host config: GITHUB_TOKEN on
 # private hosts, GITHUB_PRIVATE_TOKEN on work hosts (where GITHUB_TOKEN is the work
 # token). Must come after the reset above; a missing file means no token helper.

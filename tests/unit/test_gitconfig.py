@@ -370,6 +370,50 @@ def test_owner_rules_pick_identity_and_github_user(git_home, url, email, github_
     assert _identity(env, repo) == (email, github_user)
 
 
+def _proactive_auth(env, repo) -> str:
+    return _git(
+        "config",
+        "--get-urlmatch",
+        "http.proactiveauth",
+        "https://github.com/",
+        env=env,
+        cwd=repo,
+    ).stdout.strip()
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://github.com/ditschi/dotfiles.git", "basic"),
+        ("https://github.com/someone/other.git", "basic"),
+        ("https://github.com/bosch-foo/x.git", "basic"),
+        ("https://github.com/someone_bosch/x.git", "basic"),
+        ("https://gitlab.com/me/x.git", ""),
+    ],
+)
+def test_github_asks_the_credential_helper_before_netrc(git_home, url, expected):
+    _home, repo, env = git_home
+    _run(env, repo, "remote", "add", "origin", url)
+    assert _proactive_auth(env, repo) == expected
+
+
+def test_work_owner_keeps_the_work_helper_with_proactive_auth(git_home):
+    _home, repo, env = git_home
+    _run(env, repo, "remote", "add", "origin", "https://github.com/bosch-foo/x.git")
+    assert _proactive_auth(env, repo) == "basic"
+    helpers = _git(
+        "config",
+        "--get-all",
+        "credential.https://github.com.helper",
+        env=env,
+        cwd=repo,
+    ).stdout.splitlines()
+    # an empty value resets the helpers before it
+    start = max(i for i, helper in enumerate(helpers) if helper == "") + 1
+    effective = [helper for helper in helpers[start:] if helper]
+    assert effective == ["!$HOME/.local/bin/git-credential-env GITHUB_TOKEN"]
+
+
 def test_user_alias_overrides_owner_rule(git_home):
     _home, repo, env = git_home
     _run(env, repo, "remote", "add", "origin", "https://github.com/ditschi/x.git")

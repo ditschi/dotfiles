@@ -37,7 +37,7 @@ Work only in the worktree `$(machine repo)/.worktrees/env-bitwarden-references` 
 
 ## 7. Single work password in Bitwarden
 
-- [ ] 7.1 On a work host, with `PASSWORD` referencing the Microsoft login item, try candidate (a) of investigation I1 (one login item with a `loginfmt` custom field) and record the owner's outcome in design.md; if the items are merged, change the reference with `machine env push`; verify that I1 has a recorded outcome, `get-password` returns the password and `openspec validate env-bitwarden-references --strict` passes.
+- [x] 7.1 On a work host, with `PASSWORD` referencing the Microsoft login item, try candidate (a) of investigation I1 (one login item with a `loginfmt` custom field) and record the owner's outcome in design.md; if the items are merged, change the reference with `machine env push`; verify that I1 has a recorded outcome, `get-password` returns the password and `openspec validate env-bitwarden-references --strict` passes.
 
 ## Workflow follow-up
 

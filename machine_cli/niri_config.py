@@ -22,9 +22,9 @@ NIRI_INCLUDE_LINE = re.compile(r'^\s*include\b.*"(\./)?dotfiles\.kdl"')
 GHOSTTY_DIR = Path(".config/ghostty")
 # DMS writes `config`; Ghostty 1.2+ also reads `config.ghostty`.
 GHOSTTY_CONFIGS = ("config", "config.ghostty")
-GHOSTTY_INCLUDE = "config-file = ?dotfiles.conf"
+GHOSTTY_INCLUDE = "config-file = ?dotfiles.ghostty"
 GHOSTTY_INCLUDE_LINE = re.compile(
-    r'^\s*config-file\s*=\s*"?\??(\./)?dotfiles\.conf"?\s*$'
+    r'^\s*config-file\s*=\s*"?\??(\./)?dotfiles\.ghostty"?\s*$'
 )
 SYSTEMD_USER = Path(".config/systemd/user")
 DMS_FOR_NIRI = SYSTEMD_USER / "niri.service.wants/dms.service"
@@ -94,7 +94,7 @@ class NiriConfigMixin:
         log(f"niri: added `{NIRI_INCLUDE}` to {niri_config}")
 
     def ensure_ghostty_include(self) -> None:
-        """Include dotfiles.conf from the Ghostty config; create `config` if none exists."""
+        """Include dotfiles.ghostty from the Ghostty config; create `config` if none exists."""
         directory = self.home / GHOSTTY_DIR
         existing = [
             directory / name for name in GHOSTTY_CONFIGS if (directory / name).is_file()

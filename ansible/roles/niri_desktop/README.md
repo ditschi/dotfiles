@@ -31,7 +31,7 @@
 # The user part is done by `machine setup` / `machine update` after Ansible (step
 # `niri config`): `dms setup headless --compositor niri --terminal ghostty
 # --skip-existing` once when ~/.config/niri/config.kdl is missing, the include lines for
-# ~/.config/niri/dotfiles.kdl and ~/.config/ghostty/dotfiles.conf (dotfile group
+# ~/.config/niri/dotfiles.kdl (which includes the topic files in ~/.config/niri/dotfiles/) and ~/.config/ghostty/dotfiles.ghostty (dotfile group
 # niri), and `dms systemd enable` so dms.service starts with the niri session only.
 # A hand-added F12 bind left in config.kdl next to the include is harmless (same bind;
 # the include wins) and can be removed.

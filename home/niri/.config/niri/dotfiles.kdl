@@ -1,16 +1,16 @@
 // Own niri customizations, shared through the dotfiles (group niri, like the zsh config).
-// ~/.config/niri/dotfiles.kdl is a symlink into the repository: edit it here or there,
-// commit it, and every host with the feature niri gets it with the next machine update.
-// niri reloads its config on save.
+// The files are symlinks into the repository: edit them here or there, commit, and every
+// host with the feature niri gets them with the next machine update. niri reloads its
+// config on save.
 //
 // ~/.config/niri/config.kdl (written by DMS) includes this file last with
-// `include optional=true "dotfiles.kdl"`, so binds and settings here win over DMS's.
-// Put binds, window rules and layout overrides here; more files next to this one can be
-// included from it. Leave config.kdl and dms/*.kdl to DMS.
+// `include optional=true "dotfiles.kdl"`, so everything here wins over DMS's settings.
+// Leave config.kdl and dms/*.kdl to DMS.
+//
+// One file per topic under dotfiles/, included below; later files win over earlier ones.
+// For a new topic add the file and an include line, for example:
+//   dotfiles/layout.kdl  gaps, borders, column widths
+//   dotfiles/rules.kdl   window rules
+//   dotfiles/look.kdl    animations, shadows, colors
 
-binds {
-    // Drop-down terminal (Ghostty quick terminal; settings in ~/.config/ghostty/dotfiles.conf).
-    F12 hotkey-overlay-title="Drop-down terminal" { spawn "ghostty" "+toggle-quick-terminal"; }
-    // Default file manager for folders, in the home directory.
-    Mod+E hotkey-overlay-title="File manager" { spawn-sh "xdg-open ~"; }
-}
+include "dotfiles/binds.kdl"

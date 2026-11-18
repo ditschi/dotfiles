@@ -54,15 +54,19 @@ In the niri session, F12 SHALL toggle a Ghostty quick terminal that drops down f
 - **THEN** the include is added once and the rest of the file is unchanged
 
 ### Requirement: niri customizations from the dotfiles
-The owner's niri customizations SHALL live in one file of the dotfile group `niri` that the niri config includes after the DMS files, linked into the home directory like the other dotfiles, so that every host with the feature gets the same customizations and an edit in the home directory changes the repository.
+The owner's niri customizations SHALL live in the dotfile group `niri`, in one entry file that the niri config includes after the DMS files and that includes one file per topic, linked into the home directory like the other dotfiles, so that every host with the feature gets the same customizations and an edit in the home directory changes the repository.
 
 #### Scenario: New bind on one host
-- **WHEN** the owner adds a bind to `~/.config/niri/dotfiles.kdl` on one host and the change reaches another host with `machine update`
+- **WHEN** the owner adds a bind to `~/.config/niri/dotfiles/binds.kdl` on one host and the change reaches another host with `machine update`
 - **THEN** the bind works on both hosts without further steps
 
 #### Scenario: Bind overrides DMS
-- **WHEN** the customization file binds a key that DMS's binds also use
+- **WHEN** a customization file binds a key that DMS's binds also use
 - **THEN** the binding from the customization file applies
+
+#### Scenario: New topic file
+- **WHEN** the owner adds `~/.config/niri/dotfiles/layout.kdl` in the repository and an include line for it in the entry file
+- **THEN** every host with the feature applies it after the next update, without other changes
 
 ### Requirement: Mod+E opens the file manager
 In the niri session, Mod+E SHALL open a file manager window.

@@ -102,7 +102,7 @@ def test_second_run_changes_nothing(host, tmp_path, messages):
     assert calls == []
     assert messages == []
     assert _niri(tmp_path).count("dotfiles.kdl") == 1
-    assert _ghostty(tmp_path).count("dotfiles.conf") == 1
+    assert _ghostty(tmp_path).count("dotfiles.ghostty") == 1
 
 
 def test_existing_config_is_kept_and_gets_only_the_include(host, tmp_path):
@@ -126,7 +126,7 @@ def test_includes_already_present_are_not_added_again(host, tmp_path, messages):
     machine, calls = host
     _profile(machine, ["niri"])
     niri = DMS_NIRI + 'include  optional=true  "./dotfiles.kdl"\n'
-    ghostty = DMS_GHOSTTY + 'config-file = "?dotfiles.conf"\n'
+    ghostty = DMS_GHOSTTY + 'config-file = "?dotfiles.ghostty"\n'
     (tmp_path / ".config/niri").mkdir(parents=True)
     (tmp_path / nc.NIRI_CONFIG).write_text(niri)
     (tmp_path / ".config/ghostty").mkdir(parents=True)

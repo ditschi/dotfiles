@@ -8,7 +8,7 @@
 
 ## 2. Dotfile group and machine step
 
-- [x] 2.1 Add `home/niri/.config/niri/dotfiles.kdl` (F12 → `ghostty +toggle-quick-terminal`, Mod+E → `xdg-open ~`, a header comment saying it is the place for own niri customizations) and `home/niri/.config/ghostty/dotfiles.conf`; verify `niri validate -c` on a config that includes it and `ghostty +validate-config`
+- [x] 2.1 Add `home/niri/.config/niri/dotfiles.kdl` as entry file including `dotfiles/binds.kdl` (F12 → `ghostty +toggle-quick-terminal`, Mod+E → `xdg-open ~`, a header comment saying it is the place for own niri customizations) and `home/niri/.config/ghostty/dotfiles.ghostty`; verify `niri validate -c` on a config that includes it and `ghostty +validate-config`
 - [x] 2.2 Add the `niri config` step to `machine setup` and `machine update` after Ansible: one-time `dms setup headless --compositor niri --terminal ghostty --skip-existing`, include lines added once, `dms systemd enable` when niri does not want `dms.service`, warning for a `graphical-session.target` enable; unit tests with a scratch HOME and a stubbed `dms` for fresh host, existing config, include already present, no feature and container; verify `pytest tests/unit -q -k niri`
 - [x] 2.3 Add the cached `dms completion` lines to `home/core/.shell/zsh/plugins.zsh` and inside the bash-completion guard of `home/core/.shell/bash/tools.bash`; verify `dms <TAB>` in new zsh and bash shells and that bash without bash-completion starts cleanly
 - [x] 2.4 Describe the feature in `docs/features.md` (PPAs, GDM stays, F12 with the quick terminal tab keys Ctrl+T or Ctrl+Shift+T, Ctrl+Tab, Alt+1…9, Ctrl+Shift+W, Mod+E, where to put own niri customizations, what DMS owns, undo); verify links resolve

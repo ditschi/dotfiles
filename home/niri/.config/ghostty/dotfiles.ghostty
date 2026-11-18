@@ -1,6 +1,6 @@
 # Own Ghostty settings, shared through the dotfiles (group niri, like dotfiles.kdl for niri).
 # Included last from ~/.config/ghostty/config (written by DMS) with
-# `config-file = ?dotfiles.conf`, which machine adds once; settings here win over DMS's.
+# `config-file = ?dotfiles.ghostty`, which machine adds once; settings here win over DMS's.
 
 # Drop-down terminal of the niri session (F12 → ghostty +toggle-quick-terminal).
 quick-terminal-position = top

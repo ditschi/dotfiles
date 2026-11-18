@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 
 import jinja2
@@ -124,8 +125,19 @@ def test_role_runs_only_with_the_feature():
     assert role["when"] == "'niri' in machine_features"
 
 
+def test_entry_file_includes_every_topic_file():
+    niri = GROUP / ".config/niri"
+    includes = re.findall(
+        r'^include "([^"]+)"', (niri / "dotfiles.kdl").read_text(), re.M
+    )
+    topics = sorted(
+        p.relative_to(niri).as_posix() for p in (niri / "dotfiles").glob("*.kdl")
+    )
+    assert sorted(includes) == topics and "dotfiles/binds.kdl" in includes
+
+
 def test_dotfile_group_binds_f12_and_mod_e():
-    text = (GROUP / ".config/niri/dotfiles.kdl").read_text()
+    text = (GROUP / ".config/niri/dotfiles/binds.kdl").read_text()
     assert (
         'F12 hotkey-overlay-title="Drop-down terminal" { spawn "ghostty" "+toggle-quick-terminal"; }'
         in text
@@ -138,7 +150,9 @@ def test_dotfile_group_binds_f12_and_mod_e():
 def test_ghostty_settings():
     lines = [
         line
-        for line in (GROUP / ".config/ghostty/dotfiles.conf").read_text().splitlines()
+        for line in (GROUP / ".config/ghostty/dotfiles.ghostty")
+        .read_text()
+        .splitlines()
         if line and not line.startswith("#")
     ]
     assert lines == [

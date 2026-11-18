@@ -38,35 +38,8 @@
       Nothing installed.
   when: not niri_desktop_supported
 
-# A host that added the PPAs with add-apt-repository is cleaned up once by hand
-# (README): next to the role's sources apt would see each PPA twice with another key.
-- name: Look for PPA sources written by add-apt-repository
-  ansible.builtin.stat:
-    path: "{{ niri_desktop_source_dir }}/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
-  loop: "{{ niri_desktop_ppas }}"
-  loop_control:
-    label: "{{ item.name }}"
-  register: niri_desktop_old_sources
-  when: niri_desktop_supported
-
-- name: List the add-apt-repository sources
-  ansible.builtin.set_fact:
-    niri_desktop_old_files: >-
-      {{ niri_desktop_old_sources.results | default([])
-         | selectattr('stat', 'defined') | selectattr('stat.exists')
-         | map(attribute='stat.path') | list }}
-
-- name: Install nothing while add-apt-repository sources are present
-  ansible.builtin.debug:
-    msg: >-
-      Feature niri: remove the PPA sources written by add-apt-repository once by hand,
-      then run again: sudo rm {{ niri_desktop_old_files | join(' ') }}
-  when: niri_desktop_old_files | length > 0
-
 - name: Install niri, DMS and Ghostty from the Dux PPAs
-  when:
-    - niri_desktop_supported
-    - niri_desktop_old_files | length == 0
+  when: niri_desktop_supported
   block:
     - name: Install the PPA signing key
       ansible.builtin.copy:
@@ -75,10 +48,12 @@
         mode: "0644"
       register: niri_desktop_key_file
 
+    # The file names add-apt-repository uses (the official install), so a host set up
+    # by hand is taken over: the file is replaced, never doubled.
     - name: Add the Dux PPA sources
       ansible.builtin.template:
         src: duxlabs.sources.j2
-        dest: "{{ niri_desktop_source_dir }}/duxlabs-{{ item.name }}.sources"
+        dest: "{{ niri_desktop_source_dir }}/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
         mode: "0644"
       loop: "{{ niri_desktop_ppas }}"
       loop_control:

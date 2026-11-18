@@ -23,7 +23,7 @@ The owner wants niri with the Dux Modular Shell (DMS) as a desktop session that 
 
 ## Impact
 
-- Profiles: desktops (private and work) that select `niri`; today the ThinkPad L13, which selects the feature with this change; its two add-apt-repository source files are removed once by hand, then the existing install is adopted. Servers and containers are unaffected.
+- Profiles: desktops (private and work) that select `niri`; today the ThinkPad L13, which selects the feature with this change; its hand install is taken over, because the role uses the file names of the official install. Servers and containers are unaffected.
 - Code: `ansible/group_vars/all/features.yml`, `ansible/roles/niri_desktop/` (new), `ansible/workstation.yml`, `machine_cli/` (new step in setup and update), `home/niri/` (new group), `home/core/.shell/zsh/plugins.zsh`, `home/core/.shell/bash/tools.bash`, tests under `tests/unit/`, `docs/features.md`.
 - New external dependency: the duxlabs PPAs (one maintainer group, key `6354D7C7146C2DD8F98892895ABFA2A5F21E824E`).
 - Made in the worktree `$(machine repo)/.worktrees/niri-desktop`, because the change adds dotfiles, shell completion and Ansible behaviour that the live checkout would apply to the host at once.

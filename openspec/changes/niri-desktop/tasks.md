@@ -3,7 +3,7 @@
 ## 1. Feature and Ansible role
 
 - [x] 1.1 Add the feature `niri` to `ansible/group_vars/all/features.yml` (desktop optional, server and container excluded, group `niri`) and cover menu and exclusions in `tests/unit/test_features.py`; verify `pytest tests/unit/test_features.py -q`
-- [x] 1.2 Add `ansible/roles/niri_desktop/` (defaults, `files/duxlabs.asc`, two deb822 templates, `tasks/main.yml`, README) modelled on `cosmic_desktop`: Release check for both PPAs, warning when unsupported, removal of the `add-apt-repository` files, install `niri dms ghostty`, display manager unchanged; wire it into `ansible/workstation.yml` behind the feature (tag `niri`); verify `ansible-lint ansible/*.yml` and `ansible-playbook --syntax-check ansible/site.yml`
+- [x] 1.2 Add `ansible/roles/niri_desktop/` (defaults, `files/duxlabs.asc`, one deb822 template, `tasks/main.yml`, README) modelled on `cosmic_desktop`: Release check for both PPAs, warning when unsupported, removal of the `add-apt-repository` files, install `niri dms ghostty`, display manager unchanged; wire it into `ansible/workstation.yml` behind the feature (tag `niri`); verify `ansible-lint ansible/*.yml` and `ansible-playbook --syntax-check ansible/site.yml`
 - [x] 1.3 Add `tests/unit/test_niri_desktop.py`: key fingerprint `6354D7C7146C2DD8F98892895ABFA2A5F21E824E`, source templates (`Signed-By`, URIs), role wired behind the feature; verify `pytest tests/unit/test_niri_desktop.py -q`
 
 ## 2. Dotfile group and machine step
@@ -15,7 +15,7 @@
 
 ## 3. Validation
 
-- [ ] 3.1 Remove the two add-apt-repository sources on the L13 by hand, run `machine update` and confirm: role sources present, `apt update` clean, `/etc/systemd/user/graphical-session.target.wants/dms.service` gone, `dms setup` skipped, both include lines present once, F12 toggles the quick terminal and Mod+E opens the file manager after `niri msg action load-config-file`, GNOME login does not start `dms.service`
+- [ ] 3.1 Run `machine update` on the L13 and confirm: `duxlabs-ubuntu-{dux-repo,dms}-resolute.sources` with `Signed-By: /etc/apt/keyrings/duxlabs.asc`, `apt update` clean, `/etc/systemd/user/graphical-session.target.wants/dms.service` gone, `dms setup` skipped, both include lines present once, F12 toggles the quick terminal and Mod+E opens the file manager after `niri msg action load-config-file`, GNOME login does not start `dms.service`
 - [x] 3.2 Run `pytest tests/unit -q` (setup and update flow changed), then `pre-commit run --files <changed paths>`, then `openspec validate niri-desktop --strict`
 - [x] 3.3 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change touches the setup and update flow and adds a shared Ansible role; fix findings
 

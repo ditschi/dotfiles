@@ -83,14 +83,13 @@ def _all_tasks(tasks):
         yield from _all_tasks(task.get("block", []))
 
 
-def test_add_apt_repository_files_stop_the_install_without_cleanup():
+def test_sources_use_the_official_file_names_without_cleanup():
     tasks = _tasks()
     install = next(t for t in tasks if t.get("block"))
-    assert "niri_desktop_old_files | length == 0" in install["when"]
-    names = [t["name"] for t in tasks]
-    assert names.index(
-        "Look for PPA sources written by add-apt-repository"
-    ) < names.index(install["name"])
+    template = next(t for t in install["block"] if "ansible.builtin.template" in t)
+    assert template["ansible.builtin.template"]["dest"].endswith(
+        "/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
+    )
     # No cleanup code: nothing in the role deletes a file.
     for task in _all_tasks(tasks):
         assert task.get("ansible.builtin.file", {}).get("state") != "absent"

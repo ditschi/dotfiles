@@ -1,0 +1,9 @@
+---
+# Tailscale's stable apt repository; key pinned in files/tailscale.asc.
+tailscale_repo_base: https://pkgs.tailscale.com/stable
+tailscale_keyring: /etc/apt/keyrings/tailscale.asc
+tailscale_source: /etc/apt/sources.list.d/tailscale.sources
+# Written by Tailscale's install script; replaced by tailscale_source.
+tailscale_legacy_source: /etc/apt/sources.list.d/tailscale.list
+tailscale_packages:
+  - tailscale

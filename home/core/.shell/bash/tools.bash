@@ -51,5 +51,6 @@ if declare -F dotfiles_cache_eval >/dev/null; then
             dotfiles_cache_eval gh gh completion -s bash
         fi
         dotfiles_cache_eval git-lfs git-lfs completion bash
+        dotfiles_cache_eval tailscale tailscale completion bash
     fi
 fi

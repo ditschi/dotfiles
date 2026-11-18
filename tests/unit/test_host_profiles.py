@@ -1742,3 +1742,24 @@ def test_tee_stderr_survives_undecodable_bytes():
         ["sh", "-c", "printf '\\377bad' >&2"], check=False, tee_stderr=True
     )
     assert result.stderr.endswith("bad")
+
+
+def test_tailscale_login_without_binary_says_not_installed(tmp_path: Path, monkeypatch):
+    cli_mod, machine, _repo = _machine_env(tmp_path, monkeypatch)
+    ssh_keys = sys.modules["machine_cli.ssh_keys"]
+    messages = []
+    monkeypatch.setattr(ssh_keys, "log", messages.append)
+    monkeypatch.setattr(cli_mod.system, "have", lambda _name: False)
+    ran = []
+    monkeypatch.setattr(cli_mod.system, "run", lambda cmd, **_k: ran.append(cmd))
+
+    machine.maybe_tailscale_login(["tailscale"])
+
+    assert messages == [
+        "tailscale not installed (see the Ansible output); later: sudo tailscale up"
+    ]
+    assert ran == []
+
+    messages.clear()
+    machine.maybe_tailscale_login(["zsh-full"])
+    assert messages == []

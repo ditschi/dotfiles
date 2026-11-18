@@ -485,7 +485,9 @@ class SshKeysMixin:
         if "tailscale" not in features:
             return
         if not system.have("tailscale"):
-            log("tailscale feature set; package install via ansible")
+            log(
+                "tailscale not installed (see the Ansible output); later: sudo tailscale up"
+            )
             return
         if not system.is_tty():
             log("run: sudo tailscale up")

@@ -115,6 +115,15 @@
     - role: cosmic_desktop
       when: "'cosmic' in machine_features"
 
+- name: Tailscale (official apt repository)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [tailscale]
+  roles:
+    - role: tailscale
+      when: "'tailscale' in machine_features"
+
 - name: Monitoring (Telegraf)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

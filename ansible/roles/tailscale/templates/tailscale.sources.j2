@@ -1,0 +1,6 @@
+# Managed by ansible role tailscale — do not edit by hand
+Types: deb
+URIs: {{ tailscale_repo_base }}/{{ tailscale_distro }}/
+Suites: {{ ansible_facts.distribution_release }}
+Components: main
+Signed-By: {{ tailscale_keyring }}

@@ -1,0 +1,105 @@
+---
+# Raspberry Pi OS reports itself as Debian.
+- name: Map the distribution to the Tailscale repository
+  ansible.builtin.set_fact:
+    tailscale_distro: >-
+      {{ {'Ubuntu': 'ubuntu', 'Debian': 'debian'}.get(ansible_facts.distribution, '') }}
+
+- name: Check whether the Tailscale repository serves this release
+  ansible.builtin.uri:
+    url: "{{ tailscale_repo_base }}/{{ tailscale_distro }}/dists/{{ ansible_facts.distribution_release }}/Release"
+    method: HEAD
+    status_code: [200, 404]
+  register: tailscale_release
+  check_mode: false
+  failed_when: false
+  when: tailscale_distro | length > 0
+
+- name: Decide whether Tailscale is installed here
+  ansible.builtin.set_fact:
+    tailscale_supported: "{{ (tailscale_release.status | default(0)) == 200 }}"
+
+- name: Warn when Tailscale cannot be installed here
+  ansible.builtin.debug:
+    msg: >-
+      Feature tailscale: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
+      ({{ ansible_facts.distribution_release }}) is not supported;
+      {{ 'the repository serves only Ubuntu and Debian'
+         if tailscale_distro | length == 0
+         else 'the repository could not be reached'
+         if (tailscale_release.status | default(0)) == -1
+         else 'the repository has no packages for this release' }}.
+      Nothing installed.
+  when: not tailscale_supported
+
+# A snap is not replaced automatically: two tailscaled must never run at once, and the
+# one-time move (README) stops Tailscale, which can cut off a host reached through it.
+- name: Check for snapd
+  ansible.builtin.stat:
+    path: /usr/bin/snap
+  register: tailscale_snapd
+
+- name: Check for the Tailscale snap
+  ansible.builtin.command: snap list tailscale
+  register: tailscale_snap
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: tailscale_snapd.stat.exists
+
+- name: Keep the Tailscale snap and install nothing
+  ansible.builtin.debug:
+    msg: >-
+      Feature tailscale: Tailscale is installed as a snap; the package is not installed
+      next to it. Move to the package once by hand (see ansible/roles/tailscale/README.md),
+      then run again.
+  when: tailscale_snap.rc | default(1) == 0
+
+- name: Install Tailscale from the official repository
+  when:
+    - tailscale_supported
+    - tailscale_snap.rc | default(1) != 0
+  block:
+    - name: Install the repository signing key
+      ansible.builtin.copy:
+        src: tailscale.asc
+        dest: "{{ tailscale_keyring }}"
+        mode: "0644"
+      register: tailscale_key_file
+
+    - name: Add the Tailscale source
+      ansible.builtin.template:
+        src: tailscale.sources.j2
+        dest: "{{ tailscale_source }}"
+        mode: "0644"
+      register: tailscale_source_file
+
+    # Tailscale's install script writes the same repository as a one-line source.
+    - name: Remove the source written by Tailscale's install script
+      ansible.builtin.file:
+        path: "{{ tailscale_legacy_source }}"
+        state: absent
+      register: tailscale_legacy_source_file
+
+    - name: Look up the tailscale candidate
+      ansible.builtin.command: apt-cache policy tailscale
+      environment:
+        LC_ALL: C
+      register: tailscale_candidate
+      changed_when: false
+      check_mode: false
+
+    # Without cache_valid_time: a fresh cache from before the source was added has no Tailscale lists.
+    - name: Refresh the apt cache for the Tailscale repository
+      ansible.builtin.apt:
+        update_cache: true
+      when: >-
+        tailscale_key_file is changed or tailscale_source_file is changed
+        or tailscale_legacy_source_file is changed
+        or 'Candidate:' not in tailscale_candidate.stdout
+        or 'Candidate: (none)' in tailscale_candidate.stdout
+
+    - name: Install Tailscale
+      ansible.builtin.apt:
+        name: "{{ tailscale_packages }}"
+        state: present

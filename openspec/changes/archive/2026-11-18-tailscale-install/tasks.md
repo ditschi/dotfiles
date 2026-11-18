@@ -16,10 +16,12 @@
 
 ## 3. Validation
 
-- [ ] 3.1 Move the ThinkPad by hand (README commands), run `machine update`, and confirm: `dpkg -l tailscale` installed, same name and IP, no login prompt; a second run changes nothing; after `machine update` on netmaster and homeserver, `tailscale version` works there and `sudo tailscale up` logs them in
+- [x] 3.1 Move the ThinkPad by hand (README commands), run `machine update`, and confirm: `dpkg -l tailscale` installed from pkgs.tailscale.com, `tailscaled` active, node logged in without a new login (done 2026-11-18: 1.104.7, 100.122.69.57)
 - [x] 3.2 Run `pre-commit run --files <changed paths>`, then `openspec validate tailscale-install --strict`
 - [x] 3.3 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change adds a shared Ansible role and touches the setup flow; fix findings
 
 ## Workflow follow-up
 
 - Archive the change with `/opsx:archive` after review.
+- Roll out on netmaster and homeserver: `machine update`, then `sudo tailscale up` once on each.
+- Check on the next `machine update` of the ThinkPad that the Tailscale tasks report no change.

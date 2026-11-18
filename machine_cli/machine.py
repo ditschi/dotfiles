@@ -27,6 +27,7 @@ from .monitoring import MonitoringMixin
 from .homelab_node import HomelabNodeMixin
 from .disk_space import DiskSpaceMixin
 from .syncthing_ignores import SyncthingIgnoresMixin
+from .niri_config import NiriConfigMixin
 
 
 class Machine(
@@ -50,6 +51,7 @@ class Machine(
     HomelabNodeMixin,
     DiskSpaceMixin,
     SyncthingIgnoresMixin,
+    NiriConfigMixin,
 ):
     def __init__(self) -> None:
         self.home = Path.home()

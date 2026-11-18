@@ -969,6 +969,10 @@ class UpdateMixin:
                 # cmd_apply restores the host config itself before it fails.
                 runner.run("ansible apply", lambda: self.cmd_apply(apply_args))
 
+        # After Ansible, which installs niri and DMS.
+        if not not_set_up:
+            runner.run("niri config", self.run_niri_config)
+
         if sudo_failed and profile_changed and profile_backup:
             # The steps above used the new host config. Like a failed apply, it only
             # counts as applied when Ansible ran with it; the next update retries.

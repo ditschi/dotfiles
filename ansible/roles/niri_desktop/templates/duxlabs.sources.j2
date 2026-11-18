@@ -1,0 +1,6 @@
+# Managed by ansible role niri_desktop — do not edit by hand
+Types: deb
+URIs: {{ item.url }}/
+Suites: {{ ansible_facts.distribution_release }}
+Components: main
+Signed-By: {{ niri_desktop_keyring }}

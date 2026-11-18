@@ -44,7 +44,7 @@ def test_new_private_server():
     defaults = features.defaults("private", "server")
     offered = features.allowed("private", "server")
     assert "etckeeper" in defaults
-    for name in ("gnome", "fonts", "thunderbird", "cosmic"):
+    for name in ("gnome", "fonts", "thunderbird", "cosmic", "niri"):
         assert name not in offered
     for name in ("tailscale", "syncthing"):
         assert name in offered and name not in defaults
@@ -82,6 +82,21 @@ def test_cosmic_only_on_desktops():
 def test_cosmic_selects_its_dotfile_group():
     assert "cosmic" in features.dotfile_groups("private", "desktop", ["cosmic"])
     assert "cosmic" not in features.dotfile_groups("private", "desktop", ["gnome"])
+
+
+def test_niri_only_on_desktops():
+    for context in ("private", "work"):
+        assert "niri" in features.allowed(context, "desktop")
+        assert "niri" not in features.defaults(context, "desktop")
+        for device in ("server", "container"):
+            assert "niri" not in features.allowed(context, device)
+            assert features.split(["niri"], context, device) == ([], ["niri"])
+    assert features.split(["niri"], "", "container") == ([], ["niri"])
+
+
+def test_niri_selects_its_dotfile_group():
+    assert "niri" in features.dotfile_groups("work", "desktop", ["niri"])
+    assert "niri" not in features.dotfile_groups("work", "desktop", ["cosmic"])
 
 
 def test_editor_command_on_desktops_and_servers():

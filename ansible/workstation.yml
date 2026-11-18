@@ -124,6 +124,15 @@
     - role: tailscale
       when: "'tailscale' in machine_features"
 
+- name: niri desktop with DMS (Ubuntu via PPAs)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [niri]
+  roles:
+    - role: niri_desktop
+      when: "'niri' in machine_features"
+
 - name: Monitoring (Telegraf)
   hosts: "{{ target_hosts | default('all') }}"
   become: true

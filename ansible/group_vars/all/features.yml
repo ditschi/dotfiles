@@ -32,6 +32,12 @@ feature_table:
     desktop: optional
     server: excluded
     container: excluded
+  niri:
+    help: niri + Dux Modular Shell session (F12 drop-down terminal)
+    groups: [niri]
+    desktop: optional
+    server: excluded
+    container: excluded
   docker:
     help: Docker engine packages
     work: optional

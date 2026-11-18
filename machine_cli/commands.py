@@ -145,6 +145,9 @@ class CommandsMixin:
                     args.playbook, args.limit, args.local, ask_become
                 ),
             )
+        # After Ansible, which installs niri and DMS; the step needs the dotfile group.
+        if not args.skip_dotfiles:
+            runner.run("niri config", self.run_niri_config)
 
         if "ssh-host-key" in features and device != "container":
 

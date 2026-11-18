@@ -1426,6 +1426,7 @@ def _ordered_setup(tmp_path, monkeypatch, fail=(), interrupt=(), calls=None, **a
         ("run_tools_install", "tools"),
         ("run_syncthing_ignores", "syncthing"),
         ("run_ansible_or_hint", "ansible"),
+        ("run_niri_config", "niri"),
         ("provision_host_ssh_key", "ssh"),
         ("maybe_tailscale_login", "tailscale"),
         ("ensure_update_timer", "timer"),
@@ -1469,6 +1470,7 @@ def test_setup_applies_the_shell_before_ansible(tmp_path, monkeypatch):
         "syncthing",
         "ready",
         "ansible",
+        "niri",
         "ssh",
         "tailscale",
         "timer",
@@ -1485,6 +1487,7 @@ def test_setup_env_pull_failure_still_applies_everything(tmp_path, monkeypatch):
         "syncthing",
         "ready",
         "ansible",
+        "niri",
         "ssh",
         "tailscale",
         "timer",
@@ -1499,6 +1502,7 @@ def test_setup_dotfile_failure_skips_tools_but_runs_ansible(tmp_path, monkeypatc
         "dotfiles",
         "syncthing",
         "ansible",
+        "niri",
         "ssh",
         "tailscale",
         "timer",
@@ -1508,7 +1512,7 @@ def test_setup_dotfile_failure_skips_tools_but_runs_ansible(tmp_path, monkeypatc
 def test_setup_ansible_failure_still_handles_key_and_timers(tmp_path, monkeypatch):
     code, calls = _ordered_setup(tmp_path, monkeypatch, fail={"ansible"})
     assert code == 1
-    assert calls[-4:] == ["ansible", "ssh", "tailscale", "timer"]
+    assert calls[-5:] == ["ansible", "niri", "ssh", "tailscale", "timer"]
 
 
 def test_setup_skip_dotfiles_runs_only_ansible_and_later_steps(tmp_path, monkeypatch):
@@ -1525,6 +1529,7 @@ def test_setup_without_ansible_prints_no_ready_line(tmp_path, monkeypatch):
         "dotfiles",
         "tools",
         "syncthing",
+        "niri",
         "ssh",
         "tailscale",
         "timer",

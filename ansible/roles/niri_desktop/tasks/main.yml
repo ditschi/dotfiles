@@ -1,0 +1,115 @@
+---
+- name: Check whether both Dux PPAs build this Ubuntu release
+  ansible.builtin.uri:
+    url: "{{ item.url }}/dists/{{ ansible_facts.distribution_release }}/Release"
+    method: HEAD
+    status_code: [200, 404]
+  loop: "{{ niri_desktop_ppas }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: niri_desktop_release
+  check_mode: false
+  failed_when: false
+  when: ansible_facts.distribution == 'Ubuntu'
+
+# Skipped items (not Ubuntu) and failed lookups have no status 200.
+- name: List the Dux PPAs without a build for this release
+  ansible.builtin.set_fact:
+    niri_desktop_missing: >-
+      {{ niri_desktop_release.results | default([])
+         | rejectattr('status', 'defined') | map(attribute='item.name') | list
+         + niri_desktop_release.results | default([])
+         | selectattr('status', 'defined') | rejectattr('status', 'equalto', 200)
+         | map(attribute='item.name') | list }}
+
+- name: Decide whether niri is installed here
+  ansible.builtin.set_fact:
+    niri_desktop_supported: >-
+      {{ ansible_facts.distribution == 'Ubuntu' and niri_desktop_missing | length == 0 }}
+
+- name: Warn when niri cannot be installed here
+  ansible.builtin.debug:
+    msg: >-
+      Feature niri: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
+      ({{ ansible_facts.distribution_release }}) is not supported;
+      {{ 'no build for this release in ppa:duxlabs/' ~ (niri_desktop_missing | join(', ppa:duxlabs/'))
+         if ansible_facts.distribution == 'Ubuntu'
+         else 'the Dux PPAs support only Ubuntu' }}.
+      Nothing installed.
+  when: not niri_desktop_supported
+
+- name: Install niri, DMS and Ghostty from the Dux PPAs
+  when: niri_desktop_supported
+  block:
+    - name: Install the PPA signing key
+      ansible.builtin.copy:
+        src: duxlabs.asc
+        dest: "{{ niri_desktop_keyring }}"
+        mode: "0644"
+      register: niri_desktop_key_file
+
+    - name: Add the Dux PPA sources
+      ansible.builtin.template:
+        src: duxlabs.sources.j2
+        dest: "{{ niri_desktop_source_dir }}/duxlabs-{{ item.name }}.sources"
+        mode: "0644"
+      loop: "{{ niri_desktop_ppas }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: niri_desktop_source_files
+
+    # add-apt-repository names its files duxlabs-ubuntu-<ppa>-<codename>.sources;
+    # apt would see each source twice next to the files above.
+    - name: Remove the sources add-apt-repository wrote for the same PPAs
+      ansible.builtin.file:
+        path: "{{ niri_desktop_source_dir }}/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
+        state: absent
+      loop: "{{ niri_desktop_ppas }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: niri_desktop_old_sources
+
+    - name: Look up the candidates of niri and dms
+      ansible.builtin.command: apt-cache policy niri dms
+      environment:
+        LC_ALL: C
+      register: niri_desktop_candidate
+      changed_when: false
+      check_mode: false
+
+    # Without cache_valid_time: a fresh cache from before the sources were added has no PPA lists.
+    - name: Refresh the apt cache for the PPAs
+      ansible.builtin.apt:
+        update_cache: true
+      when: >-
+        niri_desktop_key_file is changed or niri_desktop_source_files is changed
+        or niri_desktop_old_sources is changed
+        or (niri_desktop_candidate.stdout | regex_findall('Candidate:') | length) < 2
+        or 'Candidate: (none)' in niri_desktop_candidate.stdout
+
+    - name: Read the current display manager
+      ansible.builtin.slurp:
+        src: /etc/X11/default-display-manager
+      register: niri_desktop_dm_before
+      failed_when: false
+
+    - name: Install the niri session, DMS and Ghostty
+      ansible.builtin.apt:
+        name: "{{ niri_desktop_packages }}"
+        state: present
+        install_recommends: true
+
+    - name: Read the display manager after the install
+      ansible.builtin.slurp:
+        src: /etc/X11/default-display-manager
+      register: niri_desktop_dm_after
+      failed_when: false
+
+    - name: Check that the display manager did not change
+      ansible.builtin.assert:
+        that:
+          - (niri_desktop_dm_after.content | default('') | b64decode | trim) == (niri_desktop_dm_before.content | default('') | b64decode | trim)
+        fail_msg: >-
+          Installing niri changed /etc/X11/default-display-manager; run
+          'sudo dpkg-reconfigure gdm3' (or the previous display manager) to switch back.
+        quiet: true

@@ -3393,6 +3393,16 @@ def test_update_syncthing_failure_still_runs_ansible(update_env, monkeypatch):
     assert calls == ["env", "dotfiles", "tools", "syncthing", "apply"]
 
 
+def test_update_runs_niri_config_after_ansible(update_env, monkeypatch):
+    machine, _repo, other, _home, calls = update_env
+    monkeypatch.setattr(machine, "run_syncthing_ignores", lambda: None)
+    monkeypatch.setattr(machine, "run_niri_config", lambda: calls.append("niri"))
+    _push_change(other, "ansible/roles/x.yml", "x\n")
+
+    assert _update(machine) == 0
+    assert calls == ["env", "dotfiles", "tools", "apply", "niri"]
+
+
 def test_manual_update_syncs_technical_user_passwords_before_env_pull(
     update_env, monkeypatch
 ):

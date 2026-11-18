@@ -1,0 +1,14 @@
+---
+# Dux PPAs (ppa:duxlabs/dux-repo, ppa:duxlabs/dms); both signed by the key pinned in
+# files/duxlabs.asc.
+niri_desktop_ppas:
+  - name: dux-repo
+    url: https://ppa.launchpadcontent.net/duxlabs/dux-repo/ubuntu
+  - name: dms
+    url: https://ppa.launchpadcontent.net/duxlabs/dms/ubuntu
+niri_desktop_keyring: /etc/apt/keyrings/duxlabs.asc
+niri_desktop_source_dir: /etc/apt/sources.list.d
+niri_desktop_packages:
+  - niri
+  - dms
+  - ghostty

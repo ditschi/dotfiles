@@ -42,5 +42,8 @@ root = "home/gnome-extensions"
 [dotfile_groups.cosmic]
 root = "home/cosmic"
 
+[dotfile_groups.niri]
+root = "home/niri"
+
 [dotfile_groups.memory-headroom]
 root = "home/memory-headroom"

@@ -28,6 +28,12 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 - Investigations in a design.md and in `openspec/investigations/` are unknowns, not permission to remove behaviour.
 - When a change alters documented behaviour, update the spec through an OpenSpec change.
 
+## Existing host setups
+
+- Before a feature installs or configures something, find out how the hosts that will select it are set up today (host configs in `machine/hosts/`, and a look at reachable hosts), and record the result in the design's Context.
+- When only a few hosts differ from the clean setup (another source such as a snap, a manual install, leftovers), clean them up once by hand and keep only the clean install in the dotfiles. Put the manual steps in the design's Migration Plan and, when they may be needed again, in the role README or docs; do not add migration or cleanup code.
+- Code may detect a differing setup only to stop with a hint, never to install next to it or to convert it. Migration code needs the owner's approval, for example when many hosts are affected.
+
 ## Planning changes (OpenSpec)
 
 - Plan new features and behaviour changes with OpenSpec (`/opsx-propose`, `/opsx-apply`, `/opsx-archive`; config in [openspec/config.yaml](openspec/config.yaml)). Small edits (aliases, typos) can skip it.

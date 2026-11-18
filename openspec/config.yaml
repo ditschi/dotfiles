@@ -60,6 +60,7 @@ rules:
   design:
     - List alternatives that were considered and why they were rejected, as stated by the owner.
     - Record lasting decisions and their rationale in plain prose, so the archived design.md serves as the decision record.
+    - 'For a feature that installs or configures something, state in Context how the affected hosts are set up today, and follow "Existing host setups" in AGENTS.md: a few differing hosts are cleaned up once by hand (steps in the Migration Plan), not by migration code.'
   specs:
     - Keep each requirement to one behavior and under about 500 characters. When a MODIFIED requirement would grow past that or extends an enumerated list, split it into separate requirements or move the items into scenarios instead of appending.
   tasks:

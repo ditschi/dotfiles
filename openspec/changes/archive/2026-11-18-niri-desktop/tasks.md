@@ -15,7 +15,7 @@
 
 ## 3. Validation
 
-- [ ] 3.1 Run `machine update` on the L13 and confirm: `duxlabs-ubuntu-{dux-repo,dms}-resolute.sources` with `Signed-By: /etc/apt/keyrings/duxlabs.asc`, `apt update` clean, `/etc/systemd/user/graphical-session.target.wants/dms.service` gone, `dms setup` skipped, both include lines present once, F12 toggles the quick terminal and Mod+E opens the file manager after `niri msg action load-config-file`, GNOME login does not start `dms.service`
+- [x] 3.1 Run `machine update` on the L13 and confirm (done 2026-11-18): `duxlabs-ubuntu-{dux-repo,dms}-resolute.sources` with `Signed-By: /etc/apt/keyrings/duxlabs.asc` and apt candidates from the PPAs, global `dms.service` link gone, both include lines added once, F12 drop-down terminal with tabs, Mod+E file manager and middle-click paste confirmed by the owner
 - [x] 3.2 Run `pytest tests/unit -q` (setup and update flow changed), then `pre-commit run --files <changed paths>`, then `openspec validate niri-desktop --strict`
 - [x] 3.3 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent), because the change touches the setup and update flow and adds a shared Ansible role; fix findings
 

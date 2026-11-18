@@ -42,6 +42,10 @@ def host(tmp_path, monkeypatch):
 
     monkeypatch.setattr(nc.system, "run", run)
     monkeypatch.setattr(nc.system, "have", lambda name: name == "dms")
+    # Never the host's /etc/systemd/user (the dms package links it there).
+    monkeypatch.setattr(
+        nc, "DMS_GLOBAL_FOR_EVERY_SESSION", tmp_path / "etc-user/graphical.wants/dms"
+    )
     return machine, calls
 
 
@@ -98,7 +102,7 @@ def test_second_run_changes_nothing(host, tmp_path, messages):
     assert calls == []
     assert messages == []
     assert _niri(tmp_path).count("dotfiles.kdl") == 1
-    assert _ghostty(tmp_path).count("quick-terminal.conf") == 1
+    assert _ghostty(tmp_path).count("dotfiles.conf") == 1
 
 
 def test_existing_config_is_kept_and_gets_only_the_include(host, tmp_path):
@@ -122,7 +126,7 @@ def test_includes_already_present_are_not_added_again(host, tmp_path, messages):
     machine, calls = host
     _profile(machine, ["niri"])
     niri = DMS_NIRI + 'include  optional=true  "./dotfiles.kdl"\n'
-    ghostty = DMS_GHOSTTY + 'config-file = "?quick-terminal.conf"\n'
+    ghostty = DMS_GHOSTTY + 'config-file = "?dotfiles.conf"\n'
     (tmp_path / ".config/niri").mkdir(parents=True)
     (tmp_path / nc.NIRI_CONFIG).write_text(niri)
     (tmp_path / ".config/ghostty").mkdir(parents=True)
@@ -174,6 +178,37 @@ def test_warns_when_dms_starts_in_every_session(host, tmp_path, messages):
 
     assert len(messages) == 1
     assert messages[0].startswith("WARN ") and "graphical-session.target" in messages[0]
+
+
+def test_warns_when_dms_is_enabled_globally(host, tmp_path, messages):
+    machine, _calls = host
+    _profile(machine, ["niri"])
+    machine.run_niri_config()
+    link = nc.DMS_GLOBAL_FOR_EVERY_SESSION
+    link.parent.mkdir(parents=True)
+    link.symlink_to("/usr/lib/systemd/user/dms.service")
+    messages.clear()
+
+    machine.run_niri_config()
+
+    assert len(messages) == 1
+    assert "sudo systemctl --global disable dms.service" in messages[0]
+
+
+def test_config_that_is_not_utf8_does_not_abort(host, tmp_path):
+    machine, _calls = host
+    _profile(machine, ["niri"])
+    (tmp_path / ".config/niri").mkdir(parents=True)
+    (tmp_path / nc.NIRI_CONFIG).write_bytes(b"// \xff\xfe latin-1 \xe4\n")
+    _wants(tmp_path)
+
+    machine.run_niri_config()
+
+    assert nc.NIRI_INCLUDE in _niri_bytes(tmp_path)
+
+
+def _niri_bytes(home):
+    return (home / nc.NIRI_CONFIG).read_bytes().decode("utf-8", errors="replace")
 
 
 def test_nothing_without_the_feature(host, tmp_path):

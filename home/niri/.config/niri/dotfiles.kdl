@@ -9,7 +9,7 @@
 // included from it. Leave config.kdl and dms/*.kdl to DMS.
 
 binds {
-    // Drop-down terminal (Ghostty quick terminal; settings in ~/.config/ghostty/quick-terminal.conf).
+    // Drop-down terminal (Ghostty quick terminal; settings in ~/.config/ghostty/dotfiles.conf).
     F12 hotkey-overlay-title="Drop-down terminal" { spawn "ghostty" "+toggle-quick-terminal"; }
     // Default file manager for folders, in the home directory.
     Mod+E hotkey-overlay-title="File manager" { spawn-sh "xdg-open ~"; }

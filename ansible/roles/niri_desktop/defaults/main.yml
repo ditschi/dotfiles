@@ -8,7 +8,12 @@ niri_desktop_ppas:
     url: https://ppa.launchpadcontent.net/duxlabs/dms/ubuntu
 niri_desktop_keyring: /etc/apt/keyrings/duxlabs.asc
 niri_desktop_source_dir: /etc/apt/sources.list.d
+# Without recommends (niri recommends alacritty and fuzzel, not needed with Ghostty and
+# DMS); the recommends DMS uses are listed here.
 niri_desktop_packages:
   - niri
   - dms
   - ghostty
+  - gnome-keyring
+  - xdg-desktop-portal-gnome
+  - xdg-desktop-portal-gtk

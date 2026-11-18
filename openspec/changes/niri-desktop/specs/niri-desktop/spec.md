@@ -70,3 +70,10 @@ In the niri session, Mod+E SHALL open a file manager window.
 #### Scenario: Open file manager
 - **WHEN** the user presses Mod+E in a niri session
 - **THEN** a file manager window opens
+
+### Requirement: Ghostty over ssh
+Ghostty sessions from the dotfile group `niri` SHALL make ssh logins usable on hosts without Ghostty's terminfo: Ghostty SHALL install its terminfo on the remote host, or fall back to a TERM the host knows, while keeping DMS's other shell integration choices.
+
+#### Scenario: Host without Ghostty terminfo
+- **WHEN** the user types in zsh with autosuggestions over ssh on a host that had no `xterm-ghostty` terminfo
+- **THEN** suggestions and deletions are drawn without leftover characters

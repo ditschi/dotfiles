@@ -12,10 +12,18 @@
 #                                                       6354D7C7146C2DD8F98892895ABFA2A5F21E824E
 #   /etc/apt/sources.list.d/duxlabs-dux-repo.sources    deb822 sources, Signed-By the key above
 #   /etc/apt/sources.list.d/duxlabs-dms.sources
-#   niri, dms, ghostty (with recommends: the portals and gnome-keyring DMS uses)
-# Removes the files add-apt-repository writes for the same PPAs
-# (duxlabs-ubuntu-dux-repo-<codename>.sources, duxlabs-ubuntu-dms-<codename>.sources),
-# so apt does not see a source twice.
+#   niri, dms, ghostty, gnome-keyring, xdg-desktop-portal-gnome, xdg-desktop-portal-gtk
+#   (without recommends: niri recommends alacritty and fuzzel, not needed here)
+#
+# dms.service: the dms package enables it globally for graphical-session.target, so
+# it would also start in GNOME and COSMIC. The role disables that
+# (systemctl --global disable dms.service); machine enables it for niri.service only.
+#
+# A host that added the PPAs with add-apt-repository is not changed: the role installs
+# nothing and says so, because apt would see each PPA twice with another key. Remove
+# those files once by hand, then run again:
+#   sudo rm /etc/apt/sources.list.d/duxlabs-ubuntu-dux-repo-<codename>.sources \
+#     /etc/apt/sources.list.d/duxlabs-ubuntu-dms-<codename>.sources
 #
 # The display manager stays as it was (GDM on Ubuntu); niri is chosen as a session at
 # login. The DMS greeter is not installed.
@@ -23,7 +31,7 @@
 # The user part is done by `machine setup` / `machine update` after Ansible (step
 # `niri config`): `dms setup headless --compositor niri --terminal ghostty
 # --skip-existing` once when ~/.config/niri/config.kdl is missing, the include lines for
-# ~/.config/niri/dotfiles.kdl and ~/.config/ghostty/quick-terminal.conf (dotfile group
+# ~/.config/niri/dotfiles.kdl and ~/.config/ghostty/dotfiles.conf (dotfile group
 # niri), and `dms systemd enable` so dms.service starts with the niri session only.
 # A hand-added F12 bind left in config.kdl next to the include is harmless (same bind;
 # the include wins) and can be removed.

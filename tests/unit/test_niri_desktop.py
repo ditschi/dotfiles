@@ -43,7 +43,14 @@ def test_both_ppas_and_the_packages():
         "dms": "https://ppa.launchpadcontent.net/duxlabs/dms/ubuntu",
     }
     assert defaults["niri_desktop_keyring"] == "/etc/apt/keyrings/duxlabs.asc"
-    assert defaults["niri_desktop_packages"] == ["niri", "dms", "ghostty"]
+    assert defaults["niri_desktop_packages"] == [
+        "niri",
+        "dms",
+        "ghostty",
+        "gnome-keyring",
+        "xdg-desktop-portal-gnome",
+        "xdg-desktop-portal-gtk",
+    ]
 
 
 def test_sources_are_signed_by_the_pinned_key():
@@ -65,13 +72,43 @@ def test_sources_are_signed_by_the_pinned_key():
         }
 
 
-def test_role_replaces_the_add_apt_repository_files():
-    tasks = (ROLE / "tasks/main.yml").read_text()
-    assert (
-        "duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
-        in tasks
+def _tasks():
+    return yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+
+
+def _all_tasks(tasks):
+    for task in tasks:
+        yield task
+        yield from _all_tasks(task.get("block", []))
+
+
+def test_add_apt_repository_files_stop_the_install_without_cleanup():
+    tasks = _tasks()
+    install = next(t for t in tasks if t.get("block"))
+    assert "niri_desktop_old_files | length == 0" in install["when"]
+    names = [t["name"] for t in tasks]
+    assert names.index(
+        "Look for PPA sources written by add-apt-repository"
+    ) < names.index(install["name"])
+    # No cleanup code: nothing in the role deletes a file.
+    for task in _all_tasks(tasks):
+        assert task.get("ansible.builtin.file", {}).get("state") != "absent"
+
+
+def test_dms_is_not_started_in_every_session_and_no_recommends():
+    block = next(t for t in _tasks() if t.get("block"))["block"]
+    disable = next(t for t in block if "ansible.builtin.systemd_service" in t)
+    assert disable["ansible.builtin.systemd_service"] == {
+        "name": "dms.service",
+        "scope": "global",
+        "enabled": False,
+    }
+    install = next(
+        t
+        for t in block
+        if "ansible.builtin.apt" in t and "name" in t["ansible.builtin.apt"]
     )
-    assert "duxlabs-{{ item.name }}.sources" in tasks
+    assert install["ansible.builtin.apt"]["install_recommends"] is False
 
 
 def test_role_runs_only_with_the_feature():
@@ -98,16 +135,16 @@ def test_dotfile_group_binds_f12_and_mod_e():
     )
 
 
-def test_quick_terminal_settings():
+def test_ghostty_settings():
     lines = [
         line
-        for line in (GROUP / ".config/ghostty/quick-terminal.conf")
-        .read_text()
-        .splitlines()
+        for line in (GROUP / ".config/ghostty/dotfiles.conf").read_text().splitlines()
         if line and not line.startswith("#")
     ]
     assert lines == [
         "quick-terminal-position = top",
         "quick-terminal-size = 45%, 85%",
         "quick-terminal-autohide = true",
+        # The whole list: an included list replaces DMS's (cursor/sudo/title kept).
+        "shell-integration-features = no-cursor,sudo,title,ssh-env,ssh-terminfo",
     ]

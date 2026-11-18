@@ -38,8 +38,35 @@
       Nothing installed.
   when: not niri_desktop_supported
 
-- name: Install niri, DMS and Ghostty from the Dux PPAs
+# A host that added the PPAs with add-apt-repository is cleaned up once by hand
+# (README): next to the role's sources apt would see each PPA twice with another key.
+- name: Look for PPA sources written by add-apt-repository
+  ansible.builtin.stat:
+    path: "{{ niri_desktop_source_dir }}/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
+  loop: "{{ niri_desktop_ppas }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: niri_desktop_old_sources
   when: niri_desktop_supported
+
+- name: List the add-apt-repository sources
+  ansible.builtin.set_fact:
+    niri_desktop_old_files: >-
+      {{ niri_desktop_old_sources.results | default([])
+         | selectattr('stat', 'defined') | selectattr('stat.exists')
+         | map(attribute='stat.path') | list }}
+
+- name: Install nothing while add-apt-repository sources are present
+  ansible.builtin.debug:
+    msg: >-
+      Feature niri: remove the PPA sources written by add-apt-repository once by hand,
+      then run again: sudo rm {{ niri_desktop_old_files | join(' ') }}
+  when: niri_desktop_old_files | length > 0
+
+- name: Install niri, DMS and Ghostty from the Dux PPAs
+  when:
+    - niri_desktop_supported
+    - niri_desktop_old_files | length == 0
   block:
     - name: Install the PPA signing key
       ansible.builtin.copy:
@@ -58,17 +85,6 @@
         label: "{{ item.name }}"
       register: niri_desktop_source_files
 
-    # add-apt-repository names its files duxlabs-ubuntu-<ppa>-<codename>.sources;
-    # apt would see each source twice next to the files above.
-    - name: Remove the sources add-apt-repository wrote for the same PPAs
-      ansible.builtin.file:
-        path: "{{ niri_desktop_source_dir }}/duxlabs-ubuntu-{{ item.name }}-{{ ansible_facts.distribution_release }}.sources"
-        state: absent
-      loop: "{{ niri_desktop_ppas }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: niri_desktop_old_sources
-
     - name: Look up the candidates of niri and dms
       ansible.builtin.command: apt-cache policy niri dms
       environment:
@@ -83,7 +99,6 @@
         update_cache: true
       when: >-
         niri_desktop_key_file is changed or niri_desktop_source_files is changed
-        or niri_desktop_old_sources is changed
         or (niri_desktop_candidate.stdout | regex_findall('Candidate:') | length) < 2
         or 'Candidate: (none)' in niri_desktop_candidate.stdout
 
@@ -97,7 +112,16 @@
       ansible.builtin.apt:
         name: "{{ niri_desktop_packages }}"
         state: present
-        install_recommends: true
+        install_recommends: false
+
+    # The dms package enables dms.service globally for graphical-session.target, so it
+    # would also start in GNOME and COSMIC; machine enables it for niri.service only.
+    # deb-systemd-helper does not enable it again on upgrades once it is disabled.
+    - name: Do not start DMS in every graphical session
+      ansible.builtin.systemd_service:
+        name: dms.service
+        scope: global
+        enabled: false
 
     - name: Read the display manager after the install
       ansible.builtin.slurp:

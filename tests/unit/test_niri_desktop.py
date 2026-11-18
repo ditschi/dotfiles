@@ -147,4 +147,5 @@ def test_ghostty_settings():
         "quick-terminal-autohide = true",
         # The whole list: an included list replaces DMS's (cursor/sudo/title kept).
         "shell-integration-features = no-cursor,sudo,title,ssh-env,ssh-terminfo",
+        "copy-on-select = true",
     ]

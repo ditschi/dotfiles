@@ -77,3 +77,10 @@ Ghostty sessions from the dotfile group `niri` SHALL make ssh logins usable on h
 #### Scenario: Host without Ghostty terminfo
 - **WHEN** the user types in zsh with autosuggestions over ssh on a host that had no `xterm-ghostty` terminfo
 - **THEN** suggestions and deletions are drawn without leftover characters
+
+### Requirement: Selection goes to the middle-click buffer
+In Ghostty sessions from the dotfile group `niri`, selecting text with the mouse SHALL copy it to the primary selection, so that a middle click pastes it.
+
+#### Scenario: Select and middle-click
+- **WHEN** the user selects text in Ghostty and middle-clicks in another window
+- **THEN** the selected text is pasted

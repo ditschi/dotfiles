@@ -1,0 +1,10 @@
+---
+# Only Match options change, never the listening port, so a reload is enough (also
+# with a socket-activated sshd, whose service reads sshd_config on reload).
+- name: Reload sshd
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_facts.os_family == 'Debian' else 'sshd' }}"
+    state: reloaded
+  when:
+    - ansible_facts.virtualization_type | default('') not in ['docker', 'container', 'podman', 'lxc']
+    - ansible_connection | default('') != 'docker'

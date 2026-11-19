@@ -36,6 +36,7 @@ LEGACY_HEADER = (
 HEADER = re.compile(r"^\s*(host|match)\s+(.*)$", re.IGNORECASE)
 OPTION = re.compile(r"^\s*([A-Za-z]+)\s*[= ]\s*(.*)$")
 KEY_DIRS = ("machine/ssh_keys", "machine/ssh_host_keys")
+KEY_TYPE = re.compile(r"^(ssh-|ecdsa-|sk-)[a-z0-9@.-]+$")
 
 ADD = "bitwarden"
 LOCAL = "local"
@@ -132,6 +133,83 @@ def render_block(
     return "\n".join(lines)
 
 
+def route_args(block: Block) -> Dict[str, str]:
+    """`lan`/`ts`/`jump` of a block whose ProxyCommand is ssh-route, else {}."""
+    words = block.option("ProxyCommand").split()
+    if not words or not words[0].endswith("ssh-route"):
+        return {}
+    routes = {}
+    for word in words[1:]:
+        key, sep, value = word.partition("=")
+        if sep and key in ("lan", "ts", "jump") and value:
+            routes[key] = value
+    return routes
+
+
+def split_jump(value: str) -> Tuple[str, int]:
+    """(`jump host`, port) of a jump route; port 0 when it is missing."""
+    host, sep, port = value.rpartition(":")
+    if not sep or not port.isdigit():
+        return value, 0
+    return host, int(port)
+
+
+def names_of_host(blocks: Sequence[Block], hostname: str) -> set:
+    """Host names that point to `hostname`: itself and every alias of a block
+    whose HostKeyAlias is `hostname` (as ssh-route recognises the jump host)."""
+    wanted = hostname.lower()
+    names = {wanted}
+    for block in blocks:
+        if wanted in block.names or block.option("HostKeyAlias").lower() == wanted:
+            names |= set(block.names)
+    return names
+
+
+def host_in_list(text: str, hostname: str) -> bool:
+    """True when a block is named `hostname` or has it as HostKeyAlias."""
+    wanted = hostname.lower()
+    return any(
+        wanted in block.names or block.option("HostKeyAlias").lower() == wanted
+        for block in parse_blocks(text)[1]
+    )
+
+
+def jump_tunnels(text: str, hostname: str) -> List[Tuple[str, int]]:
+    """(alias, port) of every block whose jump route names `hostname`; the alias
+    is the block's HostKeyAlias, else its first name, as written (key file names
+    keep their case, e.g. machine/ssh_keys/ditschi-ThinkPad-L13-Yoga-Gen-2.pub)."""
+    blocks = parse_blocks(text)[1]
+    names = names_of_host(blocks, hostname)
+    tunnels = []
+    for block in blocks:
+        jump = route_args(block).get("jump")
+        if not jump or not block.names:
+            continue
+        host, port = split_jump(jump)
+        if host.lower() in names and port:
+            first = HEADER.match(block.header).group(2).split()[0]
+            tunnels.append((block.option("HostKeyAlias") or first, port))
+    return sorted(tunnels, key=lambda item: item[1])
+
+
+def free_tunnel_port(text: str, jump: str, first: int = 2223) -> int:
+    """Lowest port from `first` that no jump route to `jump` uses yet."""
+    blocks = parse_blocks(text)[1]
+    names = names_of_host(blocks, jump)
+    for block in blocks:
+        if jump.lower() in block.names:
+            names |= {block.option("HostKeyAlias").lower()} - {""}
+    used = set()
+    for block in blocks:
+        host, port = split_jump(route_args(block).get("jump", ""))
+        if host.lower() in names:
+            used.add(port)
+    port = first
+    while port in used:
+        port += 1
+    return port
+
+
 def blobs(text: str) -> List[str]:
     return [key_blob(line) for line in text.splitlines() if line.strip()]
 
@@ -201,6 +279,62 @@ class SshClientMixin:
                 )
         self.write_known_hosts()
         self.write_legacy_ssh_config()
+
+    def tunnel_key_file(self, alias: str) -> Optional[Path]:
+        """Tunnel key of a device: machine/ssh_tunnel_keys/, else machine/ssh_keys/
+        (file name compared without case)."""
+        for folder in ("machine/ssh_tunnel_keys", "machine/ssh_keys"):
+            directory = self.repo / folder
+            if not directory.is_dir():
+                continue
+            for path in sorted(directory.glob("*.pub")):
+                if path.stem.lower() == alias.lower() and path.is_file():
+                    return path
+        return None
+
+    def jump_host_vars(self, hostname: str) -> Dict[str, object]:
+        """Extra vars for the role jump_host from the written host list (never
+        Bitwarden). `jump_host_tunnels` is None, so the role keeps the existing
+        keys, when there is no host list file or no block of `hostname` in it
+        (a group or another name given to --limit must not empty the keys)."""
+        path = self.ssh_list_path()
+        if not path or not path.is_file():
+            return {
+                "jump_host_tunnels": None,
+                "jump_host_skip_reason": "no host list file on this host "
+                "(machine ssh pull)",
+                "jump_host_missing_keys": [],
+            }
+        text = path.read_text(encoding="utf-8")
+        if not host_in_list(text, hostname):
+            return {
+                "jump_host_tunnels": None,
+                "jump_host_skip_reason": f"no block named {hostname} or with "
+                f"HostKeyAlias {hostname} in the host list",
+                "jump_host_missing_keys": [],
+            }
+        tunnels, missing = [], []
+        for alias, port in jump_tunnels(text, hostname):
+            source = self.tunnel_key_file(alias)
+            fields: List[str] = []
+            if source:
+                fields = next(
+                    (
+                        line.split()
+                        for line in source.read_text(encoding="utf-8").splitlines()
+                        if len(line.split()) >= 2 and not line.startswith("#")
+                    ),
+                    [],
+                )
+            if not fields or not KEY_TYPE.match(fields[0]):
+                missing.append(
+                    f"machine/ssh_tunnel_keys/{alias}.pub or machine/ssh_keys/{alias}.pub"
+                )
+                continue
+            tunnels.append(
+                {"alias": alias.lower(), "port": port, "key": " ".join(fields[:2])}
+            )
+        return {"jump_host_tunnels": tunnels, "jump_host_missing_keys": missing}
 
     def write_known_hosts(self) -> None:
         path = self.ssh_known_hosts_path
@@ -823,7 +957,15 @@ class SshClientMixin:
             )
         ):
             jump = click.prompt("Jump host", default="oracle").strip()
-            tunnel = click.prompt("Tunnel port on the jump host", type=int)
+            known = notes
+            listed = self.ssh_list_path()
+            if not known and listed and listed.is_file():
+                known = listed.read_text(encoding="utf-8")
+            tunnel = click.prompt(
+                "Tunnel port on the jump host",
+                type=int,
+                default=free_tunnel_port(known, jump),
+            )
             tailscale = click.prompt(
                 "Tailscale name (empty: none)", default="", show_default=False
             ).strip()
@@ -865,6 +1007,13 @@ class SshClientMixin:
                 return 1
             log(f"wrote {alias} to Bitwarden {item}")
             self.pull_ssh_host_list()
+            if routes.get("jump"):
+                jump_host = split_jump(routes["jump"])[0]
+                log(
+                    f"jump route: run a manual `machine update` on {jump_host} so it "
+                    f"allows the tunnel of {alias}; the device needs its key in "
+                    "machine/ssh_tunnel_keys/ unless it has dotfiles"
+                )
         else:
             local = self.ssh_dir / "config.local"
             if where == "local" and local.is_file():

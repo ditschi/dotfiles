@@ -1,0 +1,9 @@
+---
+jump_host_user: tunnel
+jump_host_home: /var/lib/tunnel
+jump_host_dropin: /etc/ssh/sshd_config.d/50-jump-host.conf
+# From machine (see README); null = tunnels unknown (no host list file, or no block
+# of this host in it): keep the existing keys and warn with jump_host_skip_reason.
+jump_host_tunnels:
+jump_host_skip_reason: ""
+jump_host_missing_keys: []

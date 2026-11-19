@@ -8,6 +8,7 @@ features:
   - unattended-upgrades
   - etckeeper
   - tailscale
+  - jump-host
   - ssh-host-key
   - homelab-node
 ssh_allow_from:

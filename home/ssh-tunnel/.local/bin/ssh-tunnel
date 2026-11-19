@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Reverse SSH tunnel to the jump host: the jump route of this host, held open.
+
+Started by the systemd user unit ssh-tunnel.service (feature ssh-tunnel). Reads the
+jump host and port from this host's block in the host list (~/.ssh/config.d/20-*),
+the block whose HostKeyAlias (else its name) is the short hostname:
+
+    Host homeserver
+      HostKeyAlias homeserver
+      ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.4:22 jump=oracle:2223
+
+and runs `ssh -N -R 127.0.0.1:2223:localhost:22 tunnel@oracle`. The connection never
+uses connection sharing (with ControlMaster the foreground ssh would exit at once),
+exits when the forward is refused or the jump host stops answering, and is restarted
+by systemd. Without a jump route it exits with 78, which the unit does not restart.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import socket
+import sys
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+EX_CONFIG = 78
+TUNNEL_USER = "tunnel"
+HEADER = re.compile(r"^\s*(host|match)\s+(.*)$", re.IGNORECASE)
+OPTION = re.compile(r"^\s*([A-Za-z]+)\s*[= ]\s*(.*)$")
+SSH_OPTIONS = (
+    "ControlMaster=no",
+    "ControlPath=none",
+    "ExitOnForwardFailure=yes",
+    "ServerAliveInterval=30",
+    "ServerAliveCountMax=3",
+    "BatchMode=yes",
+    "ConnectTimeout=20",
+)
+
+
+def host_lists(home: Path) -> List[Path]:
+    return sorted((home / ".ssh" / "config.d").glob("20-*"))
+
+
+def blocks(text: str) -> List[Tuple[List[str], dict]]:
+    """(names, options) per `Host` section; first value of an option wins."""
+    result: List[Tuple[List[str], dict]] = []
+    for line in text.splitlines():
+        header = HEADER.match(line)
+        if header:
+            names = header.group(2).lower().split()
+            result.append((names if header.group(1).lower() == "host" else [], {}))
+            continue
+        option = OPTION.match(line)
+        if result and option and not line.lstrip().startswith("#"):
+            result[-1][1].setdefault(option.group(1).lower(), option.group(2).strip())
+    return result
+
+
+def own_jump(text: str, hostname: str) -> Optional[Tuple[str, int]]:
+    """(jump host, port) of the block of `hostname`, or None."""
+    wanted = hostname.lower()
+    for names, options in blocks(text):
+        alias = options.get("hostkeyalias", "").lower() or (names[0] if names else "")
+        if alias != wanted:
+            continue
+        words = options.get("proxycommand", "").split()
+        if not words or not words[0].endswith("ssh-route"):
+            continue
+        for word in words[1:]:
+            key, _, value = word.partition("=")
+            host, sep, port = value.rpartition(":")
+            if key == "jump" and sep and host and port.isdigit():
+                return host, int(port)
+    return None
+
+
+def selected_key(home: Path) -> Optional[Path]:
+    """The user key machine selected for this host (machine/ssh_keys/<host>.pub)."""
+    state = Path(os.environ.get("MACHINE_STATE_DIR") or home / ".local/share/machine")
+    try:
+        path = Path((state / "ssh-key-path").read_text().strip()).expanduser()
+    except OSError:
+        return None
+    return path if path.is_file() else None
+
+
+def command(jump: str, port: int, key: Optional[Path]) -> List[str]:
+    cmd = ["ssh", "-N"]
+    for option in SSH_OPTIONS:
+        cmd += ["-o", option]
+    if key:
+        cmd += ["-i", str(key)]
+    return cmd + ["-R", f"127.0.0.1:{port}:localhost:22", f"{TUNNEL_USER}@{jump}"]
+
+
+def main() -> int:
+    home = Path.home()
+    hostname = socket.gethostname().split(".")[0]
+    found = None
+    for path in host_lists(home):
+        found = own_jump(path.read_text(encoding="utf-8"), hostname)
+        if found:
+            break
+    if not found:
+        print(
+            f"ssh-tunnel: no host block with HostKeyAlias {hostname} and a jump route "
+            "in the host list (~/.ssh/config.d/20-*); add it with `machine ssh add` "
+            "or `machine ssh edit`, then `machine ssh pull` and "
+            "`systemctl --user restart ssh-tunnel`",
+            file=sys.stderr,
+        )
+        return EX_CONFIG
+    jump, port = found
+    cmd = command(jump, port, selected_key(home))
+    print(f"ssh-tunnel: 127.0.0.1:{port} on {jump} -> localhost:22", flush=True)
+    os.execvp(cmd[0], cmd)
+    return 0  # only reached when execvp is replaced in tests
+
+
+if __name__ == "__main__":
+    sys.exit(main())

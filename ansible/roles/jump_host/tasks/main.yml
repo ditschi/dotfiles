@@ -1,0 +1,68 @@
+---
+- name: Tunnel user without a shell
+  ansible.builtin.user:
+    name: "{{ jump_host_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ jump_host_home }}"
+    create_home: false
+    # "*": no password, but not "locked" (sshd without PAM refuses locked accounts).
+    password: "*"
+
+# Home, ~/.ssh and authorized_keys belong to root, so the user cannot change them.
+- name: Tunnel user home and ~/.ssh owned by root
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ jump_host_home }}"
+    - "{{ jump_host_home }}/.ssh"
+
+- name: Warn about tunnels without a key file
+  ansible.builtin.debug:
+    msg: "missing {{ item }} - its tunnel is not allowed on this jump host"
+  loop: "{{ jump_host_missing_keys | default([]) }}"
+
+- name: Warn when the tunnels are unknown
+  ansible.builtin.debug:
+    msg: >-
+      {{ jump_host_skip_reason | default('no tunnel list from machine') }} - the
+      tunnel keys of {{ jump_host_user }} stay as they are
+  when: jump_host_tunnels is none
+
+- name: Tunnel keys from the host list
+  ansible.builtin.template:
+    src: authorized_keys.j2
+    dest: "{{ jump_host_home }}/.ssh/authorized_keys"
+    owner: root
+    group: root
+    mode: "0644"
+  when: jump_host_tunnels is not none
+
+# A drop-in that sshd rejects is removed again, so a later sshd restart cannot fail.
+- name: sshd block for the tunnel user
+  block:
+    - name: Write the sshd block
+      ansible.builtin.template:
+        src: 50-jump-host.conf.j2
+        dest: "{{ jump_host_dropin }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload sshd
+
+    - name: Validate sshd configuration
+      ansible.builtin.command: sshd -t
+      changed_when: false
+  rescue:
+    - name: Remove the rejected sshd block
+      ansible.builtin.file:
+        path: "{{ jump_host_dropin }}"
+        state: absent
+
+    - name: Stop on the invalid sshd configuration
+      ansible.builtin.fail:
+        msg: "sshd -t rejected {{ jump_host_dropin }}; removed it, sshd is unchanged"

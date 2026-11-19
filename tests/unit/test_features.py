@@ -249,3 +249,12 @@ def test_laptop_and_swap_features():
     container = features.allowed("", "container")
     assert "zram-swap" not in container and "lid-switch" not in container
     assert "thinkpad-tuning" not in features.load_table()
+
+
+def test_tunnel_features_only_on_private_hosts():
+    for name in ("jump-host", "ssh-tunnel"):
+        for device in ("desktop", "server"):
+            assert name in features.allowed("private", device)
+            assert name not in features.defaults("private", device)
+            assert features.split([name], "work", device) == ([], [name])
+        assert features.split([name], "", "container") == ([], [name])

@@ -738,6 +738,10 @@ def test_ssh_allow_from_offers_hosts_with_a_repo_key(tmp_path, monkeypatch):
         "homelab-ci",
     ):  # testhost is this machine; homelab-ci the CI key
         (keys / f"{host}.pub").write_text("ssh-ed25519 AAAA\n", encoding="utf-8")
+    # A device's tunnel key never becomes a login on the fleet.
+    tunnel_keys = repo / "machine" / "ssh_tunnel_keys"
+    tunnel_keys.mkdir()
+    (tunnel_keys / "backup-nas.pub").write_text("ssh-ed25519 AAAA\n", encoding="utf-8")
     monkeypatch.setattr(
         cli_mod.system, "run", lambda *_a, **_k: pytest.fail("no Bitwarden lookup")
     )

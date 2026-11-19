@@ -64,6 +64,23 @@ machine ssh known-hosts add <alias>  # fetch, confirm and store a device's host 
 
 `machine setup` offers to add the host itself to the host list of its context.
 
+## Reverse tunnels
+
+The `jump` route of `ssh-route` goes through a reverse SSH tunnel that each home host or device keeps open to the jump host (oracle): `ssh -W localhost:<port> oracle` reaches the device's sshd on the port of its jump route. Tailscale stays the primary remote path; the tunnel is the fallback.
+
+The ports exist only in the host list: the jump route of a block (`jump=oracle:2223`) is the port the device listens on, and the jump host allows exactly the jump routes that name it. `machine ssh add` suggests the next free port from 2223.
+
+- **Jump host, feature `jump-host`** (oracle): a system user `tunnel` without a shell. Its `authorized_keys`, written whole by the role `jump_host`, has one line per jump route, `restrict,port-forwarding,permitlisten="127.0.0.1:<port>"`, with the key from [`machine/ssh_tunnel_keys/<alias>.pub`](../machine/ssh_tunnel_keys/) (devices without dotfiles) or `machine/ssh_keys/<alias>.pub` (hosts with dotfiles use their user key). An sshd `Match User tunnel` block in `/etc/ssh/sshd_config.d/50-jump-host.conf` allows only remote forwarding, no TTY, and ends a session that stops answering after about 90 s, so a reconnecting device gets its port back. The listeners are loopback-only; no firewall port is opened. The role reads the host list file written on the jump host, never Bitwarden, so a new device needs a manual `machine update` on oracle after the host list edit. A jump route without a key file is skipped with a warning.
+- **Hosts with dotfiles, feature `ssh-tunnel`**: the systemd user unit `ssh-tunnel.service` runs `~/.local/bin/ssh-tunnel`, which reads the jump host and port from the host's own block (`HostKeyAlias` = short hostname) and runs `ssh -N -R 127.0.0.1:<port>:localhost:22 tunnel@oracle` without connection sharing (`ControlMaster=no`; with the shared default the foreground ssh would exit at once), with `ExitOnForwardFailure` and keep-alive. systemd restarts it 30 s after every exit; linger starts it at boot. Without a jump route it exits with status 78 and stays stopped. `machine update` enables or disables the unit with the feature.
+- **Devices without dotfiles** (backup NAS): [`machine/ssh_tunnel/device-tunnel.sh`](../machine/ssh_tunnel/device-tunnel.sh) with its own key and a pinned host key of oracle, started by the DSM Task Scheduler; setup in [`machine/ssh_tunnel/README.md`](../machine/ssh_tunnel/README.md).
+
+```bash
+systemctl --user status ssh-tunnel         # client: running, last exit, log
+journalctl --user -u ssh-tunnel -n 20
+ss -ltn | grep '127.0.0.1:22[0-9][0-9]'    # on oracle: which tunnels are up
+ssh -o ProxyCommand='ssh -W localhost:2223 oracle' homeserver true   # test the jump route alone
+```
+
 ## Technical users (work)
 
 Work hosts log in to the CI agents as technical users, with the key first and the password as fallback. The password is read live from Azure Key Vault, so nothing is typed or stored. Which users, and in which vault, is the key `AZKV_TECHUSERS` of the Bitwarden item `env/groups/work` (see [Secrets](secrets.md#technical-user-passwords-work-azure-key-vault)).

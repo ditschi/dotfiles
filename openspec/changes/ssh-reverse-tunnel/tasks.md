@@ -1,0 +1,46 @@
+# Tasks
+
+Work only in the worktree `$(machine repo)/.worktrees/ssh-reverse-tunnel`. Do not change oracle, homeserver, netmaster or backup-nas live without the owner's approval (group 6).
+
+## 1. Features and tunnel list
+
+- [x] 1.1 Add `jump-host` and `ssh-tunnel` to `ansible/group_vars/all/features.yml` (help text; `work` and `container` excluded; `private` optional, so optional on private servers and desktops) and the `ssh-tunnel` dotfile group to `mise.toml`; extend `tests/unit/test_features.py`. Verify: `pytest tests/unit/test_features.py -q` passes and shows both features as optional on private servers and desktops and not for work or containers.
+- [x] 1.2 In `machine_cli/ssh_client.py`: a function that returns the tunnels for this host from the written host list (blocks whose jump route names this host, matched like `ssh-route`'s `on_jump_host`, with alias from `HostKeyAlias`, port and key path from `machine/ssh_tunnel_keys/` then `machine/ssh_keys/`, missing key flagged; the client's own jump host and port are read by its start script, task 3.1). Unit tests in `tests/unit/test_ssh_client.py` for: homeserver/netmaster/backup-nas sample list, other jump hosts ignored, missing key, no host list. Verify: those tests pass.
+- [x] 1.3 Hand the tunnel list to Ansible as an extra-vars file (pattern of the secret files in `machine_cli/tools.py`), only when `jump-host` is selected; without a host list file pass a marker that makes the role keep the keys and warn. Verify: unit test of the vars passed to the playbook command.
+
+## 2. Jump host role
+
+- [x] 2.1 Ansible role `ansible/roles/jump_host` (README, defaults, tasks, handlers): system user `tunnel` with `/usr/sbin/nologin`; root-owned `~tunnel/.ssh/authorized_keys` written whole from the tunnel list with `restrict,port-forwarding,permitlisten="127.0.0.1:<port>"`; warning per missing key; keep the file when the marker says no host list; drop-in `/etc/ssh/sshd_config.d/50-jump-host.conf` with the `Match User tunnel` block from design.md; `sshd -t`; reload like `sshd_home` (socket-activated sshd included). Wire it in `ansible/workstation.yml` with `when: "'jump-host' in machine_features"`. Verify: `ansible-lint ansible/*.yml` passes; a new `tests/unit/test_jump_host_role.py` (pattern of `test_tailscale.py`/`test_homelab_node_role.py`) checks the rendered line format, the Match block options and that no firewall task exists.
+- [x] 2.2 Docker integration test of the role (Readme "Tests"): apply with a sample tunnel list, then check `sshd -T -C user=tunnel,...` (remote forwarding only, no TTY, ClientAlive 30/3), that a shell or `-L` with the tunnel key is refused, that `-R 127.0.0.1:2223` works and `-R 2299` and `-R 0.0.0.0:2223` are refused. Verify: the integration test passes.
+
+## 3. Client unit
+
+- [x] 3.1 Dotfile group `home/ssh-tunnel/`: `.local/bin/ssh-tunnel` (reads jump host and port from this host's block with `ssh -G`, exits 78 with a hint naming `machine ssh add`/`machine ssh edit` when there is no jump route, else `exec ssh -N -R 127.0.0.1:<port>:localhost:22 tunnel@<jump host>` with the options from design.md) and `.config/systemd/user/ssh-tunnel.service` (`Restart=always`, `RestartSec=30`, `RestartPreventExitStatus=78`, `WantedBy=default.target`). Unit tests for the script (port lookup, exit 78, options include `ControlMaster=no`, `ControlPath=none`, `ExitOnForwardFailure=yes`). Verify: tests pass; `systemd-analyze --user verify` on the unit has no errors.
+- [x] 3.2 `machine update` enables and starts the unit when `ssh-tunnel` is selected and disables it otherwise (pattern of `work_net_units` in `machine_cli/updates.py`), and ensures linger. Unit test in `tests/unit/test_update_and_env.py` or a new file. Verify: test passes.
+
+## 4. Devices without dotfiles
+
+- [x] 4.1 `machine/ssh_tunnel/device-tunnel.sh` (POSIX sh, BusyBox-compatible, options up to OpenSSH 7.4) with `start` (PID file, background loop, 30 s pause, `logger`), `stop` and `status`, config from `/root/.ssh/tunnel.conf` (`JUMP_HOST`, `PORT`, `KEY`, `KNOWN_HOSTS`). Verify: `shellcheck -s sh` and `busybox sh -n` pass; a unit test with a fake `ssh` shows that `start` twice runs one loop and that the loop restarts ssh after exit 0.
+- [x] 4.2 `machine/ssh_tunnel/README.md`: what the script does, config file, how to pin oracle's host key (from `machine/ssh_host_keys/privatecloud.pub`, as a line `oracle <key>` in the device's known_hosts file, matched through `HostKeyAlias=oracle`), DSM Task Scheduler boot task and 5-minute watchdog as root, checks after a DSM update, and `machine/ssh_tunnel_keys/README.md` (what goes there, never `machine/ssh_keys/`). Verify: the README's commands match the script's options and file names.
+- [x] 4.3 Make sure `machine/ssh_tunnel_keys/` is never read by `sshd_home` or the `ssh_allow_from` offer (`machine_cli/profile.py`); add a test that a key there is not offered. Verify: test passes.
+
+## 5. Port suggestion and docs
+
+- [x] 5.1 `machine ssh add`: default for the tunnel port is the lowest free port from 2223 among the jump routes to the chosen jump host (spec `ssh-client-config`). Tests for the two spec scenarios in `tests/unit/test_ssh_client.py`. Verify: tests pass.
+- [x] 5.2 Docs: `docs/ssh.md` new section "Reverse tunnels" (both features, ports from the host list, the manual update on oracle after adding a device, devices without dotfiles, checks), `docs/features.md` rows for both features, `machine/hosts/README.md` fleet notes. Add the monitoring entry to `openspec/backlog.md`. Verify: links resolve (`pre-commit` markdown checks).
+- [x] 5.3 Host configs: `jump-host` in `machine/hosts/privatecloud.yml`, `ssh-tunnel` in `homeserver.yml` and `netmaster.yml`; `git mv machine/ssh_host_keys/nas-backup.pub machine/ssh_host_keys/backup-nas.pub`. Verify: `pytest tests/unit/test_host_profiles.py tests/unit/test_ssh_host_keys.py -q` passes.
+
+## 6. Validation and rollout
+
+- [x] 6.1 Targeted tests: `pytest tests/unit/test_features.py tests/unit/test_ssh_client.py tests/unit/test_jump_host_role.py tests/unit/test_host_profiles.py tests/unit/test_ssh_host_keys.py tests/unit/test_update_and_env.py -q` plus the new script tests; then `pytest tests/unit -q` (the feature table and update flow are shared). `ansible-lint ansible/*.yml`; the Docker integration test from 2.2. Record commands and results here.
+  - 2026-11-19: `pytest tests/unit -q` 1421 passed (serial). With `-n auto`, 7 tests in `test_command_prefix.py` failed on pty timing under parallel load; the file alone passes (146 passed) and this branch does not touch its code. After the pre-commit fixes: the six new or changed unit files 163 passed; `pytest tests/integration/test_jump_host.py` 1 passed (Ubuntu 22.04, OpenSSH 8.9: no shell, no TTY, no `-W`, only `127.0.0.1:2223` with the own key, `0.0.0.0` and other ports and keys refused, Match block ends with the drop-in); `ansible-lint ansible/*.yml` 0 failures. Covers: feature table, tunnel list and vars handover, role, unit enabling, client script, device script, port suggestion, ssh_allow_from offer.
+- [x] 6.2 `pre-commit run --files <changed paths>` (untracked additions included), then `openspec validate ssh-reverse-tunnel --strict`.
+  - 2026-11-19: pre-commit passed on all changed files after fixes (shellcheck SC2153, shfmt, black, flake8); `openspec validate ssh-reverse-tunnel --strict` valid.
+- [x] 6.3 Review the branch diff against main with a fresh reviewer (`/review` or a review subagent) and fix findings.
+  - 2026-11-19 review subagent: no security hole in the sshd/key layer. Fixed: alias case kept for key files (laptop key names have capitals); no block of the target in the host list (e.g. `--limit` with a group) now keeps the keys instead of writing an empty file; key lines checked for a key type, warning names both key folders; `password: "*"` instead of `"!"` (locked accounts fail key login without PAM); device script takes a `mkdir` lock in `start`, matches `<script> run` and never its own PID, runs the loop with `TUNNEL_SHELL` (tests now run it under BusyBox); integration test asserts the refused PTY request; LAN address and the NAS port replaced by placeholders in design, proposal, README. After the fixes: 288 unit tests of the affected files passed, `tests/integration/test_jump_host.py` passed, ansible-lint 0 failures, pre-commit passed, `openspec validate --strict` valid.
+- [ ] 6.4 With the owner's approval: apply on oracle and do the manual steps of the Migration Plan (steps 1-2) in design.md; record the checks. Verify: from outside the home network with Tailscale logged out, `ssh homeserver` and `ssh netmaster` connect over the jump route.
+- [ ] 6.5 backup-nas (Migration Plan step 3): commit the key from the homelab session (received 2026-11-19, `/root/.ssh/tunnel_oracle` on the NAS: `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAdvZow8UY8r7KGZ/BAyxz0NDMVs+R6mJ2QuwaRDTDrt tunnel@backup-nas`), owner edits the host list, manual update on oracle, homelab session sets up the NAS. Verify: `ssh -o ProxyCommand='ssh -W localhost:<port> oracle' backup-nas true` succeeds with host key `backup-nas`.
+
+## Workflow follow-up
+
+- Archive with spec sync after 6.4 (6.5 may follow later if the NAS key is not there yet; then note it in the archived tasks).

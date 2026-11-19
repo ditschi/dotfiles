@@ -546,14 +546,15 @@ class UpdateMixin:
             yield
 
     def ensure_update_timer(self) -> None:
-        """Enable the update check and the low-disk check timers of the systemd group."""
+        """Enable the update check and the low-disk check timers of the systemd group,
+        and enable or disable the units that follow a feature."""
         units = self.home / ".config/systemd/user"
         timers = [
             name
             for name in ("dotfiles-update-check.timer", "machine-disk-check.timer")
             if (units / name).is_file()
         ]
-        work_net = self.work_net_units(units)
+        work_net = self.work_net_units(units) + self.ssh_tunnel_units(units)
         if not (timers or work_net) or not system.have("systemctl"):
             return
         system.run(["systemctl", "--user", "daemon-reload"], check=False, capture=True)
@@ -575,7 +576,21 @@ class UpdateMixin:
                 check=False,
                 capture=True,
             )
+        # A unit whose group was unlinked leaves its enable link behind.
+        for unit, wanted in work_net:
+            link = units / "default.target.wants" / unit
+            if not wanted and link.is_symlink():
+                link.unlink()
         self.ensure_linger()
+
+    def ssh_tunnel_units(self, units: Path) -> List[Tuple[str, bool]]:
+        """The reverse tunnel unit (feature ssh-tunnel): present or still enabled."""
+        unit = "ssh-tunnel.service"
+        if (units / unit).is_file() or (
+            units / "default.target.wants" / unit
+        ).is_symlink():
+            return [(unit, "ssh-tunnel" in self.saved_features())]
+        return []
 
     def work_net_units(self, units: Path) -> List[Tuple[str, bool]]:
         """work-net units of the work group and whether this host wants them."""

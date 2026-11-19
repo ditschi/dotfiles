@@ -70,6 +70,10 @@ To settle:
 - Confirm-on-use (`ssh-add -c`) for forwarded keys, and whether it works without a GUI askpass.
 - Whether the per-host GitHub key that the SSH key flow registers on servers should be dropped once deploy keys and forwarding exist (a server key with write access to every repo is the risk this replaces).
 
+### Monitoring of the reverse tunnels
+
+Owner decision 2026-11-19 (change `ssh-reverse-tunnel`): alert when a tunnel port of the host list does not listen on oracle (`ss -ltn` for `127.0.0.1:<port>` of every jump route), for example as a Telegraf input once the feature `monitoring` reaches oracle. Until then: `ss -ltn | grep 127.0.0.1:22` on oracle and `systemctl --user status ssh-tunnel` on the clients.
+
 ### Bitwarden CLI: evaluate `rbw` as a full replacement
 
 Only switch if `rbw` can replace `bw` completely; two tools would mean maintaining the logic twice. Until then the CLI keeps `bw` only.

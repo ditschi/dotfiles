@@ -262,3 +262,12 @@
   roles:
     - role: homelab_node
       when: "'homelab-node' in machine_features"
+
+- name: Jump host for reverse SSH tunnels (user tunnel, keys from the host list)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  tags: [sshd]
+  roles:
+    - role: jump_host
+      when: "'jump-host' in machine_features"

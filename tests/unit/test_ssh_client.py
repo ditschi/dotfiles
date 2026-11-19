@@ -631,3 +631,130 @@ def test_legacy_resolution_counts_listed_hosts_as_resolved(
     assert not (home / ".ssh/config.pre-dotfiles").exists()
     assert (home / ".local/share/machine/ssh-backup/config.pre-dotfiles").is_file()
     assert not (home / ".ssh/config.d/90-legacy").exists()
+
+
+# --- reverse tunnels -----------------------------------------------------------
+
+TUNNEL_LIST = """\
+Host oracle
+  HostName jump.example
+  User ubuntu
+  HostKeyAlias privatecloud
+
+Host homeserver m720q
+  HostKeyAlias homeserver
+  ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.4:22 jump=oracle:2223
+
+Host netmaster
+  HostKeyAlias netmaster
+  ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.5:22 jump=oracle:2224
+
+Host backup-nas
+  HostKeyAlias backup-nas
+  ProxyCommand ~/.local/bin/ssh-route %k ts=backup-nas:22 jump=oracle:2225
+
+Host elsewhere
+  HostKeyAlias elsewhere
+  ProxyCommand ~/.local/bin/ssh-route %k jump=contabo:2230
+"""
+
+
+def test_jump_tunnels_for_the_jump_host():
+    from machine_cli.ssh_client import jump_tunnels
+
+    expected = [("homeserver", 2223), ("netmaster", 2224), ("backup-nas", 2225)]
+    # By its hostname (HostKeyAlias of the alias) and by the alias itself.
+    assert jump_tunnels(TUNNEL_LIST, "privatecloud") == expected
+    assert jump_tunnels(TUNNEL_LIST, "oracle") == expected
+    assert jump_tunnels(TUNNEL_LIST, "contabo") == [("elsewhere", 2230)]
+    assert jump_tunnels(TUNNEL_LIST, "homeserver") == []
+
+
+def test_jump_host_vars_keys_and_missing(tmp_path, monkeypatch, fake_bw):
+    _, machine, home, repo, _ = client(tmp_path, monkeypatch, fake_bw)
+    (home / ".ssh/config.d").mkdir(parents=True)
+    (home / ".ssh/config.d/20-home").write_text(TUNNEL_LIST)
+    (repo / "machine/ssh_keys/homeserver.pub").write_text(
+        "ssh-ed25519 AAAAhome ditschi@homeserver\n"
+    )
+    (repo / "machine/ssh_keys/backup-nas.pub").write_text("ssh-ed25519 AAAAwrong x\n")
+    (repo / "machine/ssh_tunnel_keys").mkdir()
+    (repo / "machine/ssh_tunnel_keys/backup-nas.pub").write_text(
+        "ssh-ed25519 AAAAnas tunnel@backup-nas\n"
+    )
+    values = machine.jump_host_vars("privatecloud")
+    assert values["jump_host_tunnels"] == [
+        {"alias": "homeserver", "port": 2223, "key": "ssh-ed25519 AAAAhome"},
+        {"alias": "backup-nas", "port": 2225, "key": "ssh-ed25519 AAAAnas"},
+    ]
+    assert values["jump_host_missing_keys"] == [
+        "machine/ssh_tunnel_keys/netmaster.pub or machine/ssh_keys/netmaster.pub"
+    ]
+
+
+def test_jump_host_vars_keep_the_case_of_key_files(tmp_path, monkeypatch, fake_bw):
+    _, machine, home, repo, _ = client(tmp_path, monkeypatch, fake_bw)
+    (home / ".ssh/config.d").mkdir(parents=True)
+    laptop = (
+        "Host oracle\n  HostKeyAlias privatecloud\n\n"
+        "Host laptop\n  HostKeyAlias ditschi-ThinkPad-L13-Yoga-Gen-2\n"
+        "  ProxyCommand ~/.local/bin/ssh-route %k jump=oracle:2226\n"
+    )
+    (home / ".ssh/config.d/20-home").write_text(laptop)
+    (repo / "machine/ssh_keys/ditschi-ThinkPad-L13-Yoga-Gen-2.pub").write_text(
+        "ssh-ed25519 AAAAlaptop x\n"
+    )
+    [tunnel] = machine.jump_host_vars("privatecloud")["jump_host_tunnels"]
+    assert tunnel["key"] == "ssh-ed25519 AAAAlaptop" and tunnel["port"] == 2226
+
+
+def test_jump_host_vars_without_a_block_of_the_target(tmp_path, monkeypatch, fake_bw):
+    """A group or another name given to --limit must not empty the keys."""
+    _, machine, home, _repo, _ = client(tmp_path, monkeypatch, fake_bw)
+    (home / ".ssh/config.d").mkdir(parents=True)
+    (home / ".ssh/config.d/20-home").write_text(TUNNEL_LIST)
+    values = machine.jump_host_vars("home")
+    assert values["jump_host_tunnels"] is None
+    assert "home" in values["jump_host_skip_reason"]
+
+
+def test_jump_host_vars_skip_lines_that_are_no_key(tmp_path, monkeypatch, fake_bw):
+    _, machine, home, repo, _ = client(tmp_path, monkeypatch, fake_bw)
+    (home / ".ssh/config.d").mkdir(parents=True)
+    (home / ".ssh/config.d/20-home").write_text(TUNNEL_LIST)
+    (repo / "machine/ssh_keys/homeserver.pub").write_text(
+        'command="x" ssh-ed25519 AAAA\n'
+    )
+    values = machine.jump_host_vars("privatecloud")
+    assert values["jump_host_tunnels"] == []
+    assert len(values["jump_host_missing_keys"]) == 3
+
+
+def test_jump_host_vars_without_host_list(tmp_path, monkeypatch, fake_bw):
+    _, machine, *_ = client(tmp_path, monkeypatch, fake_bw)
+    assert machine.jump_host_vars("privatecloud")["jump_host_tunnels"] is None
+
+
+def test_free_tunnel_port():
+    from machine_cli.ssh_client import free_tunnel_port
+
+    assert free_tunnel_port(TUNNEL_LIST, "oracle") == 2226
+    gap = TUNNEL_LIST.replace("jump=oracle:2224", "jump=oracle:2299")
+    assert free_tunnel_port(gap, "oracle") == 2224
+    assert free_tunnel_port(TUNNEL_LIST, "contabo") == 2223
+    assert free_tunnel_port("", "oracle") == 2223
+
+
+def test_add_suggests_the_next_free_tunnel_port(tmp_path, monkeypatch, fake_bw):
+    cli, machine, _home, _repo, store = client(tmp_path, monkeypatch, fake_bw)
+    put_note(store, LIST)  # homeserver uses jump=oracle:2223
+    prompts(monkeypatch, cli, {"Address": "192.168.1.9"})
+    monkeypatch.setattr(
+        cli.system,
+        "prompt_yes_no",
+        lambda q, d=False: q.startswith(("Home host", "Write")) or d,
+    )
+    monkeypatch.setattr(machine, "ssh_login_test", lambda alias: True)
+    monkeypatch.setattr(machine, "add_known_host", lambda *a: 0)
+    machine.cmd_ssh_add("newbox")
+    assert "jump=oracle:2224" in note_text(store)

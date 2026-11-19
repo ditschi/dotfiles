@@ -1,0 +1,135 @@
+#!/bin/sh
+# Reverse SSH tunnel to the jump host for a device without dotfiles (spec ssh-tunnel).
+# POSIX sh (BusyBox) and OpenSSH 7.4 options only; see README.md next to this file.
+#
+#   device-tunnel.sh start    start the tunnel loop unless it already runs (boot task
+#                             and watchdog both call this)
+#   device-tunnel.sh stop     end the loop and its ssh
+#   device-tunnel.sh status   exit 0 when the loop runs
+#   device-tunnel.sh run      the loop in the foreground (used by start)
+#
+# Settings come from a file on the device (TUNNEL_CONF, default
+# /root/.ssh/tunnel.conf), so no address is in the repository:
+#   JUMP_HOST=<address of the jump host>   PORT=<port of the jump route>
+#   KEY=/root/.ssh/tunnel_oracle           KNOWN_HOSTS=/root/.ssh/tunnel_known_hosts
+# Optional: JUMP_PORT=22  JUMP_USER=tunnel  HOST_KEY_ALIAS=oracle  LOCAL_PORT=22
+#           PIDFILE=/var/run/ssh-tunnel.pid  RETRY=30  SSH=ssh
+# TUNNEL_SHELL (environment, default /bin/sh) runs the loop.
+
+CONF=${TUNNEL_CONF:-/root/.ssh/tunnel.conf}
+
+log() {
+    if command -v logger >/dev/null 2>&1; then
+        logger -t ssh-tunnel "$*"
+    else
+        echo "ssh-tunnel: $*" >&2
+    fi
+}
+
+load_config() {
+    if [ ! -r "$CONF" ]; then
+        log "missing $CONF"
+        exit 78
+    fi
+    # shellcheck disable=SC1090
+    . "$CONF"
+    JUMP_HOST=${JUMP_HOST:-} PORT=${PORT:-} KEY=${KEY:-} KNOWN_HOSTS=${KNOWN_HOSTS:-}
+    for name in JUMP_HOST PORT KEY KNOWN_HOSTS; do
+        eval "value=\${$name:-}"
+        if [ -z "$value" ]; then
+            log "$CONF: $name is not set"
+            exit 78
+        fi
+    done
+    JUMP_PORT=${JUMP_PORT:-22}
+    JUMP_USER=${JUMP_USER:-tunnel}
+    HOST_KEY_ALIAS=${HOST_KEY_ALIAS:-oracle}
+    LOCAL_PORT=${LOCAL_PORT:-22}
+    PIDFILE=${PIDFILE:-/var/run/ssh-tunnel.pid}
+    RETRY=${RETRY:-30}
+    SSH=${SSH:-ssh}
+}
+
+running() {
+    [ -r "$PIDFILE" ] || return 1
+    pid=$(cat "$PIDFILE" 2>/dev/null)
+    [ -n "$pid" ] && [ "$pid" != "$$" ] && kill -0 "$pid" 2>/dev/null || return 1
+    # A reused PID belongs to another program: only this script's loop counts.
+    tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q "$(basename "$0") run"
+}
+
+run_loop() {
+    child=
+    trap '[ -n "$child" ] && kill "$child" 2>/dev/null; rm -f "$PIDFILE"; exit 0' TERM INT
+    while :; do
+        # -F /dev/null: none of the device's own ssh settings (no connection sharing).
+        "$SSH" -F /dev/null -N \
+            -o ControlMaster=no -o ControlPath=none \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+            -o BatchMode=yes -o ConnectTimeout=20 \
+            -o IdentitiesOnly=yes -i "$KEY" \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            -o HostKeyAlias="$HOST_KEY_ALIAS" \
+            -p "$JUMP_PORT" \
+            -R "127.0.0.1:$PORT:localhost:$LOCAL_PORT" \
+            "$JUMP_USER@$JUMP_HOST" &
+        child=$!
+        wait "$child"
+        status=$?
+        child=
+        log "ssh ended with status $status; next attempt in ${RETRY}s"
+        sleep "$RETRY" &
+        child=$!
+        wait "$child"
+        child=
+    done
+}
+
+case "${1:-}" in
+    start)
+        load_config
+        # Boot task and watchdog may start at the same moment: one wins the lock.
+        lock="$PIDFILE.lock"
+        if ! mkdir "$lock" 2>/dev/null; then
+            # A lock older than a minute was left by a killed start.
+            if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+                rmdir "$lock" 2>/dev/null
+            fi
+            exit 0
+        fi
+        if running; then
+            rmdir "$lock"
+            exit 0
+        fi
+        nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
+        echo $! >"$PIDFILE"
+        rmdir "$lock"
+        log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
+        ;;
+    stop)
+        load_config
+        if running; then
+            kill "$(cat "$PIDFILE")"
+            log "stopped"
+        fi
+        rm -f "$PIDFILE"
+        ;;
+    status)
+        load_config
+        if running; then
+            echo "running (pid $(cat "$PIDFILE"))"
+        else
+            echo "not running"
+            exit 1
+        fi
+        ;;
+    run)
+        load_config
+        run_loop
+        ;;
+    *)
+        echo "usage: $0 start|stop|status|run" >&2
+        exit 2
+        ;;
+esac

@@ -39,6 +39,7 @@ First run on a host (also a new VM that only has `root`: bootstrap the dotfiles 
 Deselecting the feature removes nothing: delete `/opt/homelab`, `~/.ssh/homelab_deploy_ed25519*`, `/usr/local/bin/{homelab,hl,homelab-ci}` and the user by hand if wanted. Details: [ansible/roles/homelab_node/README.md](../ansible/roles/homelab_node/README.md).
 
 SSH home fleet: feature `sshd-home` → `authorized_keys` (`roles/sshd_home`) from [`machine/ssh_keys/`](../machine/ssh_keys/) for entries in `ssh_allow_from`.
+Reverse SSH tunnels: features `jump-host` (oracle) and `ssh-tunnel` (homeserver, netmaster; optional on private servers and desktops, never for work or in containers) carry the jump route of `ssh-route`. `jump-host` sets up the restricted user `tunnel` and allows each device only its own loopback port from the host list (`roles/jump_host`); `ssh-tunnel` runs the systemd user unit `ssh-tunnel.service`. See [ssh.md](ssh.md#reverse-tunnels).
 
 ## Kerberos ticket (work, feature `kerberos`)
 

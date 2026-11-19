@@ -1043,3 +1043,28 @@ def test_vpn_watch_unit_follows_the_graphical_session():
     assert "WantedBy=graphical-session.target" in unit
     assert "ExecStart=%h/.local/bin/work-net vpn watch" in unit
     assert "ExecStop" not in unit
+
+
+@pytest.mark.parametrize(
+    "features, action",
+    [(["zsh-full", "ssh-tunnel"], "enable"), (["zsh-full"], "disable")],
+)
+def test_ssh_tunnel_unit_follows_the_feature(machine, features, action):
+    (machine.home / ".config/systemd/user/ssh-tunnel.service").write_text("")
+    machine.write_profile("private", "server", features, [])
+    machine.ensure_update_timer()
+    assert ["systemctl", "--user", action, "--now", "ssh-tunnel.service"] in (
+        machine.ran
+    )
+
+
+def test_ssh_tunnel_left_enabled_after_the_group_is_unlinked(machine):
+    wants = machine.home / ".config/systemd/user/default.target.wants"
+    wants.mkdir()
+    (wants / "ssh-tunnel.service").symlink_to("/gone/ssh-tunnel.service")
+    machine.write_profile("private", "server", ["zsh-full"], [])
+    machine.ensure_update_timer()
+    assert ["systemctl", "--user", "disable", "--now", "ssh-tunnel.service"] in (
+        machine.ran
+    )
+    assert not (wants / "ssh-tunnel.service").is_symlink()

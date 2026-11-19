@@ -136,6 +136,17 @@ feature_table:
     help: authorized_keys from machine/ssh_keys
     work: excluded
     container: excluded
+  jump-host:
+    help: Jump host for reverse SSH tunnels (user tunnel, ports from the host list)
+    private: optional
+    work: excluded
+    container: excluded
+  ssh-tunnel:
+    help: Reverse SSH tunnel to the jump host (fallback route of ssh-route)
+    groups: [ssh-tunnel]
+    private: optional
+    work: excluded
+    container: excluded
   homelab-node:
     help: Homelab Compose host (repo clone, deploy key, sops, age key, homelab CLI)
     work: excluded

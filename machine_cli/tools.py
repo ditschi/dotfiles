@@ -265,6 +265,17 @@ class ToolsMixin:
                     _login_user() if local else "",
                 )
                 secrets.append(("machine-homelab-", values))
+            if "jump-host" in host["features"]:
+                # Tunnels from the host list file already written here (never
+                # Bitwarden); for a remote run, the target's tunnels in this list.
+                secrets.append(
+                    (
+                        "machine-jump-host-",
+                        self.jump_host_vars(
+                            system.hostname_short() if local else limit
+                        ),
+                    )
+                )
             if "monitoring" in host["features"]:
                 # Only Ansible gets the token; it never goes to ~/.env*.
                 values = dict(self.influx_credentials() or {})

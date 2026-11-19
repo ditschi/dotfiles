@@ -47,3 +47,6 @@ root = "home/niri"
 
 [dotfile_groups.memory-headroom]
 root = "home/memory-headroom"
+
+[dotfile_groups.ssh-tunnel]
+root = "home/ssh-tunnel"

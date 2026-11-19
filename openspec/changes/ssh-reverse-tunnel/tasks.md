@@ -17,6 +17,7 @@ Work only in the worktree `$(machine repo)/.worktrees/ssh-reverse-tunnel`. Do no
 
 - [x] 3.1 Dotfile group `home/ssh-tunnel/`: `.local/bin/ssh-tunnel` (reads jump host and port from this host's block with `ssh -G`, exits 78 with a hint naming `machine ssh add`/`machine ssh edit` when there is no jump route, else `exec ssh -N -R 127.0.0.1:<port>:localhost:22 tunnel@<jump host>` with the options from design.md) and `.config/systemd/user/ssh-tunnel.service` (`Restart=always`, `RestartSec=30`, `RestartPreventExitStatus=78`, `WantedBy=default.target`). Unit tests for the script (port lookup, exit 78, options include `ControlMaster=no`, `ControlPath=none`, `ExitOnForwardFailure=yes`). Verify: tests pass; `systemd-analyze --user verify` on the unit has no errors.
 - [x] 3.2 `machine update` enables and starts the unit when `ssh-tunnel` is selected and disables it otherwise (pattern of `work_net_units` in `machine_cli/updates.py`), and ensures linger. Unit test in `tests/unit/test_update_and_env.py` or a new file. Verify: test passes.
+  - 2026-11-19 after the rollout: the first `machine update` with the feature did not enable the unit, because `ensure_update_timer` ran only at the start of the update, before the host config sync and the dotfile link. It now runs again at the end of the update steps; test `test_feature_units_are_switched_after_dotfiles_and_apply`.
 
 ## 4. Devices without dotfiles
 

@@ -988,6 +988,11 @@ class UpdateMixin:
         if not not_set_up:
             runner.run("niri config", self.run_niri_config)
 
+        # Again after the dotfiles and the host config: the unit of a feature this
+        # update added (ssh-tunnel) exists only now.
+        if not not_set_up and self.current_device() != "container":
+            runner.run("update timers", self.ensure_update_timer)
+
         if sudo_failed and profile_changed and profile_backup:
             # The steps above used the new host config. Like a failed apply, it only
             # counts as applied when Ansible ran with it; the next update retries.

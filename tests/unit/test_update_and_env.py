@@ -124,6 +124,23 @@ def _update(machine, *, force=False, system=False, skip_ansible=False) -> int:
     )
 
 
+def test_feature_units_are_switched_after_dotfiles_and_apply(update_env, monkeypatch):
+    """A feature added by this update links its unit only during the update."""
+    machine, repo, other, home, calls = update_env
+    monkeypatch.setattr(machine, "ensure_update_timer", lambda: calls.append("timer"))
+    _push_change(
+        other,
+        "machine/hosts/testhost.yml",
+        HOST_YAML.format(context="private", device="server"),
+    )
+    machine.set_pending(True)
+
+    assert _update(machine) == 0
+    assert calls[-1] == "timer"
+    assert calls.index("dotfiles") < len(calls) - 1
+    assert calls.index("apply") < len(calls) - 1
+
+
 def test_update_pulls_and_skips_apply_when_profile_unchanged(update_env):
     machine, repo, other, home, calls = update_env
     _push_change(other, "home/dot_new", "x\n")

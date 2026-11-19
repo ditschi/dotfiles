@@ -45,6 +45,8 @@ See proposal.md for the motivation. State found on 2026-11-19 (read-only checks 
 
 **Private hosts, also desktops (owner decision, 2026-11-19).** Both features are optional on private servers and desktops, so a laptop can also be reached through oracle while away; they are excluded for work and in containers.
 
+**The off-site NAS is a later device (owner decision, 2026-11-19).** The off-site backup goes to a new UGREEN DXP4800 Plus (UGOS Pro, Debian-based, x86) instead of the DS212+ `backup-nas`; the DS212+ is retired. Its tunnel follows once the device is set up, on port 2225, as an `ssh-tunnel` host if it runs the dotfiles, otherwise with the device script. The DS212+ tunnel key is not used. The device script stays, with instructions for devices without dotfiles in general; the host key `backup-nas.pub` stays while the DS212+ still runs.
+
 **Other tunnels later through the same role (owner decision, 2026-11-19).** `tunnel`'s `authorized_keys` has one owner, the role. A tunnel that is not an SSH host, such as TeddyCloud's 2443, gets its line through this role in a later change, once DS-Lite at the other end is confirmed; nobody adds lines by hand or from the homelab repo.
 
 ## Risks / Trade-offs
@@ -53,20 +55,13 @@ See proposal.md for the motivation. State found on 2026-11-19 (read-only checks 
 - [Device key and host list disagree (key committed, no jump route, or the other way)] → the role warns about a jump route without a key; a key without a route is unused.
 - [A dead session still holds the port after a client reconnects] → ClientAlive ends it within about 90 s; `ExitOnForwardFailure` makes the client retry instead of running without the forward.
 - [Everyone with a shell on oracle can connect to the loopback tunnel ports] → the target still checks its own host key and user key; only `ubuntu` and `opc` have shells on oracle.
-- [DSM updates remove the script or the tasks] → the README says how to check after a DSM update; Tailscale stays the primary path.
+- [System updates on a device remove the script or its jobs] → the README says what to check after an update; Tailscale stays the primary path.
 - [The background update reads the host list file, which `ssh-client-config` keeps away from the background update] → it reads only the file already written on the host, never the Bitwarden note, which is the part that requirement protects.
 
 ## Migration Plan
 
 1. Merge and push; on oracle, after the owner approves the live change: `machine update` (manual) applies `jump-host`. Check: `getent passwd tunnel`, `sudo sshd -T -C user=tunnel,host=x,addr=127.0.0.1 | grep -i -E 'allowtcpforwarding|permittty|clientalive'`, `sudo cat ~tunnel/.ssh/authorized_keys` shows two lines (2223, 2224).
 2. On homeserver and netmaster, once by hand: `crontab -e` and delete the `@reboot autossh` lines (netmaster: both, including `-L 0.0.0.0:9009:localhost:2375`); stop running autossh processes if any (`pkill -u ditschi autossh`). Then `machine update` enables the unit. Check: `systemctl --user status ssh-tunnel`, and on oracle `ss -ltn | grep 127.0.0.1:222`. From a host outside the home network with Tailscale logged out: `ssh homeserver` uses the jump route.
-3. backup-nas: the homelab session sends the public key of `/root/.ssh/tunnel_oracle`; it is committed as `machine/ssh_tunnel_keys/backup-nas.pub`. The owner, with Bitwarden unlocked, runs `machine ssh edit` and replaces the `nas-backup` block:
-   ```
-   Host backup-nas
-     HostKeyAlias backup-nas
-     User superditschi
-     ProxyCommand ~/.local/bin/ssh-route %k lan=<LAN address>:22 ts=backup-nas:22 jump=oracle:<port>
-   ```
-   without `IdentityFile ~/.ssh/id_rsa_nas`. `git mv machine/ssh_host_keys/nas-backup.pub machine/ssh_host_keys/backup-nas.pub`. Manual `machine update` on oracle; the homelab session installs the script and DSM tasks after `machine/ssh_tunnel/README.md`.
+3. The DS212+ `backup-nas` gets no tunnel (see Decisions). `git mv machine/ssh_host_keys/nas-backup.pub machine/ssh_host_keys/backup-nas.pub` keeps its host key under the new alias until it is retired; then delete the file and run `machine ssh remove backup-nas`. The off-site NAS gets its tunnel in a later change.
 4. `openspec/backlog.md`: entry for monitoring the tunnel ports on oracle (owner decision, 2026-11-19), e.g. once `monitoring` reaches oracle.
 5. Rollback: remove the features from the host configs; on oracle `userdel tunnel` and delete the drop-in, then `systemctl reload ssh`; on the clients `systemctl --user disable --now ssh-tunnel`. The crontab entries are not restored (they no longer worked).

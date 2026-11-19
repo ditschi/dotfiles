@@ -649,9 +649,9 @@ Host netmaster
   HostKeyAlias netmaster
   ProxyCommand ~/.local/bin/ssh-route %k lan=192.168.1.5:22 jump=oracle:2224
 
-Host backup-nas
-  HostKeyAlias backup-nas
-  ProxyCommand ~/.local/bin/ssh-route %k ts=backup-nas:22 jump=oracle:2225
+Host offsite-nas
+  HostKeyAlias offsite-nas
+  ProxyCommand ~/.local/bin/ssh-route %k ts=offsite-nas:22 jump=oracle:2225
 
 Host elsewhere
   HostKeyAlias elsewhere
@@ -662,7 +662,7 @@ Host elsewhere
 def test_jump_tunnels_for_the_jump_host():
     from machine_cli.ssh_client import jump_tunnels
 
-    expected = [("homeserver", 2223), ("netmaster", 2224), ("backup-nas", 2225)]
+    expected = [("homeserver", 2223), ("netmaster", 2224), ("offsite-nas", 2225)]
     # By its hostname (HostKeyAlias of the alias) and by the alias itself.
     assert jump_tunnels(TUNNEL_LIST, "privatecloud") == expected
     assert jump_tunnels(TUNNEL_LIST, "oracle") == expected
@@ -677,15 +677,15 @@ def test_jump_host_vars_keys_and_missing(tmp_path, monkeypatch, fake_bw):
     (repo / "machine/ssh_keys/homeserver.pub").write_text(
         "ssh-ed25519 AAAAhome ditschi@homeserver\n"
     )
-    (repo / "machine/ssh_keys/backup-nas.pub").write_text("ssh-ed25519 AAAAwrong x\n")
+    (repo / "machine/ssh_keys/offsite-nas.pub").write_text("ssh-ed25519 AAAAwrong x\n")
     (repo / "machine/ssh_tunnel_keys").mkdir()
-    (repo / "machine/ssh_tunnel_keys/backup-nas.pub").write_text(
-        "ssh-ed25519 AAAAnas tunnel@backup-nas\n"
+    (repo / "machine/ssh_tunnel_keys/offsite-nas.pub").write_text(
+        "ssh-ed25519 AAAAnas tunnel@offsite-nas\n"
     )
     values = machine.jump_host_vars("privatecloud")
     assert values["jump_host_tunnels"] == [
         {"alias": "homeserver", "port": 2223, "key": "ssh-ed25519 AAAAhome"},
-        {"alias": "backup-nas", "port": 2225, "key": "ssh-ed25519 AAAAnas"},
+        {"alias": "offsite-nas", "port": 2225, "key": "ssh-ed25519 AAAAnas"},
     ]
     assert values["jump_host_missing_keys"] == [
         "machine/ssh_tunnel_keys/netmaster.pub or machine/ssh_keys/netmaster.pub"

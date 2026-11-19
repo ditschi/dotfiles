@@ -23,7 +23,7 @@ The `authorized_keys` of `tunnel` SHALL hold one line per host block in the host
 - **THEN** the key of `machine/ssh_keys/homeserver.pub` may listen only on `127.0.0.1:2223`
 
 #### Scenario: Device without dotfiles
-- **WHEN** the host list routes backup-nas with `jump=oracle:2230` and `machine/ssh_tunnel_keys/backup-nas.pub` exists
+- **WHEN** the host list routes offsite-nas with `jump=oracle:2230` and `machine/ssh_tunnel_keys/offsite-nas.pub` exists
 - **THEN** that key may listen only on `127.0.0.1:2230`
 
 ### Requirement: Tunnel keys managed as a whole
@@ -95,7 +95,7 @@ The tunnel connection SHALL NOT use or create a connection-sharing master, and S
 The repository SHALL provide a tunnel script for devices without dotfiles that runs with BusyBox `sh` and OpenSSH 7.4, uses its own key, checks the jump host against a pinned host key and reads jump host, port and key paths from a local file on the device. Running it again while a tunnel runs SHALL NOT start a second one.
 
 #### Scenario: Boot task and watchdog
-- **WHEN** the DSM boot task and the periodic watchdog both run the script
+- **WHEN** the device's boot task and its periodic watchdog both run the script
 - **THEN** exactly one tunnel runs, and the watchdog restarts it after it died
 
 #### Scenario: Jump host key changed
@@ -107,7 +107,7 @@ Keys in `machine/ssh_tunnel_keys/` SHALL be used only for the `tunnel` user and 
 
 #### Scenario: Setup offers ssh_allow_from
 - **WHEN** `machine setup` offers hosts for `ssh_allow_from`
-- **THEN** backup-nas is not offered
+- **THEN** a device with a key only in `machine/ssh_tunnel_keys/` is not offered
 
 ### Requirement: Private hosts only
 The features `jump-host` and `ssh-tunnel` SHALL be optional on private servers and desktops and excluded for work and in containers.

@@ -102,9 +102,10 @@ case "${1:-}" in
             rmdir "$lock"
             exit 0
         fi
+        # The loop removes the lock once it runs, so a start in between does not
+        # take the not yet recognisable PID for a stale one and start a second loop.
         nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
         echo $! >"$PIDFILE"
-        rmdir "$lock"
         log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
         ;;
     stop)
@@ -126,6 +127,10 @@ case "${1:-}" in
         ;;
     run)
         load_config
+        # Only now is this PID recognisable as the loop (during its exec chain
+        # /proc/PID/cmdline is the start script's or empty), so start's lock ends here.
+        echo $$ >"$PIDFILE"
+        rmdir "$PIDFILE.lock" 2>/dev/null
         run_loop
         ;;
     *)

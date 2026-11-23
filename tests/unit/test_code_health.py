@@ -138,32 +138,45 @@ def test_duplicated_functions(repo):
     ]
 
 
-def test_duplicated_assertion_blocks(repo):
-    source = """
-    def test_one(x):
-        assert x
-        assert not x.y
+DUPLICATED_ASSERTS = """
+def test_one(x):
+    assert x
+    assert not x.y
 
-    def test_two(x):
-        assert x
-        assert not x.y
-    """
-    (smell,) = score(repo, "tests", "tests/test_a.py", source).smells
-    assert (smell.rule, smell.target) == ("duplicated-assertion-blocks", "test_two")
+def test_two(x):
+    assert x
+    assert not x.y
+"""
 
-
-def test_part_override_replaces_the_default(repo):
-    source = """
-    f() {
-        if a; then
-            for b in c; do
+# The shell part lowers the nesting limit from 4 to 3 in an override.
+NESTED_SHELL = """
+f() {
+    if a; then
+        for b in c; do
+            while d; do
                 e
             done
-        fi
-    }
-    """
-    (smell,) = score(repo, "shell", "bin/x", source).smells
-    assert (smell.rule, smell.detail) == ("nested-complexity", "nesting depth 3")
+        done
+    fi
+}
+"""
+
+
+@pytest.mark.parametrize(
+    "part_name, path, source, expected",
+    [
+        (
+            "tests",
+            "tests/test_a.py",
+            DUPLICATED_ASSERTS,
+            ("duplicated-assertion-blocks", "test_two"),
+        ),
+        ("shell", "bin/x", NESTED_SHELL, ("nested-complexity", "f")),
+    ],
+)
+def test_single_smell(repo, part_name, path, source, expected):
+    (smell,) = score(repo, part_name, path, source).smells
+    assert (smell.rule, smell.target) == expected
 
 
 def test_suppression_with_reason_removes_the_smell(repo):

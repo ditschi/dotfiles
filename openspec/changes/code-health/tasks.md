@@ -7,7 +7,7 @@
 - [x] 1.3 Unit tests for the Python metrics (cyclomatic and cognitive complexity, nesting with `elif`, bumps, conditionals, arguments, primitive arguments, LCOM4, assertion blocks, nested functions excluded from duplication) in `tests/unit/test_code_health_python.py`; verify with `pytest tests/unit/test_code_health_python.py -q`
 - [x] 1.4 Unit tests for the shell parser (functions in all three definition styles, nesting, `case` items, heredocs, keywords inside strings and comments, files without logic) in `tests/unit/test_code_health_shell.py`; verify with `pytest tests/unit/test_code_health_shell.py -q`
 - [x] 1.5 Unit tests for rules, scoring, suppressions, `--json`, `--changed` and the gate and baseline on a temporary git repository in `tests/unit/test_code_health.py`; verify with `pytest tests/unit/test_code_health.py -q`
-- [ ] 1.6 Refactor `code_health/` until every file scores 10.0; verify with `python3 -m code_health code_health/*.py --all`
+- [x] 1.6 Refactor `code_health/` until every file scores 10.0; verify with `python3 -m code_health code_health/*.py --all`
 - [x] 1.7 Write `docs/code-health.md` (rules, thresholds with origin, formula, gate, baseline, suppressions, commands) with the section "Steckbrief Code Health" and its nine headings (Messumfang, Tools und Versionen, Abgebildete Smells, Schwellen/Gewichte/Formel, Bedienung, Gate, Ergebnis, Skills, Erfahrungen) and link it from `Readme.md` and `docs/testing.md`; verify the documented commands run as written
 
 ## 2. Gate

@@ -219,8 +219,8 @@ base = 0.5
 step = 0.02
 max = 1.5
 
-[rules.primitive-obsession]     # % of annotated arguments typed str/int/float/bool/bytes; CodeScene 30
-threshold = 30
+[rules.primitive-obsession]     # % of annotated arguments typed str/int/float/bool/bytes; assumption 50 (CodeScene 30)
+threshold = 50
 min_arguments = 10              # assumption: judged only with at least 10 annotated arguments
 base = 0.5
 step = 0.01

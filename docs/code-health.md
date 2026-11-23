@@ -55,7 +55,7 @@ Thresholds and deductions are in [code-health.toml](../code-health.toml); each v
 | `large-file` | > 600 lines (shell: > 300; Ansible: > 40 tasks) | CodeScene (shell, Ansible: assumption) |
 | `overall-code-complexity` | mean cyclomatic complexity of the functions > 4 | CodeScene |
 | `many-functions` | > 40 functions and methods | assumption |
-| `primitive-obsession` | > 30 % of the annotated arguments are `str`/`int`/`float`/`bool`/`bytes` (from 10 annotated arguments) | CodeScene (annotated only: owner decision) |
+| `primitive-obsession` | > 50 % of the annotated arguments are `str`/`int`/`float`/`bool`/`bytes` (from 10 annotated arguments) | CodeScene 30 %, raised to 50 % and annotated only (owner decision) |
 | `brain-class` | large file with ≥ 20 functions and a brain method | assumption |
 | `low-cohesion` | LCOM4 ≥ 2 in a class with ≥ 4 methods | assumption |
 | `large-assertion-blocks` | ≥ 4 blocks of ≥ 4 consecutive asserts in a test file | CodeScene |

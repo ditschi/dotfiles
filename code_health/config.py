@@ -65,25 +65,29 @@ def load(root: Path) -> Config:
     defaults = data["rules"]
     return Config(
         root=root,
-        parts=[_part(name, values, defaults) for name, values in data["parts"].items()],
+        parts=[_part(entry, defaults) for entry in data["parts"].items()],
         exclude=data.get("exclude", []),
         min_file_score=data["gate"]["min_file_score"],
         baseline=data["gate"]["baseline"],
     )
 
 
-def _part(name: str, values: dict, defaults: dict) -> Part:
+def _part(entry: tuple[str, dict], defaults: dict) -> Part:
+    """A part from its `[parts.<name>]` table; each rule merges its defaults and overrides."""
+    name, values = entry
     overrides = values.get("overrides", {})
-    rules = {
-        rule: _rule(rule, {**defaults.get(rule, {}), **overrides.get(rule, {})})
+    settings = {
+        rule: {**defaults.get(rule, {}), **overrides.get(rule, {})}
         for rule in values["rules"]
     }
+    rules = dict(zip(settings, map(_rule, settings.items())))
     return Part(
         name, values["language"], values["files"], rules, values.get("tests", False)
     )
 
 
-def _rule(name: str, values: dict) -> Rule:
+def _rule(entry: tuple[str, dict]) -> Rule:
+    name, values = entry
     known = {key: values[key] for key in ("base", "step", "max") if key in values}
     inclusive = "threshold" not in values
     threshold = values.get("threshold", values.get("min", 0))

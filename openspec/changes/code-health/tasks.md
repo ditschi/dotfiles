@@ -1,6 +1,6 @@
 # Tasks
 
-## 1. Checker
+## 1. Own checker (cross-check until the ai-health gate is green)
 
 - [x] 1.1 Apply the decisions (complex conditional from 2 operators, primitive obsession over annotated arguments) to `code-health.toml` and the rules; verify with `python3 -m code_health` that the run completes and the config comments state each value's origin
 - [x] 1.2 Parts `python-cli`, `python-tests`, `shell` with their own rule sets in `code-health.toml` (table, JSON, baseline and gate per part, overall score for information) and the `ansible` part (tasks per file, complex `when`, `block` nesting, Jinja control tags, duplicated tasks); verify with `python3 -m code_health` that each part score is shown and that `excess-arguments` is not reported for tests
@@ -10,7 +10,7 @@
 - [x] 1.6 Refactor `code_health/` until every file scores 10.0; verify with `python3 -m code_health code_health/*.py --all`
 - [x] 1.7 Write `docs/code-health.md` (rules, thresholds with origin, formula, gate, baseline, suppressions, commands) with the section "Steckbrief Code Health" and its nine headings (Messumfang, Tools und Versionen, Abgebildete Smells, Schwellen/Gewichte/Formel, Bedienung, Gate, Ergebnis, Skills, Erfahrungen) and link it from `Readme.md` and `docs/testing.md`; verify the documented commands run as written
 
-## 2. Gate
+## 2. Gate with the own checker (replaced in group 3)
 
 - [x] 2.1 Add the nox session `code-health` (passes arguments through); verify `uvx nox -s code-health -- --changed` prints the table
 - [x] 2.2 Generate `code-health-baseline.json` with `python3 -m code_health --update-baseline`; verify `python3 -m code_health --gate --changed` passes on the branch
@@ -19,21 +19,39 @@
 - [x] 2.5 Add the section "Code health" to `AGENTS.md`: run `python3 -m code_health --changed` before every commit, fix smells instead of suppressing them, suppress only with a reason, tighten the baseline after improvements; add a rule for behaviour-preserving refactoring
 - [x] 2.6 Install `wondelai/skills@refactoring-patterns` and `wshobson/agents@python-testing-patterns` project-locally with `npx skills add`; verify they appear under `.claude/skills/` and their SKILL.md matches the reviewed version
 
-## 3. Refactoring up to 9.5
+## 3. ai-health
 
-- [ ] 3.1 `machine_cli/updates.py`: split `_update_steps`, `update_plan` and the other smells into small functions without behaviour change; verify with `pytest tests/unit/test_update_and_env.py tests/unit/test_machine_cli.py -q` and a score of at least 9.5
-- [ ] 3.2 `machine_cli/commands.py`: split `cmd_setup`, `cmd_apply` and `cmd_status`; verify with `pytest tests/unit -q -k "setup or apply or status or machine_cli"` and a score of at least 9.5
-- [ ] 3.3 All other files below 9.5, ordered by change frequency (`tests/unit/test_update_and_env.py`, `tests/unit/test_host_profiles.py`, `machine_cli/tools.py`, `machine_cli/dotfiles.py`, ...), one file per commit; verify per file with its tests and a score of at least 9.5, until every part scores at least 9.5
-- [ ] 3.4 After each step tighten the baseline with `python3 -m code_health --update-baseline` and verify the gate passes
+- [x] 3.1 Add `scripts/aihealth` with the pinned commit `033d1867fe514867d944d9387ee72db0188eed47` as the only pin; subcommands pass `--config` per component (`scan`, `delta` for `python-cli`/`shell` with `.aihealth.toml` and for `python-tests` with `.aihealth-tests.toml`); verify `scripts/aihealth scan` and `scripts/aihealth delta --format json` run and the wrapper itself has no findings
+- [x] 3.2 Add `.aihealth.toml` and `.aihealth-tests.toml` (profile strict) and `tests/unit/test_aihealth_config.py`, which checks that `[thresholds]`, `[score]` and `[delta]` are equal and the three test weights are 0; verify with `pytest tests/unit/test_aihealth_config.py -q`
+- [x] 3.3 Add `scripts/aihealth-components` (component scores of a revision from the scan JSON; compare merge base and head, tolerance 0.01) with unit tests for the comparison; verify with its tests and a run against `HEAD~1`
+- [x] 3.4 Change the nox session `code-health` to print the ai-health scan per component; verify `uvx nox -s code-health`
+- [x] 3.5 Add the pre-commit hooks `aihealth-delta` (`scripts/aihealth delta --staged`, `language: system`) and `aihealth-suppression-reason` (pygrep); verify the delta hook fails on a scratch change that adds a complex function and passes after reverting, and the pygrep hook fails on a suppression without ` -- <reason>`
+- [ ] 3.6 Add the CI steps: grammar cache, `delta` against the merge base per component, component comparison, scan report; verify with `pre-commit run check-yaml --files .github/workflows/verify.yml` and a local run of the same commands
+- [ ] 3.7 Rewrite `docs/code-health.md` for ai-health (components, profile, commands, gate, suppressions, gaps: scripts without extension, Ansible, test smells), update the Steckbrief, `AGENTS.md`, `Readme.md` and `docs/testing.md`; verify the documented commands run as written
 
-## 4. Validation
+## 4. ruff
 
-- [ ] 4.1 `pytest tests/unit -q` (shared test and validation config and `machine_cli` core change)
-- [ ] 4.2 `pre-commit run --files <changed paths>` including the new untracked files, then `pre-commit run --all-files` because the hook configuration changes
-- [ ] 4.3 `openspec validate code-health --strict`
-- [ ] 4.4 Review the branch diff against main with a fresh reviewer (`/code-review` or a review subagent) and fix the findings
+- [ ] 4.1 Add `ruff.toml` (line length 120, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
+- [ ] 4.2 Reformat with `ruff format` and fix `ruff check` findings in one separate commit without behaviour change, after the running refactorings landed; verify `pytest tests/unit -q`
+
+## 5. Refactoring toward 10
+
+- [ ] 5.1 Land the running refactorings (`machine_cli/updates.py`, `machine_cli/commands.py`, shell scripts, Ansible task files), each reviewed and committed per file with its tests green; verify per file with its tests and `scripts/aihealth delta`
+- [ ] 5.2 Present the ai-health hotspots (strict) to the owner and get approval for the further refactorings
+- [ ] 5.3 Refactor the approved files toward 10, ordered by change frequency, one file or topic per commit; verify per file with its tests and `scripts/aihealth delta`, until every component scores at least 9.5
+
+## 6. Removal of the own checker
+
+- [ ] 6.1 After the ai-health gate ran green in CI and the owner agreed: remove `code_health/`, `code-health.toml`, `code-health-baseline.json`, its tests, hook, CI step and nox use; verify `pytest tests/unit -q` and `pre-commit run --all-files`
+
+## 7. Validation
+
+- [ ] 7.1 `pytest tests/unit -q` (shared test and validation config and `machine_cli` core change)
+- [ ] 7.2 `pre-commit run --files <changed paths>` including the new untracked files, then `pre-commit run --all-files` because the hook configuration changes
+- [ ] 7.3 `openspec validate code-health --strict`
+- [ ] 7.4 Review the branch diff against main with a fresh reviewer (`/code-review` or a review subagent) and fix the findings
 
 ## Workflow follow-up
 
-- Fill in "7. Ergebnis" and "9. Erfahrungen" of the Steckbrief, report scores before and after per part, remaining smells and the Steckbrief path, and open the PR.
+- Fill in "7. Ergebnis" and "9. Erfahrungen" of the Steckbrief, report scores before and after per component, remaining findings and the Steckbrief path, and open the PR.
 - Archive the change after review (`/opsx:archive`).

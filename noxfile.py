@@ -41,9 +41,16 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", "tests/unit", "-q", *session.posargs)
 
 
-@nox.session(name="code-health", python=PYTHON)
+@nox.session(name="code-health", python=False)
 def code_health(session: nox.Session) -> None:
-    """Code health score per part (docs/code-health.md); arguments go to the checker."""
+    """ai-health scan and score per component (docs/code-health.md); arguments go to the scan."""
+    session.run("scripts/aihealth", "scan", *session.posargs, external=True)
+    session.run("scripts/aihealth_components.py", external=True)
+
+
+@nox.session(name="code-health-own", python=PYTHON)
+def code_health_own(session: nox.Session) -> None:
+    """The own checker, kept as a cross-check until the ai-health gate is green."""
     session.install("PyYAML>=6.0")
     session.run("python", "-m", "code_health", *session.posargs)
 

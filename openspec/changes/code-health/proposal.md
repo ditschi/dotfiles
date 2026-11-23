@@ -2,35 +2,39 @@
 
 ## Why
 
-Agents change this repository often. According to CodeScene's whitepaper "AI-Ready Code" (A. Tornhill, 2026), AI changes in unhealthy code have at least 60 % more defects; the underlying study only covered code with a health of 7 or more. Healthy code is therefore a precondition for agents to work reliably, next to tests, coverage and review. The owner decided not to use the proprietary CodeScene score (paid token) and to compute an own score from 1 to 10 with free tools instead, modelled on CodeScene Code Health. Each part of the repository shall reach at least 9.5, with 10 as the target, and agents shall be able to develop against the checker.
+Agents change this repository often. According to CodeScene's whitepaper "AI-Ready Code" (A. Tornhill, 2026), AI changes in unhealthy code have at least 60 % more defects; the underlying study only covered code with a health of 7 or more. Healthy code is therefore a precondition for agents to work reliably, next to tests, coverage and review. The owner decided not to use the proprietary CodeScene score (paid token) and to measure code health with free tools instead, modelled on CodeScene Code Health, with the target score 10 (no finding) and 9.5 as the minimum on the way there. Agents shall be able to develop against the check.
+
+After comparing approaches across six repositories, the owner decided on 2026-11-23 to use ai-health for Python in all repositories and for shell where it occurs, with one shared strict profile. The own checker built first in this change stays as a cross-check until the new gate runs green and is then removed after consultation.
 
 ## What Changes
 
-- New checker `code-health` (Python package `code_health`, standard library only): scores every Python file and every shell script with logic from 1 to 10. Each file starts at 10.0, each smell deducts a configured amount, the minimum is 1.0.
-- Separate parts with their own rules, score and target of 9.5: `python-cli` (measured like an application), `python-tests`, `shell` and `ansible` (owner direction, 2026-11-23). An LOC-weighted overall score is shown for information; the worst file is named.
-- Smells modelled on CodeScene: complex method, large method, brain method, excess arguments, constructor over-injection, primitive obsession, code duplication, deep nested complexity, bumpy road, complex conditional, cognitive complexity, large file, overall code complexity, many functions, brain class, low cohesion (LCOM4), large assertion blocks and duplicated assertion blocks.
-- `code-health.toml` holds the versioned scope, thresholds and deductions. Thresholds follow the published CodeScene Python defaults; own values are marked as assumptions.
-- Command: `uvx nox -s code-health` (also `python3 -m code_health`): table with file, score and smells with line numbers; `--json` for agents; `--changed [BASE]` for changed files only.
-- Gate in pre-commit and CI: every changed file must score at least 9.5 and must not get worse, and no part score may fall. While the repository is below 9.5, a ratchet baseline `code-health-baseline.json` holds the current scores of the files below 9.5; they must not fall below their entry.
-- Suppressions only per inline comment `code-health: ignore[<rule>] <reason>`; a suppression without a reason or without a matching smell fails.
-- `AGENTS.md` gets a section: run `code-health --changed` before every commit and fix smells instead of suppressing them. `docs/code-health.md` documents rules, score and gate, with the section "Steckbrief Code Health" for the comparison with the other repositories.
-- Refactorings without behaviour change, in small tested steps, starting with the hotspots that change most often, until every part scores at least 9.5. All of them belong to this change, not to follow-up changes (owner decision, 2026-11-23).
+- ai-health (github.com/epatel/ai-health, MIT, deterministic, no AI needed) pinned to commit `033d1867fe514867d944d9387ee72db0188eed47` (v0.4.0) in one place, the wrapper `scripts/aihealth`, run through `uvx`.
+- Components with their own score: `python-cli` (all Python outside `tests/` and `openspec/`), `python-tests` (`tests/`), `shell` (sh, bash and zsh files ai-health detects). Ansible has no score; ansible-lint stays its gate (owner decision Q3). Python scripts without a file extension (`machine_cli/machine`, `ssh-route`, `ssh-tunnel`, `work-net`, `homelab-ci`) are a documented gap while epatel/ai-health#3 is open (owner decision Q16).
+- Profile "strict" in `.aihealth.toml` (CodeScene thresholds, `decay = 8`, `density_loc = 100000`, `delta.tolerance = 0`; owner decision Q15); `.aihealth-tests.toml` repeats it and switches off the argument, primitive and cohesion smells for tests.
+- Commands: `uvx nox -s code-health` (scan report per component) and `scripts/aihealth delta` for the changed files, with `--format json` for agents.
+- Gate: pre-commit hook `aihealth delta --staged` per component (exit 1 on any degradation; new files must have no smell); CI `delta` against the merge base with `main` per component and a comparison of the component scores of merge base and head (owner decision Q6); the tree-sitter grammars are cached in CI.
+- Suppressions only file-wide as `# aihealth: disable=<smell> -- <reason>`; a pygrep hook rejects them without a reason.
+- ruff replaces black and flake8 as the Python linter and formatter, in its own commit; its structure rules (`C90`) stay off, ai-health is the only source for each smell (owner decisions Q8, Q9).
+- The own checker (`code_health/`, `code-health.toml`, `code-health-baseline.json`, its hook and CI step) stays unchanged as a cross-check until the ai-health gate runs green, and is removed afterwards after consultation.
+- `AGENTS.md` and `docs/code-health.md` describe the ai-health workflow; the docs carry the "Steckbrief Code Health" for the comparison across repositories.
+- Refactorings without behaviour change toward score 10, in small tested steps, ordered by change frequency; refactorings beyond those already running need the owner's approval of the ai-health hotspots.
 - Agent skills `wondelai/skills@refactoring-patterns` and `wshobson/agents@python-testing-patterns` from skills.sh, installed project-locally (owner decision, 2026-11-23).
 
 ## Capabilities
 
 ### New Capabilities
-- `code-health`: the code health score per part, its rules and configuration, the command and its output, the pre-commit and CI gate, the ratchet baseline and the suppression comments.
+- `code-health`: the code health check with ai-health: components, profile, commands, gate, suppressions and documented gaps.
 
 ### Modified Capabilities
-None. The new pre-commit hook and CI step are specified in `code-health`; the existing hook list in `pre-commit-checks` and the CI job list in `tests-and-ci` stay valid.
+- `pre-commit-checks`: the hook list names ruff instead of black and flake8, plus the ai-health hooks.
 
-Affected profiles: none. The checker runs only in the repository (development, pre-commit, CI); nothing is installed or linked on hosts.
+Affected profiles: none. The check runs only in the repository (development, pre-commit, CI); nothing is installed or linked on hosts.
 
 ## Impact
 
-- New: `code_health/` (package), the two skills under `.claude/skills/`, `code-health.toml`, `code-health-baseline.json`, `docs/code-health.md`, unit tests `tests/unit/test_code_health*.py`, nox session `code-health`, local pre-commit hook `code-health`, a CI step in `verify.yml`.
-- Changed: `AGENTS.md`, `noxfile.py`, `.pre-commit-config.yaml`, `.github/workflows/verify.yml`, `Readme.md`/`docs/testing.md` (command). Refactorings touch `machine_cli/`, scripts under `home/`, `ansible/roles/*/files/` and `tests/` without changing behaviour.
-- Dependencies: none at runtime; Python 3.11 or newer (`tomllib`). radon and complexipy (MIT) were used once to cross-check the metrics, they are not dependencies.
+- New: `scripts/aihealth`, `scripts/aihealth-components`, `.aihealth.toml`, `.aihealth-tests.toml`, `ruff.toml`, `docs/code-health.md`, the two skills under `.claude/skills/` with `skills-lock.json`, unit tests for the configuration consistency.
+- Changed: `AGENTS.md`, `noxfile.py`, `.pre-commit-config.yaml`, `.github/workflows/verify.yml`, `Readme.md`, `docs/testing.md`; the ruff migration reformats Python files without changing behaviour. Refactorings touch `machine_cli/`, scripts under `home/`, `ansible/` and `tests/` without changing behaviour.
+- Removed later: `code_health/`, `code-health.toml`, `code-health-baseline.json` and its hook and CI step, once the ai-health gate runs green and the owner agrees.
+- Dependencies: ai-health and tree-sitter-language-pack (about 30 MB of grammars, cached) via `uvx`, only for development and CI; ruff via pre-commit.
 
 Where: this checkout `/home/ditschi/dotfiles/.claude/worktrees/xenodochial-ellis-c9a21e` on branch `code-health`. It is a git worktree that is not the live checkout, and AGENTS.md says to stay in a non-live checkout instead of creating another worktree. The refactorings touch `machine_cli` and shell scripts that run on the live host, so the work must not happen in the live checkout.

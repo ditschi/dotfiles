@@ -55,6 +55,31 @@ jobs:
           ansible-galaxy collection install -r ansible/requirements.yml
           ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml
 
+  code-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # delta and the component check compare against the merge base
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Cache ai-health and its tree-sitter grammars
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/tree-sitter-language-pack
+          key: aihealth-${{ hashFiles('scripts/aihealth') }}
+      - name: Changed files must not get worse (docs/code-health.md)
+        run: scripts/aihealth delta --base "$(git merge-base origin/main HEAD)" --head HEAD
+      - name: Component scores must not fall
+        run: scripts/aihealth_components.py --compare "$(git merge-base origin/main HEAD)" HEAD
+      - name: Report per component
+        run: scripts/aihealth scan
+
   ansible-lint:
     needs: changes
     if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.hosts == 'true'

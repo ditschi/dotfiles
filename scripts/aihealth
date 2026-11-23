@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Code health with ai-health (docs/code-health.md). The only place that pins ai-health.
+#
+#   scripts/aihealth scan [args]    report per component
+#   scripts/aihealth delta [args]   changed files vs HEAD (--staged, --base REV --head REV);
+#                                   exit 1 when a file got worse or a new file has a finding
+#   scripts/aihealth raw ARGS...    ai-health itself, with the pin and no component logic
+#
+# Components: "code" (python-cli and shell, .aihealth.toml, tests/ excluded there) and
+# "tests" (python-tests, .aihealth-tests.toml). With --format json the results of both
+# components are printed as one JSON object keyed by component.
+set -euo pipefail
+
+AIHEALTH="git+https://github.com/epatel/ai-health@033d1867fe514867d944d9387ee72db0188eed47"
+ROOT="$(git rev-parse --show-toplevel)"
+
+aihealth() {
+    uvx --quiet --from "$AIHEALTH" aihealth "$@"
+}
+
+# Runs one component and prints its output; returns ai-health's exit status.
+component() {
+    local name=$1 command=$2
+    shift 2
+    case "$name:$command" in
+        code:scan) aihealth scan "$ROOT" --config "$ROOT/.aihealth.toml" "$@" ;;
+        code:delta) aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth.toml" "$@" ;;
+        tests:scan) aihealth scan "$ROOT/tests" --config "$ROOT/.aihealth-tests.toml" "$@" ;;
+        tests:delta) aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth-tests.toml" "$@" "$ROOT/tests" ;;
+    esac
+}
+
+wants_json() {
+    local arg previous=""
+    for arg in "$@"; do
+        [ "$previous" = "--format" ] && [ "$arg" = json ] && return 0
+        [ "$arg" = "--format=json" ] && return 0
+        previous=$arg
+    done
+    return 1
+}
+
+# Both components as text, one after the other; fails when either fails.
+run_text() {
+    local status=0 name
+    for name in code tests; do
+        echo "== $name"
+        component "$name" "$@" || status=1
+    done
+    return "$status"
+}
+
+# Both components as one JSON object {"code": ..., "tests": ...}.
+run_json() {
+    local status=0 code tests
+    code="$(component code "$@")" || status=1
+    tests="$(component tests "$@")" || status=1
+    printf '{"code": %s, "tests": %s}\n' "${code:-null}" "${tests:-null}"
+    return "$status"
+}
+
+main() {
+    local command=${1:-}
+    [ $# -gt 0 ] && shift
+    case "$command" in
+        raw) aihealth "$@" ;;
+        scan | delta)
+            if wants_json "$@"; then
+                run_json "$command" "$@"
+            else
+                run_text "$command" "$@"
+            fi
+            ;;
+        *)
+            sed -n '2,11s/^# \{0,1\}//p' "$0" >&2
+            return 2
+            ;;
+    esac
+}
+
+main "$@"

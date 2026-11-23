@@ -1,0 +1,21 @@
+# ai-health profile "strict" (owner decision 2026-11-23, Q15): CodeScene thresholds,
+# decay 8, no density relief for large files. Components: python-cli and shell use
+# this file, python-tests uses .aihealth-tests.toml, which must repeat [thresholds],
+# [score] and [delta] unchanged (tests/unit/test_aihealth_config.py checks that).
+# Always pass --config: `aihealth scan <dir>` otherwise reads <dir>/.aihealth.toml.
+# Ansible has no score (ansible-lint only). See docs/code-health.md.
+
+[thresholds]
+large_file = 600            # Python; ai-health default 1000
+primitive_obsession = 0.3   # CodeScene
+
+[score]
+decay = 8
+symbol_cap = 4
+density_loc = 100000        # large files are not relieved by their smell density
+
+[delta]
+tolerance = 0.0
+
+[scan]
+exclude = ["tests/*", "openspec/*"]

@@ -113,6 +113,18 @@ repos:
         additional_dependencies: [pyyaml]
         files: ^(machine_cli/|code_health/|tests/|home/|ansible/|machine/|bootstrap$|noxfile\.py$|code-health(\.toml|-baseline\.json)$)
         require_serial: true
+      - id: aihealth-delta
+        name: ai-health - staged files must not get worse (docs/code-health.md)
+        entry: scripts/aihealth delta --staged
+        language: system
+        types_or: [python, shell]
+        pass_filenames: false
+        require_serial: true
+      - id: aihealth-suppression-reason
+        name: 'ai-health suppressions need a reason (# aihealth: disable=<smell> -- <reason>)'
+        entry: 'aihealth:[ \t]*disable=(?![\w, \t]+-- .{10})'
+        language: pygrep
+        types_or: [python, shell]
       - id: no-co-authored-by
         name: forbid Co-authored-by trailers in commit messages
         entry: '(?i)^co-authored-by:'

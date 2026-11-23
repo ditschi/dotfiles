@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "skills": {
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "commit": "1eecf4b58eb380ff7ddc258a11c6586381d67b95",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "8113c05a831d4872c9294b0df26a335c09af423ee2e23d8b9b6817b300d96796",
+      "installMode": "copy"
+    },
+    "refactoring-patterns": {
+      "source": "wondelai/skills",
+      "commit": "c37678106e63ef1c5472d848fb3d8b8c5b33fafe",
+      "sourceType": "github",
+      "skillPath": "refactoring-patterns/SKILL.md",
+      "computedHash": "d6b31d50feaf66929da92cb5f8da61af60daf76b6f1e30860d46810a674bdf98",
+      "installMode": "copy"
+    }
+  }
+}

@@ -21,6 +21,13 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 - Run affected integration tests when behavior crosses deployment or system boundaries; for Ansible changes also run `ansible-lint ansible/*.yml`. See Readme "Tests" for Docker/APT tests.
 - Record commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
 
+## Code health
+
+- Before every commit run `python3 -m code_health --changed` (or `--json --changed`); every changed file must score at least 9.5 and must not get worse, and no part score (`python-cli`, `python-tests`, `shell`, `ansible`) may fall. Rules, thresholds and the score are explained in [docs/code-health.md](docs/code-health.md).
+- Fix smells instead of suppressing them. Suppress only with `# code-health: ignore[<rule>] <reason>` when the code cannot reasonably be shaped otherwise, and say why.
+- Refactor without changing behaviour: run the tests of the touched code before and after each small step, and keep refactoring and behaviour changes in separate commits.
+- After an improvement, tighten the ratchet with `python3 -m code_health --update-baseline` and commit `code-health-baseline.json`.
+
 ## Design decisions
 
 - Before changing an area, read its spec in `openspec/specs/` and the rationale in the archived `design.md` under `openspec/changes/archive/`. If a change would contradict a requirement or a recorded decision, ask the owner.

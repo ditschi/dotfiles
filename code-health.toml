@@ -1,0 +1,253 @@
+# Code health checker (`uvx nox -s code-health`, `python3 -m code_health`); see docs/code-health.md.
+#
+# The scored files are split into parts, each with its own rules, score and target.
+# Every file starts at 10.0; each smell deducts
+#   min(max, base + step * (value - first firing value))
+# and the score never drops below 1.0. A part's score is the mean of its file scores
+# weighted by lines of code (blank lines, comments and docstrings excluded).
+#
+# Origin of the values: "CodeScene" = published CodeScene default for Python
+# (default-rules.zip, May 2025); "assumption" = our own value, confirmed by the owner
+# (2026-11-23). CodeScene does not publish its deductions, so every base/step/max is an
+# assumption. `threshold` fires above the value, `min` fires at the value and above.
+
+exclude = ["openspec/**", "**/__pycache__/**"]
+
+[gate]
+min_file_score = 9.5
+baseline = "code-health-baseline.json"
+
+# --- parts -------------------------------------------------------------------
+
+[parts.python-cli]
+language = "python"
+files = [
+    "machine_cli/**/*.py",
+    "machine_cli/machine",
+    "code_health/**/*.py",
+    "noxfile.py",
+    "home/**/.local/bin/ssh-route",
+    "home/**/.local/bin/ssh-tunnel",
+    "home/**/.local/bin/work-net",
+    "ansible/roles/*/files/homelab-ci",
+]
+rules = [
+    "complex-method",
+    "large-method",
+    "brain-method",
+    "excess-arguments",
+    "constructor-over-injection",
+    "nested-complexity",
+    "bumpy-road",
+    "complex-conditional",
+    "cognitive-complexity",
+    "code-duplication",
+    "large-file",
+    "overall-code-complexity",
+    "many-functions",
+    "primitive-obsession",
+    "brain-class",
+    "low-cohesion",
+]
+
+# Tests: pytest fixtures arrive as arguments, so many arguments are the idiom; test
+# classes group cases instead of holding state. Hence no argument, primitive or
+# cohesion rules.
+[parts.python-tests]
+language = "python"
+tests = true
+files = ["tests/**/*.py"]
+rules = [
+    "complex-method",
+    "large-method",
+    "brain-method",
+    "nested-complexity",
+    "bumpy-road",
+    "complex-conditional",
+    "cognitive-complexity",
+    "code-duplication",
+    "large-file",
+    "many-functions",
+    "large-assertion-blocks",
+    "duplicated-assertion-blocks",
+]
+
+# Shell: no declared arguments, classes or types. Correctness is shellcheck's job.
+[parts.shell]
+language = "shell"
+files = [
+    "bootstrap",
+    "home/**/*.sh",
+    "home/**/*.bash",
+    "home/**/*.zsh",
+    "home/**/.local/bin/*",
+    "machine/**/*.sh",
+    "ansible/roles/*/files/*",
+]
+rules = [
+    "complex-method",
+    "large-method",
+    "brain-method",
+    "nested-complexity",
+    "bumpy-road",
+    "complex-conditional",
+    "cognitive-complexity",
+    "code-duplication",
+    "large-file",
+]
+
+[parts.shell.overrides.large-method]     # assumption: shell has no types or modules
+threshold = 40
+
+[parts.shell.overrides.large-file]       # assumption
+threshold = 300
+step = 0.003
+
+[parts.shell.overrides.nested-complexity]  # assumption: quoting and exit codes nest badly
+min = 3
+
+# Ansible: task files, handlers, playbooks and templates. Correctness is ansible-lint's job.
+[parts.ansible]
+language = "ansible"
+files = [
+    "ansible/*.yml",
+    "ansible/tasks/**/*.yml",
+    "ansible/roles/*/tasks/**/*.yml",
+    "ansible/roles/*/handlers/**/*.yml",
+    "ansible/roles/*/templates/**/*.j2",
+]
+rules = [
+    "complex-method",
+    "nested-complexity",
+    "complex-conditional",
+    "code-duplication",
+    "large-file",
+]
+
+[parts.ansible.overrides.complex-method]   # assumption: Jinja if/elif/for tags per template
+threshold = 10
+
+[parts.ansible.overrides.nested-complexity]  # assumption: block inside block inside block
+min = 3
+
+[parts.ansible.overrides.code-duplication]   # assumption: the same task twice in a file
+min_loc = 3
+min_tokens = 4
+similarity = 0.95
+
+[parts.ansible.overrides.large-file]       # assumption: tasks per file, not lines
+threshold = 40
+step = 0.02
+
+# --- rule defaults -----------------------------------------------------------
+
+[rules.complex-method]          # cyclomatic complexity; CodeScene warning 9
+threshold = 9
+base = 0.5
+step = 0.05
+max = 2.0
+
+[rules.large-method]            # lines of code; CodeScene warning 70
+threshold = 70
+base = 0.5
+step = 0.01
+max = 2.0
+
+[rules.brain-method]            # assumption: complex-method and large-method at once
+base = 1.5
+max = 1.5
+
+[rules.excess-arguments]        # CodeScene function_max_arguments 4 (self/cls not counted)
+threshold = 4
+base = 0.3
+step = 0.1
+max = 1.0
+
+[rules.constructor-over-injection]  # CodeScene constructor_max_arguments 5 (__init__)
+threshold = 5
+base = 0.3
+step = 0.1
+max = 1.0
+
+[rules.nested-complexity]       # nesting depth of if/for/while/try/match; CodeScene 4
+min = 4
+base = 0.5
+step = 0.25
+max = 2.0
+
+[rules.bumpy-road]              # CodeScene: 2 bumps, a bump nests at least 2 levels
+min = 2
+bump_depth = 2
+base = 0.5
+step = 0.25
+max = 2.0
+
+[rules.complex-conditional]     # and/or operators in one condition; CodeScene 2 (owner: operators)
+min = 2
+base = 0.3
+step = 0.1
+max = 1.0
+
+[rules.cognitive-complexity]    # assumption: SonarSource default 15; CodeScene has no such rule
+threshold = 15
+base = 0.3
+step = 0.03
+max = 1.5
+
+[rules.code-duplication]        # CodeScene: functions of at least 10 LOC, 75 % similar
+min_loc = 10
+min_tokens = 40                 # assumption: a long string literal is one token, not a body
+similarity = 0.75
+base = 0.5
+max = 0.5
+
+[rules.large-file]              # lines of code; CodeScene Python 600 / 3000 / 6000
+threshold = 600
+base = 1.0
+step = 0.001
+max = 4.0
+
+[rules.overall-code-complexity] # mean cyclomatic complexity of the functions; CodeScene 4
+threshold = 4
+base = 0.5
+step = 0.25
+max = 1.5
+
+[rules.many-functions]          # assumption: more than 40 functions in a module
+threshold = 40
+base = 0.5
+step = 0.02
+max = 1.5
+
+[rules.primitive-obsession]     # % of annotated arguments typed str/int/float/bool/bytes; CodeScene 30
+threshold = 30
+min_arguments = 10              # assumption: judged only with at least 10 annotated arguments
+base = 0.5
+step = 0.01
+max = 1.0
+
+[rules.brain-class]             # assumption: large file + many functions + a brain method
+min_functions = 20
+base = 1.5
+max = 1.5
+
+[rules.low-cohesion]            # LCOM4 of a class; assumption: 2+ groups, classes of 4+ methods
+threshold = 1
+min_methods = 4
+base = 0.5
+step = 0.25
+max = 1.5
+
+[rules.large-assertion-blocks]  # CodeScene: 4 consecutive asserts, 4 such blocks per file
+block_size = 4
+min = 4
+base = 0.5
+step = 0.1
+max = 1.5
+
+[rules.duplicated-assertion-blocks]  # assumption: the same 2+ asserts in several tests
+block_size = 2
+min = 1
+base = 0.3
+step = 0.1
+max = 1.5

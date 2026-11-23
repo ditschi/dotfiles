@@ -41,6 +41,13 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", "tests/unit", "-q", *session.posargs)
 
 
+@nox.session(name="code-health", python=PYTHON)
+def code_health(session: nox.Session) -> None:
+    """Code health score per part (docs/code-health.md); arguments go to the checker."""
+    session.install("PyYAML>=6.0")
+    session.run("python", "-m", "code_health", *session.posargs)
+
+
 @nox.session(python=PYTHON)
 def ansible(session: nox.Session) -> None:
     """Ansible syntax check and lint."""

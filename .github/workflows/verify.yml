@@ -33,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # code health compares against the merge base with main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -41,6 +43,8 @@ jobs:
           pip install -r tests/requirements.txt
       - name: Reject committed host-only Git settings
         run: python3 -m machine_cli.local_overrides --check
+      - name: Code health gate (docs/code-health.md)
+        run: python3 -m code_health --gate --changed origin/main
       - name: Unit tests and CLI smoke
         run: |
           python3 -m py_compile machine_cli/machine

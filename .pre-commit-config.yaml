@@ -108,9 +108,17 @@ repos:
         pass_filenames: false
       - id: aihealth-delta
         name: ai-health - staged files must not get worse (docs/code-health.md)
-        entry: scripts/aihealth delta --staged
+        entry: scripts/aihealth delta --staged --config .aihealth.toml
         language: system
         types_or: [python, shell]
+        pass_filenames: false
+        require_serial: true
+      - id: aihealth-delta-tests
+        name: ai-health - staged tests must not get worse (docs/code-health.md)
+        entry: scripts/aihealth delta --staged --config .aihealth-tests.toml tests
+        language: system
+        files: ^tests/
+        types: [python]
         pass_filenames: false
         require_serial: true
       - id: aihealth-suppression-reason

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# aihealth: disable=primitive_obsession -- ai-health scan JSON arrives as plain dicts; wrapping it adds no value
 """Component scores of a revision, and the CI check that no component got worse.
 
     scripts/aihealth_components.py                  scores of the working tree
@@ -19,13 +20,6 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import TypeAlias
-
-# One file of an ai-health scan, all files of the "code" and "tests" scans, and the
-# score per component.
-ScanEntry: TypeAlias = dict[str, object]
-ScanResults: TypeAlias = dict[str, dict]
-ComponentScores: TypeAlias = dict[str, float]
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "aihealth"
@@ -33,19 +27,19 @@ TOLERANCE = 0.01
 SHELL_LANGUAGES = {"bash", "zsh", "sh", "shell"}
 
 
-def code_component(entry: ScanEntry) -> str | None:
+def code_component(entry: dict) -> str | None:
     """Component of a file from the code scan: python-cli or shell."""
     if entry["language"] == "python":
         return "python-cli"
     return "shell" if entry["language"] in SHELL_LANGUAGES else None
 
 
-def tests_component(entry: ScanEntry) -> str | None:
+def tests_component(entry: dict) -> str | None:
     """The tests scan holds the python-tests component only."""
     return "python-tests" if entry["language"] == "python" else None
 
 
-def component_scores(scans: ScanResults) -> ComponentScores:
+def component_scores(scans: dict[str, dict]) -> dict[str, float]:
     """LoC-weighted mean of the file scores per component, from ai-health scan JSON."""
     files = [(code_component(e), e) for e in scans["code"]["files"]]
     files += [(tests_component(e), e) for e in scans["tests"]["files"]]
@@ -62,7 +56,7 @@ def component_scores(scans: ScanResults) -> ComponentScores:
     }
 
 
-def regressions(base: ComponentScores, head: ComponentScores) -> list[str]:
+def regressions(base: dict[str, float], head: dict[str, float]) -> list[str]:
     return [
         f"{name}: {base[name]:.2f} -> {score:.2f}"
         for name, score in head.items()
@@ -80,7 +74,7 @@ def export(revision: str, target: Path) -> None:
     subprocess.run(["git", "-C", str(target), "add", "-A"], check=True)
 
 
-def scan(tree: Path) -> ScanResults:
+def scan(tree: Path) -> dict[str, dict]:
     configs = {
         "code": (tree, ".aihealth.toml"),
         "tests": (tree / "tests", ".aihealth-tests.toml"),
@@ -107,7 +101,7 @@ def _scan_json(path: Path, config: Path) -> dict:
     )
 
 
-def scores_of(revision: str) -> ComponentScores:
+def scores_of(revision: str) -> dict[str, float]:
     with tempfile.TemporaryDirectory() as directory:
         export(revision, Path(directory))
         return component_scores(scan(Path(directory)))

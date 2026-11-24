@@ -7,14 +7,14 @@ Measures the health of the repository's Python and shell code on a scale from 1 
 ## ADDED Requirements
 
 ### Requirement: Pinned tool
-Code health SHALL be measured with ai-health, pinned to one commit in exactly one place, the wrapper `scripts/aihealth`. Every hook, CI step and nox session SHALL call ai-health through that wrapper.
+Code health SHALL be measured with ai-health, pinned to one commit in exactly one place, `scripts/aihealth`, which passes its arguments to ai-health unchanged. Every hook, CI step and nox session SHALL call ai-health through it.
 
 #### Scenario: Updating ai-health
 - **WHEN** the pinned commit is changed in `scripts/aihealth`
 - **THEN** the hook, CI and nox use the new version without further edits
 
 ### Requirement: Components
-The code SHALL be scored in three components: `python-cli` (Python files outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/`), `python-tests` (Python files under `tests/`) and `shell` (shell files ai-health detects outside the same directories). Each component score SHALL be the mean of its file scores weighted by lines of code.
+The code SHALL be scored in three components: `python-cli` (Python files outside `tests/`, `openspec/` and `.claude/skills/`), `python-tests` (Python files under `tests/`) and `shell` (shell files ai-health detects outside the same directories). Each component score SHALL be the mean of its file scores weighted by lines of code.
 
 #### Scenario: Report per component
 - **WHEN** a user runs `uvx nox -s code-health`
@@ -46,10 +46,10 @@ Every ai-health call SHALL pass the configuration of its component with `--confi
 - **THEN** ai-health reads `.aihealth-tests.toml` from the repository root
 
 ### Requirement: Changed files for agents
-`scripts/aihealth delta` SHALL compare the changed files of the working tree with `HEAD` per component and exit with 1 when a file got worse or a new file has a finding; `--format json` SHALL give the same result as JSON.
+`scripts/aihealth delta --config <component config>` SHALL compare the changed files of the working tree with `HEAD` and exit with 1 when a file got worse or a new file has a finding; `--format json` SHALL give the same result as JSON.
 
 #### Scenario: Agent checks its change
-- **WHEN** an agent runs `scripts/aihealth delta --format json` after editing a module
+- **WHEN** an agent runs `scripts/aihealth delta --config .aihealth.toml --format json` after editing a module
 - **THEN** it gets the new and worsened findings of the changed files
 
 ### Requirement: Pre-commit gate

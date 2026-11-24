@@ -29,7 +29,7 @@
 - [x] 3.6 Add the CI steps: grammar cache, `delta` against the merge base per component, component comparison, scan report; verify with `pre-commit run check-yaml --files .github/workflows/verify.yml` and a local run of the same commands
 - [x] 3.7 Rewrite `docs/code-health.md` for ai-health (components, profile, commands, gate, suppressions, gaps: scripts without extension, Ansible, test smells), update the Steckbrief, `AGENTS.md`, `Readme.md` and `docs/testing.md`; verify the documented commands run as written
 
-- [x] 3.8 Make the own checker report-only (remove its hook and CI step, keep `uvx nox -s code-health-own`) and exclude `code_health/` and its tests from ai-health; verify the CI delta command passes against the merge base
+- [x] 3.8 Cut `scripts/aihealth` back to the pin (hooks, CI and nox pass `--config` per component themselves) and drop the cosmetic type aliases in `scripts/aihealth_components.py`; verify the hooks fail and pass on scratch changes and `scripts/aihealth scan scripts/aihealth_components.py --config .aihealth.toml` shows no finding
 - [x] 3.9 Install `obra/superpowers@systematic-debugging`, `verification-before-completion`, `receiving-code-review`, `mattpocock/skills@writing-for-agents` and `github/awesome-copilot@github-actions-hardening` project-locally; verify their SKILL.md match the reviewed copies
 
 ## 4. ruff
@@ -49,7 +49,7 @@
 
 ## 6. Removal of the own checker
 
-- [ ] 6.1 After the ai-health gate ran green in CI and the owner agreed: remove `code_health/`, `code-health.toml`, `code-health-baseline.json`, its tests, hook, CI step and nox use; verify `pytest tests/unit -q` and `pre-commit run --all-files`
+- [x] 6.1 Remove (owner rule 2026-11-24, in PR 1) `code_health/`, `code-health.toml`, `code-health-baseline.json`, its tests and nox session; verify `pytest tests/unit -q` and that no reference is left
 
 ## 7. Validation
 

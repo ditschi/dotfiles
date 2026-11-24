@@ -15,7 +15,7 @@ pytest tests/integration -n auto -m apt # Pi Zero APT + tests/hosts/ci-rpi-zero.
 pytest tests/integration -m apt_gnome  # private desktop APT + ci-home-laptop.yml (slow on a cold cache)
 ansible-lint ansible/*.yml      # locally / in CI on changes under ansible/ or machine/hosts/
 ansible-galaxy collection install -r ansible/requirements.yml
-scripts/aihealth delta            # code health of the changed files (docs/code-health.md)
+scripts/aihealth delta --config .aihealth.toml   # code health of the changed files (docs/code-health.md)
 uvx nox -s code-health            # ai-health scan and score per component
 ```
 

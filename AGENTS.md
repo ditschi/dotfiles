@@ -23,10 +23,10 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 
 ## Code health
 
-- Before every commit run `scripts/aihealth delta` (agents: `scripts/aihealth delta --format json`): no changed file may get worse and a new file must have no finding. The target is score 10 (no finding) per file; details in [docs/code-health.md](docs/code-health.md).
-- Fix findings instead of suppressing them. Suppress only file-wide with `# aihealth: disable=<smell> -- <reason>` when the code cannot reasonably be shaped otherwise.
+- Before every commit run `scripts/aihealth delta --config .aihealth.toml` and, for changed tests, `scripts/aihealth delta --config .aihealth-tests.toml tests` (add `--format json` for machine-readable output): no changed file may get worse and a new file must have no finding. The target is score 10 (no finding) per file; details in [docs/code-health.md](docs/code-health.md).
+- Fix findings instead of suppressing them. Never remove or weaken type hints and never add type aliases only to silence a smell; the real fix is a parameter object or dataclass where it improves the code. Otherwise leave the finding or suppress it file-wide with `# aihealth: disable=<smell> -- <reason>`.
 - Refactor without changing behaviour: run the tests of the touched code before and after each small step, and keep refactoring and behaviour changes in separate commits.
-- Always call ai-health through `scripts/aihealth`; it holds the pin and passes `--config` per component.
+- Always call ai-health through `scripts/aihealth` (it holds the pin) and always pass `--config`.
 
 ## Design decisions
 

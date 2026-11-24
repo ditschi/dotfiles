@@ -5,22 +5,23 @@ Code health is measured with [ai-health](https://github.com/epatel/ai-health) (M
 ## Commands
 
 ```bash
-scripts/aihealth delta                    # changed files (incl. untracked) vs HEAD, per component; exit 1 if worse
-scripts/aihealth delta --format json      # the same as one JSON object {"code": ..., "tests": ...}, for agents
-scripts/aihealth delta --staged           # what the pre-commit hook checks
-scripts/aihealth scan                     # full report per component (takes options, no path)
-uvx nox -s code-health                    # scan plus the score of each component
+scripts/aihealth delta --config .aihealth.toml                     # changed files (incl. untracked) vs HEAD; exit 1 if worse
+scripts/aihealth delta --config .aihealth-tests.toml tests         # the same for the tests component
+scripts/aihealth delta --config .aihealth.toml --format json       # JSON, for agents
+scripts/aihealth scan . --config .aihealth.toml                    # report: python-cli and shell
+scripts/aihealth scan tests --config .aihealth-tests.toml          # report: python-tests
+scripts/aihealth scan machine_cli/updates.py --config .aihealth.toml -v   # one file, every finding
+uvx nox -s code-health                                             # both scans plus the score of each component
 scripts/aihealth_components.py --compare "$(git merge-base origin/main HEAD)" HEAD   # what CI checks
-scripts/aihealth raw scan machine_cli/updates.py --config .aihealth.toml -v           # one file, every finding
 ```
 
-`scripts/aihealth` is the only place that pins ai-health (a commit, so `uvx` serves it from the cache, also offline after the first run) and the only way to call it: it passes the right `--config` per component, because `aihealth scan <dir>` otherwise reads `<dir>/.aihealth.toml` and silently falls back to the defaults. A full scan takes about 3 s.
+`scripts/aihealth` only pins ai-health to a commit (so `uvx` serves it from the cache, also offline after the first run) and passes every argument through. Always give `--config`: `aihealth scan <dir>` otherwise reads `<dir>/.aihealth.toml` and silently falls back to the defaults. `scripts/aihealth_components.py` exists because ai-health has no comparison of component scores between two revisions; it exports both with `git archive`, scans them with the checkout's profiles and splits the JSON by language. A full scan takes about 3 s.
 
 ## Components
 
 | Component | Files | Config |
 | --- | --- | --- |
-| `python-cli` | Python outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/` | `.aihealth.toml` |
+| `python-cli` | Python outside `tests/`, `openspec/` and `.claude/skills/` | `.aihealth.toml` |
 | `shell` | sh, bash and zsh files outside the same directories, including `home/**/.local/bin` and `home/**/.shell` | `.aihealth.toml` |
 | `python-tests` | Python under `tests/` | `.aihealth-tests.toml` |
 
@@ -28,7 +29,6 @@ Not scored:
 - Ansible: ansible-lint is its gate (owner decision).
 - Python scripts without a file extension (`machine_cli/machine`, `home/core/.local/bin/ssh-route`, `home/ssh-tunnel/.local/bin/ssh-tunnel`, `home/work/.local/bin/work-net`, `ansible/roles/homelab_node/files/homelab-ci`): ai-health does not detect them yet ([epatel/ai-health#3](https://github.com/epatel/ai-health/issues/3)).
 - Test-specific smells (large and duplicated assertion blocks): ai-health has none yet.
-- `code_health/` and its tests: the own checker built first, kept as a cross-check until it is removed.
 - `.claude/skills/`: third-party agent skills, pinned in `skills-lock.json`.
 
 ## Profile "strict"
@@ -39,7 +39,7 @@ Not scored:
 
 ## Gate
 
-- pre-commit `aihealth-delta`: `delta --staged` for both components; fails when a staged file gets worse or a new file has a finding.
+- pre-commit `aihealth-delta` and `aihealth-delta-tests`: `delta --staged` per component; fails when a staged file gets worse or a new file has a finding.
 - CI job `code-health`: `delta` against the merge base with `main` (not `origin/main`, so a branch behind `main` is not charged with newer changes there), the component comparison of merge base and head (a component may drop at most 0.01, which absorbs deleting a healthy file), and the full scan as a report (`delta` does not see duplication across files). The uv cache and `~/.cache/tree-sitter-language-pack` (about 30 MB of grammars) are cached.
 - Suppressions are file-wide only: `# aihealth: disable=<smell>[, <smell>] -- <reason>`. Without ` -- ` ai-health takes the reason as part of the smell name and silently ignores the suppression; the pygrep hook `aihealth-suppression-reason` rejects suppressions without ` -- ` and a reason of at least ten characters.
 - Linting is separate: ruff (format and pycodestyle/pyflakes rules), shellcheck, shfmt, ansible-lint. Their structure rules stay off; each smell has one source, ai-health.
@@ -50,13 +50,13 @@ Profile for comparing this approach with the other repositories; the headings ar
 
 ### 1. Messumfang
 
-Three components with their own score and the target 10 (minimum 9.5): `python-cli` (all Python outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/`), `python-tests` (`tests/`) and `shell` (sh, bash, zsh, including dotfiles in hidden directories, which ai-health lists through `git ls-files`). Not scored: Ansible (ansible-lint only, owner decision), Python scripts without an extension (documented gap, epatel/ai-health#3), the own checker `code_health/` until its removal. An overall score is not used for the gate; a large Python share would hide the shell component.
+Three components with their own score and the target 10 (minimum 9.5): `python-cli` (all Python outside `tests/`, `openspec/` and `.claude/skills/`), `python-tests` (`tests/`) and `shell` (sh, bash, zsh, including dotfiles in hidden directories, which ai-health lists through `git ls-files`). Not scored: Ansible (ansible-lint only, owner decision), Python scripts without an extension (documented gap, epatel/ai-health#3); third-party skills in `.claude/skills/`. An overall score is not used for the gate; a large Python share would hide the shell component.
 
 ### 2. Tools und Versionen, je Sprache
 
 - Python and shell: ai-health v0.4.0, pinned to commit `033d1867fe514867d944d9387ee72db0188eed47` in `scripts/aihealth`, run with `uvx` (tree-sitter-language-pack for parsing).
 - Lint: ruff 0.17.6 (replaces black and flake8), shellcheck 0.11, shfmt 3.10, ansible-lint.
-- Before ai-health, this change built an own checker on the Python standard library (`code_health/`, `ast`/`tokenize`, a line-based shell parser, PyYAML for Ansible), cross-checked with radon 6.0.1 (cyclomatic complexity equal for 533 of 537 functions) and complexipy 9.0.0 (cognitive complexity equal for 526 of 537). It stays as a cross-check until the ai-health gate is green. Checked and not used: lizard (no shell), ruff's structure rules (pass/fail without values), jscpd (Node).
+- Before ai-health, this change built an own checker on the Python standard library (`code_health/`, `ast`/`tokenize`, a line-based shell parser, PyYAML for Ansible), cross-checked with radon 6.0.1 (cyclomatic complexity equal for 533 of 537 functions) and complexipy 9.0.0 (cognitive complexity equal for 526 of 537). It found the same hotspots and was removed once ai-health was in place, following the owner's rule of no own logic where a tool exists. Checked and not used: lizard (no shell), ruff's structure rules (pass/fail without values), jscpd (Node).
 
 ### 3. Abgebildete Smells
 
@@ -68,11 +68,11 @@ See [Profile "strict"](#profile-strict). ai-health's default weights (brain meth
 
 ### 5. Bedienung
 
-`scripts/aihealth delta` (text or `--format json`), `scripts/aihealth scan`, `uvx nox -s code-health` (the repository's task runner is nox). `delta` checks changed files only (working tree, `--staged`, or `--base`/`--head`). About 3 s for a full scan, well under a second for a small delta after the first run.
+`scripts/aihealth delta --config <component config>` (text or `--format json`), `scripts/aihealth scan <dir> --config <component config>`, `uvx nox -s code-health` (the repository's task runner is nox). `delta` checks changed files only (working tree, `--staged`, or `--base`/`--head`). About 3 s for a full scan, well under a second for a small delta after the first run.
 
 ### 6. Gate
 
-pre-commit hook `aihealth-delta` (`delta --staged`, tolerance 0, new files without findings) and the CI job `code-health` (delta against the merge base, component comparison with tolerance 0.01, report). No stored baseline: the base revision is the ratchet. Suppressions file-wide with a reason, enforced by a pygrep hook.
+pre-commit hooks `aihealth-delta` and `aihealth-delta-tests` (`delta --staged` per component, tolerance 0, new files without findings) and the CI job `code-health` (delta against the merge base, component comparison with tolerance 0.01, report). No stored baseline: the base revision is the ratchet. Suppressions file-wide with a reason, enforced by a pygrep hook.
 
 ### 7. Ergebnis
 

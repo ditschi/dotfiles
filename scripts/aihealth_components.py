@@ -88,7 +88,6 @@ def scan(tree: Path) -> dict[str, dict]:
 def _scan_json(path: Path, config: Path) -> dict:
     command = [
         str(WRAPPER),
-        "raw",
         "scan",
         str(path),
         "--config",

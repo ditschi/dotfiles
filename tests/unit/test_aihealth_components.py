@@ -56,3 +56,37 @@ def test_a_drop_of_exactly_the_tolerance_passes_for_every_score():
         for s in hundredths
         if components.regressions({"x": s}, {"x": round(s - 0.01, 2)})
     ]
+
+
+def test_scan_calls_the_pinned_ai_health_with_the_component_configs(
+    monkeypatch, tmp_path
+):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return type("Result", (), {"stdout": '{"files": []}'})()
+
+    monkeypatch.setattr(components.subprocess, "run", fake_run)
+    components.scan(tmp_path)
+    root = components.ROOT
+    assert calls == [
+        [
+            str(components.WRAPPER),
+            "scan",
+            str(tmp_path),
+            "--config",
+            str(root / ".aihealth.toml"),
+            "--format",
+            "json",
+        ],
+        [
+            str(components.WRAPPER),
+            "scan",
+            str(tmp_path / "tests"),
+            "--config",
+            str(root / ".aihealth-tests.toml"),
+            "--format",
+            "json",
+        ],
+    ]

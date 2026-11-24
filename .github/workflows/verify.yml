@@ -33,14 +33,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # code health compares against the merge base with main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install test deps
         run: |
           pip install -r tests/requirements.txt
+          ansible-galaxy collection install -r ansible/requirements.yml
       - name: Reject committed host-only Git settings
         run: python3 -m machine_cli.local_overrides --check
       - name: Unit tests and CLI smoke
@@ -50,7 +49,6 @@ jobs:
           pytest tests/unit -q
       - name: Ansible syntax
         run: |
-          ansible-galaxy collection install -r ansible/requirements.yml
           ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml
 
   code-health:
@@ -201,11 +199,12 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test deps
-        run: pip install -r tests/requirements.txt
+        run: |
+          pip install -r tests/requirements.txt
+          ansible-galaxy collection install -r ansible/requirements.yml
       - name: Unit tests and Ansible syntax on ARM
         run: |
           python3 -m py_compile machine_cli/machine
           python3 -m compileall -q machine_cli
           pytest tests/unit -q
-          ansible-galaxy collection install -r ansible/requirements.yml
           ansible-playbook --syntax-check -i ansible/inventory/local.yml ansible/workstation.yml

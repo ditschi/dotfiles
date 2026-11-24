@@ -29,6 +29,7 @@ Not scored:
 - Python scripts without a file extension (`machine_cli/machine`, `home/core/.local/bin/ssh-route`, `home/ssh-tunnel/.local/bin/ssh-tunnel`, `home/work/.local/bin/work-net`, `ansible/roles/homelab_node/files/homelab-ci`): ai-health does not detect them yet ([epatel/ai-health#3](https://github.com/epatel/ai-health/issues/3)).
 - Test-specific smells (large and duplicated assertion blocks): ai-health has none yet.
 - `code_health/` and its tests: the own checker built first, kept as a cross-check until it is removed.
+- `.claude/skills/`: third-party agent skills, pinned in `skills-lock.json`.
 
 ## Profile "strict"
 

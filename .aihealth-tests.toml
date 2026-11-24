@@ -18,3 +18,7 @@ tolerance = 0.0
 excess_arguments = 0
 primitive_obsession = 0
 low_cohesion = 0
+
+[scan]
+# Tests of the own checker, removed together with code_health/.
+exclude = ["*test_code_health*"]

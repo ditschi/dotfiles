@@ -18,4 +18,5 @@ density_loc = 100000        # large files are not relieved by their smell densit
 tolerance = 0.0
 
 [scan]
-exclude = ["tests/*", "openspec/*"]
+# code_health/ is the own checker, kept as a cross-check until it is removed (docs/code-health.md).
+exclude = ["tests/*", "openspec/*", "code_health/*"]

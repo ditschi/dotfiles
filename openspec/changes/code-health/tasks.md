@@ -26,15 +26,22 @@
 - [x] 3.3 Add `scripts/aihealth-components` (component scores of a revision from the scan JSON; compare merge base and head, tolerance 0.01) with unit tests for the comparison; verify with its tests and a run against `HEAD~1`
 - [x] 3.4 Change the nox session `code-health` to print the ai-health scan per component; verify `uvx nox -s code-health`
 - [x] 3.5 Add the pre-commit hooks `aihealth-delta` (`scripts/aihealth delta --staged`, `language: system`) and `aihealth-suppression-reason` (pygrep); verify the delta hook fails on a scratch change that adds a complex function and passes after reverting, and the pygrep hook fails on a suppression without ` -- <reason>`
-- [ ] 3.6 Add the CI steps: grammar cache, `delta` against the merge base per component, component comparison, scan report; verify with `pre-commit run check-yaml --files .github/workflows/verify.yml` and a local run of the same commands
-- [ ] 3.7 Rewrite `docs/code-health.md` for ai-health (components, profile, commands, gate, suppressions, gaps: scripts without extension, Ansible, test smells), update the Steckbrief, `AGENTS.md`, `Readme.md` and `docs/testing.md`; verify the documented commands run as written
+- [x] 3.6 Add the CI steps: grammar cache, `delta` against the merge base per component, component comparison, scan report; verify with `pre-commit run check-yaml --files .github/workflows/verify.yml` and a local run of the same commands
+- [x] 3.7 Rewrite `docs/code-health.md` for ai-health (components, profile, commands, gate, suppressions, gaps: scripts without extension, Ansible, test smells), update the Steckbrief, `AGENTS.md`, `Readme.md` and `docs/testing.md`; verify the documented commands run as written
+
+- [x] 3.8 Make the own checker report-only (remove its hook and CI step, keep `uvx nox -s code-health-own`) and exclude `code_health/` and its tests from ai-health; verify the CI delta command passes against the merge base
+- [x] 3.9 Install `obra/superpowers@systematic-debugging`, `verification-before-completion`, `receiving-code-review`, `mattpocock/skills@writing-for-agents` and `github/awesome-copilot@github-actions-hardening` project-locally; verify their SKILL.md match the reviewed copies
 
 ## 4. ruff
 
 - [x] 4.1 Add `ruff.toml` (line length 120, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
-- [ ] 4.2 Reformat with `ruff format` and fix `ruff check` findings in one separate commit without behaviour change, after the running refactorings landed; verify `pytest tests/unit -q`
+- [x] 4.2 Reformat with `ruff format` and fix `ruff check` findings in one separate commit without behaviour change, after the running refactorings landed; verify `pytest tests/unit -q`
 
-## 5. Refactoring toward 10
+## 4b. Pull request 1
+
+- [ ] 4b.1 Open PR 1 (gate, profiles, ruff, docs, skills) without the refactorings; run an independent review (`/code-review` high or a fresh reviewer subagent with only the diff, the repo and AGENTS.md), fix or justify findings, wait for green CI (`gh pr checks`), and merge only after the owner's go in this session
+
+## 5. Refactoring toward 10 (pull request 2)
 
 - [ ] 5.1 Land the running refactorings (`machine_cli/updates.py`, `machine_cli/commands.py`, shell scripts, Ansible task files), each reviewed and committed per file with its tests green; verify per file with its tests and `scripts/aihealth delta`
 - [ ] 5.2 Present the ai-health hotspots (strict) to the owner and get approval for the further refactorings

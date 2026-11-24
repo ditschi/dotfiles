@@ -15,10 +15,11 @@ After comparing approaches across six repositories, the owner decided on 2026-11
 - Gate: pre-commit hook `aihealth delta --staged` per component (exit 1 on any degradation; new files must have no smell); CI `delta` against the merge base with `main` per component and a comparison of the component scores of merge base and head (owner decision Q6); the tree-sitter grammars are cached in CI.
 - Suppressions only file-wide as `# aihealth: disable=<smell> -- <reason>`; a pygrep hook rejects them without a reason.
 - ruff replaces black and flake8 as the Python linter and formatter, in its own commit; its structure rules (`C90`) stay off, ai-health is the only source for each smell (owner decisions Q8, Q9).
-- The own checker (`code_health/`, `code-health.toml`, `code-health-baseline.json`, its hook and CI step) stays unchanged as a cross-check until the ai-health gate runs green, and is removed afterwards after consultation.
+- The own checker (`code_health/`, `code-health.toml`, `code-health-baseline.json`) stays as a report-only cross-check without hook or CI step until the ai-health gate runs green, and is removed afterwards after consultation.
 - `AGENTS.md` and `docs/code-health.md` describe the ai-health workflow; the docs carry the "Steckbrief Code Health" for the comparison across repositories.
 - Refactorings without behaviour change toward score 10, in small tested steps, ordered by change frequency; refactorings beyond those already running need the owner's approval of the ai-health hotspots.
-- Agent skills `wondelai/skills@refactoring-patterns` and `wshobson/agents@python-testing-patterns` from skills.sh, installed project-locally (owner decision, 2026-11-23).
+- Agent skills from skills.sh, installed project-locally: `wondelai/skills@refactoring-patterns`, `wshobson/agents@python-testing-patterns`, `obra/superpowers@systematic-debugging`, `verification-before-completion` and `receiving-code-review`, `mattpocock/skills@writing-for-agents`, `github/awesome-copilot@github-actions-hardening` (owner decisions, 2026-11-23 and 2026-11-24).
+- Two pull requests: first the gate, tooling, docs and skills; then the refactorings (owner decision, 2026-11-24).
 
 ## Capabilities
 

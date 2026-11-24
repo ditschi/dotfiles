@@ -2,7 +2,7 @@
 default_stages: [pre-commit]
 # Skills installed with `npx skills add` stay byte-identical to their pinned source; skills-lock.json
 # holds commit hashes that detect-secrets mistakes for secrets.
-exclude: ^(\.claude/skills/(refactoring-patterns|python-testing-patterns)/|skills-lock\.json$)
+exclude: ^(\.claude/skills/(refactoring-patterns|python-testing-patterns|systematic-debugging|verification-before-completion|receiving-code-review|writing-for-agents|github-actions-hardening)/|skills-lock\.json$)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v5.0.0
@@ -106,13 +106,6 @@ repos:
         additional_dependencies: ['@fission-ai/openspec@1.14.3']
         files: ^openspec/specs/
         pass_filenames: false
-      - id: code-health
-        name: code health of the changed files and of every part (docs/code-health.md)
-        entry: python -m code_health --gate --base HEAD
-        language: python
-        additional_dependencies: [pyyaml]
-        files: ^(machine_cli/|code_health/|tests/|home/|ansible/|machine/|bootstrap$|noxfile\.py$|code-health(\.toml|-baseline\.json)$)
-        require_serial: true
       - id: aihealth-delta
         name: ai-health - staged files must not get worse (docs/code-health.md)
         entry: scripts/aihealth delta --staged

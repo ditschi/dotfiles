@@ -60,11 +60,11 @@ repos:
           - --simplify
           - --diff
         files: ^home/core/\.bashrc$
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.6
     hooks:
-      - id: black
-        language_version: python3
+      - id: ruff-format
+      - id: ruff-check
   - repo: https://github.com/google/yamlfmt
     rev: v0.14.0
     hooks:
@@ -130,9 +130,3 @@ repos:
         entry: '(?i)^co-authored-by:'
         language: pygrep
         stages: [commit-msg]
-  - repo: https://github.com/pycqa/flake8
-    rev: '7.1.1'
-    hooks:
-      - id: flake8
-        args:
-          - --max-line-length=120

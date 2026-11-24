@@ -31,7 +31,7 @@
 
 ## 4. ruff
 
-- [ ] 4.1 Add `ruff.toml` (line length 120, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
+- [x] 4.1 Add `ruff.toml` (line length 120, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
 - [ ] 4.2 Reformat with `ruff format` and fix `ruff check` findings in one separate commit without behaviour change, after the running refactorings landed; verify `pytest tests/unit -q`
 
 ## 5. Refactoring toward 10

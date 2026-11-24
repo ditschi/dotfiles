@@ -8,7 +8,7 @@ Code health is measured with [ai-health](https://github.com/epatel/ai-health) (M
 scripts/aihealth delta                    # changed files (incl. untracked) vs HEAD, per component; exit 1 if worse
 scripts/aihealth delta --format json      # the same as one JSON object {"code": ..., "tests": ...}, for agents
 scripts/aihealth delta --staged           # what the pre-commit hook checks
-scripts/aihealth scan                     # full report per component
+scripts/aihealth scan                     # full report per component (takes options, no path)
 uvx nox -s code-health                    # scan plus the score of each component
 scripts/aihealth_components.py --compare "$(git merge-base origin/main HEAD)" HEAD   # what CI checks
 scripts/aihealth raw scan machine_cli/updates.py --config .aihealth.toml -v           # one file, every finding
@@ -20,8 +20,8 @@ scripts/aihealth raw scan machine_cli/updates.py --config .aihealth.toml -v     
 
 | Component | Files | Config |
 | --- | --- | --- |
-| `python-cli` | Python outside `tests/` and `openspec/` | `.aihealth.toml` |
-| `shell` | sh, bash and zsh files outside `tests/` and `openspec/`, including `home/**/.local/bin` and `home/**/.shell` | `.aihealth.toml` |
+| `python-cli` | Python outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/` | `.aihealth.toml` |
+| `shell` | sh, bash and zsh files outside the same directories, including `home/**/.local/bin` and `home/**/.shell` | `.aihealth.toml` |
 | `python-tests` | Python under `tests/` | `.aihealth-tests.toml` |
 
 Not scored:
@@ -50,7 +50,7 @@ Profile for comparing this approach with the other repositories; the headings ar
 
 ### 1. Messumfang
 
-Three components with their own score and the target 10 (minimum 9.5): `python-cli` (all Python outside `tests/` and `openspec/`), `python-tests` (`tests/`) and `shell` (sh, bash, zsh, including dotfiles in hidden directories, which ai-health lists through `git ls-files`). Not scored: Ansible (ansible-lint only, owner decision), Python scripts without an extension (documented gap, epatel/ai-health#3), the own checker `code_health/` until its removal. An overall score is not used for the gate; a large Python share would hide the shell component.
+Three components with their own score and the target 10 (minimum 9.5): `python-cli` (all Python outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/`), `python-tests` (`tests/`) and `shell` (sh, bash, zsh, including dotfiles in hidden directories, which ai-health lists through `git ls-files`). Not scored: Ansible (ansible-lint only, owner decision), Python scripts without an extension (documented gap, epatel/ai-health#3), the own checker `code_health/` until its removal. An overall score is not used for the gate; a large Python share would hide the shell component.
 
 ### 2. Tools und Versionen, je Sprache
 
@@ -76,7 +76,7 @@ pre-commit hook `aihealth-delta` (`delta --staged`, tolerance 0, new files witho
 
 ### 7. Ergebnis
 
-Before (2026-11-23, ai-health strict on `main`): `python-cli` 4.70, `python-tests` 6.43, `shell` 8.89. Worst files: `machine_cli/updates.py` 1.04, `tests/unit/test_update_and_env.py` 1.28, `machine_cli/ssh_client.py` 1.49, `machine_cli/netrc_sync.py` 1.52, `tests/unit/test_host_profiles.py` 1.62. The own checker measured the same hotspots (`python-cli` 3.76, `python-tests` 6.49, `shell` 8.10, `ansible` 8.65).
+Before (ai-health with the final strict profile on `main` 0a3d695, measured 2026-11-24 with `scripts/aihealth_components.py 0a3d695`): `python-cli` 3.97, `python-tests` 6.30, `shell` 8.89. Worst files: `machine_cli/updates.py` 1.04, `tests/unit/test_update_and_env.py` 1.28, `machine_cli/ssh_client.py` 1.49, `machine_cli/netrc_sync.py` 1.52, `tests/unit/test_host_profiles.py` 1.62. The own checker measured the same hotspots (`python-cli` 3.76, `python-tests` 6.49, `shell` 8.10, `ansible` 8.65).
 
 After: added once the refactorings are done.
 

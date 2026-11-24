@@ -23,7 +23,7 @@
 
 - [x] 3.1 Add `scripts/aihealth` with the pinned commit `033d1867fe514867d944d9387ee72db0188eed47` as the only pin; subcommands pass `--config` per component (`scan`, `delta` for `python-cli`/`shell` with `.aihealth.toml` and for `python-tests` with `.aihealth-tests.toml`); verify `scripts/aihealth scan` and `scripts/aihealth delta --format json` run and the wrapper itself has no findings
 - [x] 3.2 Add `.aihealth.toml` and `.aihealth-tests.toml` (profile strict) and `tests/unit/test_aihealth_config.py`, which checks that `[thresholds]`, `[score]` and `[delta]` are equal and the three test weights are 0; verify with `pytest tests/unit/test_aihealth_config.py -q`
-- [x] 3.3 Add `scripts/aihealth-components` (component scores of a revision from the scan JSON; compare merge base and head, tolerance 0.01) with unit tests for the comparison; verify with its tests and a run against `HEAD~1`
+- [x] 3.3 Add `scripts/aihealth_components.py` (component scores of a revision from the scan JSON; compare merge base and head, tolerance 0.01) with unit tests for the comparison; verify with its tests and a run against `HEAD~1`
 - [x] 3.4 Change the nox session `code-health` to print the ai-health scan per component; verify `uvx nox -s code-health`
 - [x] 3.5 Add the pre-commit hooks `aihealth-delta` (`scripts/aihealth delta --staged`, `language: system`) and `aihealth-suppression-reason` (pygrep); verify the delta hook fails on a scratch change that adds a complex function and passes after reverting, and the pygrep hook fails on a suppression without ` -- <reason>`
 - [x] 3.6 Add the CI steps: grammar cache, `delta` against the merge base per component, component comparison, scan report; verify with `pre-commit run check-yaml --files .github/workflows/verify.yml` and a local run of the same commands
@@ -34,7 +34,7 @@
 
 ## 4. ruff
 
-- [x] 4.1 Add `ruff.toml` (line length 120, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
+- [x] 4.1 Add `ruff.toml` (format line length 88 as black, lint line length 120 as flake8, rules `E`, `F`, `W`, no `C90`) and replace the `black` and `flake8` hooks with `ruff-format` and `ruff` (check); verify `pre-commit run ruff --all-files` and `pre-commit run ruff-format --all-files` pass after 4.2
 - [x] 4.2 Reformat with `ruff format` and fix `ruff check` findings in one separate commit without behaviour change, after the running refactorings landed; verify `pytest tests/unit -q`
 
 ## 4b. Pull request 1

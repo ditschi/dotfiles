@@ -1,33 +1,76 @@
 #!/usr/bin/env bash
 # Code health with ai-health (docs/code-health.md). The only place that pins ai-health.
 #
-#   scripts/aihealth scan [args]    report per component
-#   scripts/aihealth delta [args]   changed files vs HEAD (--staged, --base REV --head REV);
-#                                   exit 1 when a file got worse or a new file has a finding
-#   scripts/aihealth raw ARGS...    ai-health itself, with the pin and no component logic
+#   scripts/aihealth scan [options]          report per component (scans the whole component)
+#   scripts/aihealth delta [options] [paths] changed files vs HEAD (--staged, --base REV --head REV);
+#                                            exit 1 when a file got worse or a new file has a finding
+#   scripts/aihealth raw ARGS...             ai-health itself, with the pin and no component logic
 #
 # Components: "code" (python-cli and shell, .aihealth.toml, tests/ excluded there) and
 # "tests" (python-tests, .aihealth-tests.toml). With --format json the results of both
-# components are printed as one JSON object keyed by component.
+# components are printed as one JSON object keyed by component. Exit 2: usage error.
 set -euo pipefail
 
 AIHEALTH="git+https://github.com/epatel/ai-health@033d1867fe514867d944d9387ee72db0188eed47"
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# delta options that take a value; every other non-option argument is a path.
+VALUE_OPTIONS=" --base --head --format --max-findings --repo --config "
 
 aihealth() {
+    if ! command -v uvx >/dev/null; then
+        echo "scripts/aihealth: uvx not found; install uv (https://docs.astral.sh/uv/)" >&2
+        return 2
+    fi
     uvx --quiet --from "$AIHEALTH" aihealth "$@"
 }
 
-# Runs one component and prints its output; returns ai-health's exit status.
+# Splits delta arguments into OPTIONS and the PATHS of each component.
+split_delta_args() {
+    OPTIONS=() CODE_PATHS=() TESTS_PATHS=()
+    local expect_value=""
+    for arg in "$@"; do
+        if [ -n "$expect_value" ] || [ "${arg#-}" != "$arg" ]; then
+            OPTIONS+=("$arg")
+            expect_value=""
+            case "$VALUE_OPTIONS" in *" $arg "*) expect_value=1 ;; esac
+        else
+            add_path "$arg"
+        fi
+    done
+}
+
+add_path() {
+    local path relative
+    path="$(realpath -m "$1")"
+    relative="${path#"$ROOT"/}"
+    CODE_PATHS+=("$path")
+    case "$relative" in tests | tests/*) TESTS_PATHS+=("$path") ;; esac
+}
+
+# Runs one component; prints nothing and succeeds when the given paths are not part of it.
 component() {
     local name=$1 command=$2
     shift 2
     case "$name:$command" in
         code:scan) aihealth scan "$ROOT" --config "$ROOT/.aihealth.toml" "$@" ;;
-        code:delta) aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth.toml" "$@" ;;
         tests:scan) aihealth scan "$ROOT/tests" --config "$ROOT/.aihealth-tests.toml" "$@" ;;
-        tests:delta) aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth-tests.toml" "$@" "$ROOT/tests" ;;
+        code:delta) code_delta "$@" ;;
+        tests:delta) tests_delta "$@" ;;
     esac
+}
+
+code_delta() {
+    split_delta_args "$@"
+    aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth.toml" "${OPTIONS[@]}" "${CODE_PATHS[@]}"
+}
+
+tests_delta() {
+    split_delta_args "$@"
+    if [ ${#CODE_PATHS[@]} -eq 0 ]; then
+        TESTS_PATHS=("$ROOT/tests")
+    fi
+    [ ${#TESTS_PATHS[@]} -gt 0 ] || return 0
+    aihealth delta --repo "$ROOT" --config "$ROOT/.aihealth-tests.toml" "${OPTIONS[@]}" "${TESTS_PATHS[@]}"
 }
 
 wants_json() {
@@ -40,23 +83,29 @@ wants_json() {
     return 1
 }
 
-# Both components as text, one after the other; fails when either fails.
+# The worst exit status of both components: 2 (usage error) over 1 (got worse) over 0.
+worst() {
+    [ "$1" -gt "$2" ] && echo "$1" || echo "$2"
+}
+
 run_text() {
-    local status=0 name
+    local status=0 name result
     for name in code tests; do
         echo "== $name"
-        component "$name" "$@" || status=1
+        result=0
+        component "$name" "$@" || result=$?
+        status=$(worst "$status" "$result")
     done
     return "$status"
 }
 
 # Both components as one JSON object {"code": ..., "tests": ...}.
 run_json() {
-    local status=0 code tests
-    code="$(component code "$@")" || status=1
-    tests="$(component tests "$@")" || status=1
+    local code_status=0 tests_status=0 code tests
+    code="$(component code "$@")" || code_status=$?
+    tests="$(component tests "$@")" || tests_status=$?
     printf '{"code": %s, "tests": %s}\n' "${code:-null}" "${tests:-null}"
-    return "$status"
+    return "$(worst "$code_status" "$tests_status")"
 }
 
 main() {

@@ -9,7 +9,7 @@ After comparing approaches across six repositories, the owner decided on 2026-11
 ## What Changes
 
 - ai-health (github.com/epatel/ai-health, MIT, deterministic, no AI needed) pinned to commit `033d1867fe514867d944d9387ee72db0188eed47` (v0.4.0) in one place, the wrapper `scripts/aihealth`, run through `uvx`.
-- Components with their own score: `python-cli` (all Python outside `tests/` and `openspec/`), `python-tests` (`tests/`), `shell` (sh, bash and zsh files ai-health detects). Ansible has no score; ansible-lint stays its gate (owner decision Q3). Python scripts without a file extension (`machine_cli/machine`, `ssh-route`, `ssh-tunnel`, `work-net`, `homelab-ci`) are a documented gap while epatel/ai-health#3 is open (owner decision Q16).
+- Components with their own score: `python-cli` (all Python outside `tests/`, `openspec/`, the own checker and the third-party skills), `python-tests` (`tests/`), `shell` (sh, bash and zsh files ai-health detects). Ansible has no score; ansible-lint stays its gate (owner decision Q3). Python scripts without a file extension (`machine_cli/machine`, `ssh-route`, `ssh-tunnel`, `work-net`, `homelab-ci`) are a documented gap while epatel/ai-health#3 is open (owner decision Q16).
 - Profile "strict" in `.aihealth.toml` (CodeScene thresholds, `decay = 8`, `density_loc = 100000`, `delta.tolerance = 0`; owner decision Q15); `.aihealth-tests.toml` repeats it and switches off the argument, primitive and cohesion smells for tests.
 - Commands: `uvx nox -s code-health` (scan report per component) and `scripts/aihealth delta` for the changed files, with `--format json` for agents.
 - Gate: pre-commit hook `aihealth delta --staged` per component (exit 1 on any degradation; new files must have no smell); CI `delta` against the merge base with `main` per component and a comparison of the component scores of merge base and head (owner decision Q6); the tree-sitter grammars are cached in CI.
@@ -33,7 +33,7 @@ Affected profiles: none. The check runs only in the repository (development, pre
 
 ## Impact
 
-- New: `scripts/aihealth`, `scripts/aihealth-components`, `.aihealth.toml`, `.aihealth-tests.toml`, `ruff.toml`, `docs/code-health.md`, the two skills under `.claude/skills/` with `skills-lock.json`, unit tests for the configuration consistency.
+- New: `scripts/aihealth`, `scripts/aihealth_components.py`, `.aihealth.toml`, `.aihealth-tests.toml`, `ruff.toml`, `docs/code-health.md`, the two skills under `.claude/skills/` with `skills-lock.json`, unit tests for the configuration consistency.
 - Changed: `AGENTS.md`, `noxfile.py`, `.pre-commit-config.yaml`, `.github/workflows/verify.yml`, `Readme.md`, `docs/testing.md`; the ruff migration reformats Python files without changing behaviour. Refactorings touch `machine_cli/`, scripts under `home/`, `ansible/` and `tests/` without changing behaviour.
 - Removed later: `code_health/`, `code-health.toml`, `code-health-baseline.json` and its hook and CI step, once the ai-health gate runs green and the owner agrees.
 - Dependencies: ai-health and tree-sitter-language-pack (about 30 MB of grammars, cached) via `uvx`, only for development and CI; ruff via pre-commit.

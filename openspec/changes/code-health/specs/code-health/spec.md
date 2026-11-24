@@ -14,7 +14,7 @@ Code health SHALL be measured with ai-health, pinned to one commit in exactly on
 - **THEN** the hook, CI and nox use the new version without further edits
 
 ### Requirement: Components
-The code SHALL be scored in three components: `python-cli` (Python files outside `tests/` and `openspec/`), `python-tests` (Python files under `tests/`) and `shell` (shell files ai-health detects outside `tests/` and `openspec/`). Each component score SHALL be the mean of its file scores weighted by lines of code.
+The code SHALL be scored in three components: `python-cli` (Python files outside `tests/`, `openspec/`, `code_health/` and `.claude/skills/`), `python-tests` (Python files under `tests/`) and `shell` (shell files ai-health detects outside the same directories). Each component score SHALL be the mean of its file scores weighted by lines of code.
 
 #### Scenario: Report per component
 - **WHEN** a user runs `uvx nox -s code-health`

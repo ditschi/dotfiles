@@ -1,4 +1,5 @@
-# Code health checker (`uvx nox -s code-health`, `python3 -m code_health`); see docs/code-health.md.
+# Own code health checker, report-only cross-check until its removal (`uvx nox -s code-health-own`,
+# `python3 -m code_health`); the gate is ai-health, see docs/code-health.md.
 #
 # The scored files are split into parts, each with its own rules, score and target.
 # Every file starts at 10.0; each smell deducts

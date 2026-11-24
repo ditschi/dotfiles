@@ -66,7 +66,7 @@ def regressions(base: ComponentScores, head: ComponentScores) -> list[str]:
     return [
         f"{name}: {base[name]:.2f} -> {score:.2f}"
         for name, score in head.items()
-        if name in base and score < base[name] - TOLERANCE
+        if name in base and round(base[name] - score, 2) > TOLERANCE
     ]
 
 

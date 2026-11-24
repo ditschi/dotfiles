@@ -40,9 +40,19 @@ def test_component_scores_weight_by_lines():
     "head, expected",
     [
         ({"shell": 8.995, "python-cli": 7.0}, []),
+        ({"shell": 8.99, "python-cli": 6.99}, []),
         ({"shell": 8.9, "python-cli": 7.5}, ["shell: 9.00 -> 8.90"]),
         ({"shell": 9.0, "python-cli": 7.0, "python-tests": 1.0}, []),
     ],
 )
 def test_regressions_allow_a_small_tolerance_and_new_components(head, expected):
     assert components.regressions({"shell": 9.0, "python-cli": 7.0}, head) == expected
+
+
+def test_a_drop_of_exactly_the_tolerance_passes_for_every_score():
+    hundredths = [value / 100 for value in range(101, 1001)]
+    assert not [
+        s
+        for s in hundredths
+        if components.regressions({"x": s}, {"x": round(s - 0.01, 2)})
+    ]

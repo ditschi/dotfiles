@@ -33,7 +33,7 @@ Affected profiles: none. The check runs only in the repository (development, pre
 
 ## Impact
 
-- New: `scripts/aihealth`, `scripts/aihealth_components.py`, `.aihealth.toml`, `.aihealth-tests.toml`, `ruff.toml`, `docs/code-health.md`, the two skills under `.claude/skills/` with `skills-lock.json`, unit tests for the configuration consistency.
+- New: `scripts/aihealth`, `scripts/aihealth_components.py`, `.aihealth.toml`, `.aihealth-tests.toml`, `ruff.toml`, `docs/code-health.md`, the seven skills under `.claude/skills/` with `skills-lock.json`, unit tests for the configuration consistency.
 - Changed: `AGENTS.md`, `noxfile.py`, `.pre-commit-config.yaml`, `.github/workflows/verify.yml`, `Readme.md`, `docs/testing.md`; the ruff migration reformats Python files without changing behaviour. Refactorings touch `machine_cli/`, scripts under `home/`, `ansible/` and `tests/` without changing behaviour.
 - Dependencies: ai-health and tree-sitter-language-pack (about 30 MB of grammars, cached) via `uvx`, only for development and CI; ruff via pre-commit.
 

@@ -1,6 +1,6 @@
 # Tasks
 
-## 1. Own checker (cross-check until the ai-health gate is green)
+## 1. Own checker (history; removed in 6.1)
 
 - [x] 1.1 Apply the decisions (complex conditional from 2 operators, primitive obsession over annotated arguments) to `code-health.toml` and the rules; verify with `python3 -m code_health` that the run completes and the config comments state each value's origin
 - [x] 1.2 Parts `python-cli`, `python-tests`, `shell` with their own rule sets in `code-health.toml` (table, JSON, baseline and gate per part, overall score for information) and the `ansible` part (tasks per file, complex `when`, `block` nesting, Jinja control tags, duplicated tasks); verify with `python3 -m code_health` that each part score is shown and that `excess-arguments` is not reported for tests
@@ -10,7 +10,7 @@
 - [x] 1.6 Refactor `code_health/` until every file scores 10.0; verify with `python3 -m code_health code_health/*.py --all`
 - [x] 1.7 Write `docs/code-health.md` (rules, thresholds with origin, formula, gate, baseline, suppressions, commands) with the section "Steckbrief Code Health" and its nine headings (Messumfang, Tools und Versionen, Abgebildete Smells, Schwellen/Gewichte/Formel, Bedienung, Gate, Ergebnis, Skills, Erfahrungen) and link it from `Readme.md` and `docs/testing.md`; verify the documented commands run as written
 
-## 2. Gate with the own checker (replaced in group 3)
+## 2. Gate with the own checker (history; replaced in group 3, removed in 6.1)
 
 - [x] 2.1 Add the nox session `code-health` (passes arguments through); verify `uvx nox -s code-health -- --changed` prints the table
 - [x] 2.2 Generate `code-health-baseline.json` with `python3 -m code_health --update-baseline`; verify `python3 -m code_health --gate --changed` passes on the branch

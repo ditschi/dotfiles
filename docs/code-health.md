@@ -40,7 +40,7 @@ Not scored:
 ## Gate
 
 - pre-commit `aihealth-delta` and `aihealth-delta-tests`: `delta --staged` per component; fails when a staged file gets worse or a new file has a finding.
-- CI job `code-health`: `delta` against the merge base with `main` (not `origin/main`, so a branch behind `main` is not charged with newer changes there), the component comparison of merge base and head (a component may drop at most 0.01, which absorbs deleting a healthy file), and the full scan as a report (`delta` does not see duplication across files). The uv cache and `~/.cache/tree-sitter-language-pack` (about 30 MB of grammars) are cached.
+- CI job `code-health`: `delta` against the merge base with `origin/main`, not its tip, so a branch behind `main` is not charged with newer changes there, the component comparison of merge base and head (a component may drop at most 0.01, which absorbs deleting a healthy file), and the full scan as a report (`delta` does not see duplication across files). The uv cache and `~/.cache/tree-sitter-language-pack` (about 30 MB of grammars) are cached.
 - Suppressions are file-wide only: `# aihealth: disable=<smell>[, <smell>] -- <reason>`. Without ` -- ` ai-health takes the reason as part of the smell name and silently ignores the suppression; the pygrep hook `aihealth-suppression-reason` rejects suppressions without ` -- ` and a reason of at least ten characters.
 - Linting is separate: ruff (format and pycodestyle/pyflakes rules), shellcheck, shfmt, ansible-lint. Their structure rules stay off; each smell has one source, ai-health.
 
@@ -76,7 +76,7 @@ pre-commit hooks `aihealth-delta` and `aihealth-delta-tests` (`delta --staged` p
 
 ### 7. Ergebnis
 
-Before (ai-health with the final strict profile on `main` 0a3d695, measured 2026-11-24 with `scripts/aihealth_components.py 0a3d695`): `python-cli` 3.97, `python-tests` 6.30, `shell` 8.89. Worst files: `machine_cli/updates.py` 1.04, `tests/unit/test_update_and_env.py` 1.28, `machine_cli/ssh_client.py` 1.49, `machine_cli/netrc_sync.py` 1.52, `tests/unit/test_host_profiles.py` 1.62. The own checker measured the same hotspots (`python-cli` 3.76, `python-tests` 6.49, `shell` 8.10, `ansible` 8.65).
+Before (ai-health with the final strict profile on `main` 0a3d695, measured 2026-11-24 with `scripts/aihealth_components.py 0a3d695`): `python-cli` 3.97, `python-tests` 6.30, `shell` 8.89. Worst files: `tests/unit/test_update_and_env.py` 1.28, `machine_cli/ssh_client.py` 1.49, `machine_cli/netrc_sync.py` 1.52, `tests/unit/test_host_profiles.py` 1.62, `machine_cli/env_push.py` 1.94. The own checker measured the same hotspots (`python-cli` 3.76, `python-tests` 6.49, `shell` 8.10, `ansible` 8.65).
 
 After: added once the refactorings are done.
 

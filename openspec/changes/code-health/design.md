@@ -46,7 +46,7 @@ For the own checker the owner had first chosen 50 % for primitive obsession; the
 
 **Own checker removed.** The checker built first (`code_health/`, standard library plus PyYAML, own deductions) measured the same hotspots as ai-health and was removed with its config, baseline and tests once ai-health was in place (owner rule, 2026-11-24: no own logic where a tool exists, it does not stay as a cross-check). Its measurements are kept in Context and in the docs' Steckbrief.
 
-**Component comparison is the only own logic.** `scripts/aihealth_components.py` (about 70 lines) exists because ai-health cannot compare component scores between two revisions (owner decision Q6); everything else is plain ai-health calls.
+**Component comparison is the only own logic.** `scripts/aihealth_components.py` (about 95 lines of code) exists because ai-health cannot compare component scores between two revisions (owner decision Q6); everything else is plain ai-health calls.
 
 **Commands.** The task runner is nox: `uvx nox -s code-health` prints the scan of each component and their scores; agents and humans check changed files with `scripts/aihealth delta --config <component config>` (`--format json`).
 

@@ -43,7 +43,7 @@ def component_scores(scans: dict[str, dict]) -> dict[str, float]:
     """LoC-weighted mean of the file scores per component, from ai-health scan JSON."""
     files = [(code_component(e), e) for e in scans["code"]["files"]]
     files += [(tests_component(e), e) for e in scans["tests"]["files"]]
-    totals: dict[str, list[float]] = {}
+    totals: dict[str | None, list[float]] = {}
     for name, entry in files:
         total = totals.setdefault(name, [0.0, 0.0])
         total[0] += entry["score"] * entry["loc"]

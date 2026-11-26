@@ -183,6 +183,7 @@ tests/                    # unit + Docker/CI
 | Project containers (`sde`, `sdx`) | [docs/project-containers.md](docs/project-containers.md) |
 | `machine` CLI internals, layers, Galaxy vs. local roles | [docs/architecture.md](docs/architecture.md) |
 | Tests, CI, `machine testenv` | [docs/testing.md](docs/testing.md) |
+| Code health with ai-health: components, gate, suppressions (`scripts/aihealth`) | [docs/code-health.md](docs/code-health.md) |
 | ThinkPad L13 Yoga Gen 2 | [docs/thinkpad-l13-yoga-gen2.md](docs/thinkpad-l13-yoga-gen2.md) |
 | Fingerprint login (manual) | [docs/fingerprint.md](docs/fingerprint.md) |
 

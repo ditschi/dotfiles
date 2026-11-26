@@ -1,5 +1,8 @@
 ---
 default_stages: [pre-commit]
+# Skills installed with `npx skills add` stay byte-identical to their pinned source; skills-lock.json
+# holds commit hashes that detect-secrets mistakes for secrets.
+exclude: ^(\.claude/skills/(refactoring-patterns|python-testing-patterns|systematic-debugging|verification-before-completion|receiving-code-review|writing-for-agents|github-actions-hardening)/|skills-lock\.json$)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v5.0.0
@@ -57,11 +60,11 @@ repos:
           - --simplify
           - --diff
         files: ^home/core/\.bashrc$
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.6
     hooks:
-      - id: black
-        language_version: python3
+      - id: ruff-format
+      - id: ruff-check
   - repo: https://github.com/google/yamlfmt
     rev: v0.14.0
     hooks:
@@ -103,14 +106,28 @@ repos:
         additional_dependencies: ['@fission-ai/openspec@1.14.3']
         files: ^openspec/specs/
         pass_filenames: false
+      - id: aihealth-delta
+        name: ai-health - staged files must not get worse (docs/code-health.md)
+        entry: scripts/aihealth delta --staged --config .aihealth.toml
+        language: system
+        types_or: [python, shell]
+        pass_filenames: false
+        require_serial: true
+      - id: aihealth-delta-tests
+        name: ai-health - staged tests must not get worse (docs/code-health.md)
+        entry: scripts/aihealth delta --staged --config .aihealth-tests.toml tests
+        language: system
+        files: ^tests/
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+      - id: aihealth-suppression-reason
+        name: 'ai-health suppressions need a reason (# aihealth: disable=<smell> -- <reason>)'
+        entry: 'aihealth:[ \t]*disable=(?![\w, \t]+-- .{10})'
+        language: pygrep
+        types_or: [python, shell]
       - id: no-co-authored-by
         name: forbid Co-authored-by trailers in commit messages
         entry: '(?i)^co-authored-by:'
         language: pygrep
         stages: [commit-msg]
-  - repo: https://github.com/pycqa/flake8
-    rev: '7.1.1'
-    hooks:
-      - id: flake8
-        args:
-          - --max-line-length=120

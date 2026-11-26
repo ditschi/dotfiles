@@ -1,0 +1,13 @@
+# ruff replaces black and flake8 (owner decision 2026-11-23). Formatting as black did
+# (line length 88); linting the pycodestyle/pyflakes rules flake8 checked, with its line
+# length 120. Structure rules (C90, PLR09xx) stay off: ai-health is the only source for
+# complexity and size findings (docs/code-health.md).
+line-length = 88
+target-version = "py311"
+extend-exclude = ["openspec/changes/*/spike"]
+
+[lint]
+select = ["E", "F", "W"]
+
+[lint.pycodestyle]
+max-line-length = 120

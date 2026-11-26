@@ -1,0 +1,20 @@
+# ai-health profile "strict" for the python-tests component (see .aihealth.toml).
+# pytest fixtures arrive as arguments and test classes group cases, so the argument,
+# primitive and cohesion smells are off here.
+
+[thresholds]
+large_file = 600
+primitive_obsession = 0.3
+
+[score]
+decay = 8
+symbol_cap = 4
+density_loc = 100000
+
+[delta]
+tolerance = 0.0
+
+[weights]
+excess_arguments = 0
+primitive_obsession = 0
+low_cohesion = 0

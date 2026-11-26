@@ -40,7 +40,7 @@ Not scored:
 ## Gate
 
 - pre-commit `aihealth-delta` and `aihealth-delta-tests`: `delta --staged` per component; fails when a staged file gets worse or a new file has a finding.
-- CI job `code-health`: `delta` against the merge base with `origin/main`, not its tip, so a branch behind `main` is not charged with newer changes there, the component comparison of merge base and head (a component may drop at most 0.01, which absorbs deleting a healthy file), and the full scan as a report (`delta` does not see duplication across files). The uv cache and `~/.cache/tree-sitter-language-pack` (about 30 MB of grammars) are cached.
+- CI job `code-health`: `delta` against the merge base with `origin/main`, not its tip, so a branch behind `main` is not charged with newer changes there, the component comparison of merge base and head over the files that exist in both (a component may drop at most 0.01; deleted and new files are left out, new and changed files are judged by `delta`), and the full scan as a report (`delta` does not see duplication across files). The uv cache and `~/.cache/tree-sitter-language-pack` (about 30 MB of grammars) are cached.
 - Suppressions are file-wide only: `# aihealth: disable=<smell>[, <smell>] -- <reason>`. Without ` -- ` ai-health takes the reason as part of the smell name and silently ignores the suppression; the pygrep hook `aihealth-suppression-reason` rejects suppressions without ` -- ` and a reason of at least ten characters.
 - Linting is separate: ruff (format and pycodestyle/pyflakes rules), shellcheck, shfmt, ansible-lint. Their structure rules stay off; each smell has one source, ai-health.
 

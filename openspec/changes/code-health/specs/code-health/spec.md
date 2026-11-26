@@ -60,11 +60,15 @@ A pre-commit hook SHALL run `delta --staged` for each component and fail when a 
 - **THEN** the hook fails and names the file and the finding
 
 ### Requirement: CI gate
-The CI SHALL run `delta` per component between the merge base with `main` and `HEAD`, and SHALL fail when the score of a component at `HEAD` is lower than at the merge base by more than 0.01. The CI SHALL cache the tree-sitter grammars.
+The CI SHALL run `delta` per component between the merge base with `main` and `HEAD`, and SHALL fail when the score of a component at `HEAD`, counted over the files that exist in both revisions, is lower than at the merge base by more than 0.01. The CI SHALL cache the tree-sitter grammars.
 
 #### Scenario: Branch behind main
 - **WHEN** a branch is behind `main` and changes one file without making it worse
 - **THEN** the gate passes, because it compares against the merge base
+
+#### Scenario: Deleting a healthy file
+- **WHEN** a pull request deletes a file without findings
+- **THEN** the component comparison passes
 
 #### Scenario: Component gets worse
 - **WHEN** a pull request lowers the `shell` component score

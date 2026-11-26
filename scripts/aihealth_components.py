@@ -6,7 +6,8 @@
     scripts/aihealth_components.py REV              scores of REV
     scripts/aihealth_components.py --compare BASE [HEAD]
                                                     exit 1 when a component of HEAD scores
-                                                    more than 0.01 below BASE
+                                                    more than 0.01 below BASE, counted over
+                                                    the files that exist in both
 
 Both revisions are exported with `git archive` and scanned with the profiles of the
 current checkout, so a change of the profile does not count as a change of the code.
@@ -39,21 +40,36 @@ def tests_component(entry: dict) -> str | None:
     return "python-tests" if entry["language"] == "python" else None
 
 
-def component_scores(scans: dict[str, dict]) -> dict[str, float]:
-    """LoC-weighted mean of the file scores per component, from ai-health scan JSON."""
-    files = [(code_component(e), e) for e in scans["code"]["files"]]
-    files += [(tests_component(e), e) for e in scans["tests"]["files"]]
-    totals: dict[str | None, list[float]] = {}
-    for name, entry in files:
+def component_files(scans: dict[str, dict]) -> dict[str, tuple[str, float, int]]:
+    """Component, score and lines of code per repository path, from ai-health scan JSON."""
+    files = {e["path"]: (code_component(e), e) for e in scans["code"]["files"]}
+    files |= {
+        f"tests/{e['path']}": (tests_component(e), e) for e in scans["tests"]["files"]
+    }
+    return {
+        path: (name, entry["score"], entry["loc"])
+        for path, (name, entry) in files.items()
+        if name
+    }
+
+
+def component_scores(files: dict[str, tuple[str, float, int]]) -> dict[str, float]:
+    """LoC-weighted mean of the file scores per component."""
+    totals: dict[str, list[float]] = {}
+    for name, score, loc in files.values():
         total = totals.setdefault(name, [0.0, 0.0])
-        total[0] += entry["score"] * entry["loc"]
-        total[1] += entry["loc"]
-    totals.pop(None, None)
+        total[0] += score * loc
+        total[1] += loc
     return {
         name: round(weighted / loc, 2)
         for name, (weighted, loc) in sorted(totals.items())
         if loc
     }
+
+
+def common(files: dict, other: dict) -> dict:
+    """The entries of `files` whose path also exists in `other`."""
+    return {path: entry for path, entry in files.items() if path in other}
 
 
 def regressions(base: dict[str, float], head: dict[str, float]) -> list[str]:
@@ -100,10 +116,10 @@ def _scan_json(path: Path, config: Path) -> dict:
     )
 
 
-def scores_of(revision: str) -> dict[str, float]:
+def files_of(revision: str) -> dict[str, tuple[str, float, int]]:
     with tempfile.TemporaryDirectory() as directory:
         export(revision, Path(directory))
-        return component_scores(scan(Path(directory)))
+        return component_files(scan(Path(directory)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,15 +130,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compare", action="store_true", help="compare BASE [HEAD]")
     args = parser.parse_args(argv)
     if not args.compare:
-        scores = (
-            scores_of(args.revisions[0])
+        files = (
+            files_of(args.revisions[0])
             if args.revisions
-            else component_scores(scan(ROOT))
+            else component_files(scan(ROOT))
         )
+        scores = component_scores(files)
         print(json.dumps(scores, indent=2))
         return 0
     base, head = (args.revisions + ["HEAD"])[:2]
-    before, after = scores_of(base), scores_of(head)
+    base_files, head_files = files_of(base), files_of(head)
+    # Only files in both revisions: deleting a healthy file must not count as a drop,
+    # and new or changed files are judged per file by `aihealth delta`.
+    before = component_scores(common(base_files, head_files))
+    after = component_scores(common(head_files, base_files))
     print(json.dumps({"base": before, "head": after}, indent=2))
     failed = regressions(before, after)
     for line in failed:

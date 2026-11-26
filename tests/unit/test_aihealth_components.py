@@ -11,29 +11,42 @@ components = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(components)
 
 
-def scan(*files: tuple[str, int, float]) -> dict:
+def scan(*files: tuple[str, str, int, float]) -> dict:
     return {
         "files": [
-            {"language": lang, "loc": loc, "score": score} for lang, loc, score in files
+            {"path": path, "language": lang, "loc": loc, "score": score}
+            for path, lang, loc, score in files
         ]
     }
 
 
+SCANS = {
+    "code": scan(
+        ("a.py", "python", 100, 10.0),
+        ("b.py", "python", 300, 6.0),
+        ("c.sh", "bash", 50, 9.0),
+        ("Makefile", "make", 10, 1.0),
+    ),
+    "tests": scan(("unit/test_a.py", "python", 200, 8.0), ("run.sh", "bash", 20, 1.0)),
+}
+
+
 def test_component_scores_weight_by_lines():
-    scans = {
-        "code": scan(
-            ("python", 100, 10.0),
-            ("python", 300, 6.0),
-            ("bash", 50, 9.0),
-            ("make", 10, 1.0),
-        ),
-        "tests": scan(("python", 200, 8.0), ("bash", 20, 1.0)),
-    }
-    assert components.component_scores(scans) == {
+    files = components.component_files(SCANS)
+    assert sorted(files) == ["a.py", "b.py", "c.sh", "tests/unit/test_a.py"]
+    assert components.component_scores(files) == {
         "python-cli": 7.0,
         "python-tests": 8.0,
         "shell": 9.0,
     }
+
+
+def test_deleting_a_healthy_file_is_not_a_drop():
+    base = components.component_files(SCANS)
+    head = {path: entry for path, entry in base.items() if path != "a.py"}
+    before = components.component_scores(components.common(base, head))
+    after = components.component_scores(components.common(head, base))
+    assert components.regressions(before, after) == []
 
 
 @pytest.mark.parametrize(

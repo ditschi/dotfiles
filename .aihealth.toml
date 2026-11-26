@@ -1,7 +1,8 @@
 # ai-health profile "strict" (owner decision 2026-11-23, Q15): CodeScene thresholds,
 # decay 8, no density relief for large files. Components: python-cli and shell use
 # this file, python-tests uses .aihealth-tests.toml, which must repeat [thresholds],
-# [score] and [delta] unchanged (tests/unit/test_aihealth_config.py checks that).
+# [score] and [delta] unchanged (tests/unit/test_aihealth_config.py checks that) until
+# ai-health supports overrides per path (epatel/ai-health#4); then both merge into one file.
 # Always pass --config: `aihealth scan <dir>` otherwise reads <dir>/.aihealth.toml.
 # Ansible has no score (ansible-lint only). See docs/code-health.md.
 

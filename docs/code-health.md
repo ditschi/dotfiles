@@ -35,7 +35,7 @@ Not scored:
 
 `.aihealth.toml` (owner decision 2026-11-23): CodeScene thresholds - cyclomatic complexity > 9, function > 70 lines, > 4 arguments, nesting 4, bumpy road 2 bumps, complex conditional 2 `and`/`or`, file > 600 lines, primitive obsession > 30 % of typed parameters (ai-health counts `str`, numbers, `bool` and the plain containers `dict`/`list`/`tuple`/`set` as primitive) - plus `decay = 8`, `symbol_cap = 4`, `density_loc = 100000` and `delta.tolerance = 0`. File score `10 - 9 x (1 - e^(-P/8))`, P the sum of the weighted findings; component score = mean of the file scores weighted by lines of code.
 
-`.aihealth-tests.toml` repeats the profile and sets the weights of `excess_arguments` (pytest fixtures arrive as arguments), `primitive_obsession` and `low_cohesion` (test classes group cases) to 0. `tests/unit/test_aihealth_config.py` keeps the shared sections of both files equal: change the profile in `.aihealth.toml` and copy it.
+`.aihealth-tests.toml` repeats the profile and sets the weights of `excess_arguments` (pytest fixtures arrive as arguments), `primitive_obsession` and `low_cohesion` (test classes group cases) to 0. `tests/unit/test_aihealth_config.py` keeps the shared sections of both files equal: change the profile in `.aihealth.toml` and copy it. The duplication goes away once ai-health supports overrides per path ([epatel/ai-health#4](https://github.com/epatel/ai-health/issues/4)); then both files merge into one. Test code gets no primitive-obsession suppressions; the smell is off there by config.
 
 ## Gate
 

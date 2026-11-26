@@ -66,14 +66,38 @@ def github_token_variable(context: str) -> str:
     return "GITHUB_PRIVATE_TOKEN" if context == "work" else "GITHUB_TOKEN"
 
 
-def render_github_token_config(context: str) -> str:
-    return (
+def render_github_token_config(context: str, proactive_auth: bool = True) -> str:
+    text = (
         "# Written by `machine` from the host config on every dotfile apply; do not edit.\n"
         "# Included by ~/.config/git/private.gitconfig after its credential reset.\n"
         '[credential "https://github.com"]\n'
         "    helper = !$HOME/.local/bin/git-credential-env "
         f"{github_token_variable(context)}\n"
     )
+    if proactive_auth:
+        # Run the helper before the first request, so a github.com entry in ~/.netrc
+        # does not replace the token (Git 2.46+). Only with a token: without one, Git
+        # would ask for a password even for public repositories.
+        text += '\n[http "https://github.com/"]\n    proactiveAuth = basic\n'
+    return text
+
+
+def github_token_available(variable: str, repo: Path, home: Path) -> bool:
+    """Resolve the token like git-credential-env: environment, else the shell
+    environment loader (~/.env*). The checkout's loader, because the first apply runs
+    before $HOME is linked."""
+    if os.environ.get(variable):
+        return True
+    loader = Path(repo) / "home/core/.shell/common/environment.sh"
+    if not loader.is_file() or not system.have("bash"):
+        return False
+    result = system.run(
+        ["bash", "-c", '. "$1" >/dev/null 2>&1; printenv "$2"', "_", str(loader), variable],
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+        capture=True,
+    )  # fmt: skip
+    return result.returncode == 0 and bool((result.stdout or "").strip())
 
 
 def github_ssh_url(url: str) -> str:
@@ -296,12 +320,15 @@ class DotfilesMixin:
 
     def write_github_token_config(self, context: str) -> None:
         path = self.home / GITHUB_TOKEN_CONFIG
-        text = render_github_token_config(context)
+        variable = github_token_variable(context)
+        proactive = github_token_available(variable, Path(self.repo), self.home)
+        text = render_github_token_config(context, proactive)
         if path.is_file() and path.read_text(encoding="utf-8") == text:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        log(f"GitHub token for github.com: {github_token_variable(context)} ({path})")
+        state = "set, helper first" if proactive else "not set, anonymous until asked"
+        log(f"GitHub token for github.com: {variable} ({state}; {path})")
 
     def switch_origin_to_ssh(self, context: str, device: str) -> None:
         """Private hosts push with their SSH key: move an https github.com origin to SSH,

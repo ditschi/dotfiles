@@ -582,8 +582,13 @@ def test_machine_link_follows_the_running_checkout(tmp_path):
         ("", "GITHUB_TOKEN"),
     ],
 )
-def test_github_token_variable_follows_the_context(tmp_path, context, variable):
+def test_github_token_variable_follows_the_context(
+    tmp_path, monkeypatch, context, variable
+):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_PRIVATE_TOKEN", raising=False)
     host = _Host(tmp_path)
+    host.repo = tmp_path / "no-checkout"
     host.write_github_token_config(context)
     text = (tmp_path / ".config/git/github-token.gitconfig").read_text()
     assert f"git-credential-env {variable}\n" in text
@@ -591,6 +596,47 @@ def test_github_token_variable_follows_the_context(tmp_path, context, variable):
         "GITHUB_TOKEN" if variable == "GITHUB_PRIVATE_TOKEN" else "GITHUB_PRIVATE_TOKEN"
     )
     assert f"git-credential-env {other}\n" not in text
+
+
+def _token_host(tmp_path):
+    host = _Host(tmp_path / "home")
+    host.home.mkdir()
+    host.repo = REPO
+    return host
+
+
+def _token_config(host) -> str:
+    return (host.home / ".config/git/github-token.gitconfig").read_text()
+
+
+def test_github_token_in_environment_enables_proactive_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    host = _token_host(tmp_path)
+    host.write_github_token_config("private")
+    assert "proactiveAuth = basic\n" in _token_config(host)
+
+
+def test_github_token_from_env_file_enables_proactive_auth(tmp_path, monkeypatch):
+    """GITHUB_PRIVATE_TOKEN only in ~/.env: found through the checkout's loader."""
+    monkeypatch.delenv("GITHUB_PRIVATE_TOKEN", raising=False)
+    host = _token_host(tmp_path)
+    env_file = host.home / ".env"
+    env_file.write_text("GITHUB_PRIVATE_TOKEN=token\n")
+    env_file.chmod(0o600)
+    host.write_github_token_config("work")
+    assert "proactiveAuth = basic\n" in _token_config(host)
+
+
+def test_no_github_token_keeps_anonymous_access(tmp_path, monkeypatch):
+    """Without a token, proactive auth would make Git ask for a password even for
+    public repositories (zsh plugin clones in a fresh container)."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_PRIVATE_TOKEN", "work-only")
+    host = _token_host(tmp_path)
+    host.write_github_token_config("private")
+    text = _token_config(host)
+    assert "git-credential-env GITHUB_TOKEN\n" in text
+    assert "proactiveAuth" not in text
 
 
 def test_private_gitconfig_includes_the_token_file_after_the_reset(tmp_path):

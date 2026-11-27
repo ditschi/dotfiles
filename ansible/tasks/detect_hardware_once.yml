@@ -1,0 +1,6 @@
+---
+# Imported by the hardware-dependent plays of workstation.yml: the first of them that
+# runs detects the hardware facts, the later ones reuse them.
+- name: Detect hardware facts
+  ansible.builtin.include_tasks: detect_hardware.yml
+  when: hw_model_l13_yoga_gen2 is not defined

@@ -4,9 +4,8 @@
 if [ -z "${DOTFILES_REPO:-}" ] && [ -L "$HOME/.local/bin/machine" ]; then
     _dotfiles_live=$(readlink -f "$HOME/.local/bin/machine" 2>/dev/null) || _dotfiles_live=
     _dotfiles_live=${_dotfiles_live%/machine_cli/machine}
-    if [ -n "$_dotfiles_live" ] && [ -d "$_dotfiles_live/home" ] && [ -e "$_dotfiles_live/.git" ]; then
+    [ -n "$_dotfiles_live" ] && [ -d "$_dotfiles_live/home" ] && [ -e "$_dotfiles_live/.git" ] &&
         DOTFILES_REPO=$_dotfiles_live
-    fi
     unset _dotfiles_live
 fi
 export DOTFILES_REPO="${DOTFILES_REPO:-$HOME/dotfiles}"
@@ -118,7 +117,8 @@ if command -v yazi >/dev/null 2>&1; then
         local tmp cwd
         tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
         yazi "$@" --cwd-file="$tmp"
-        if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+        cwd="$(command cat -- "$tmp")" || cwd=
+        if [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
             builtin cd -- "$cwd" || return
         fi
         rm -f -- "$tmp"

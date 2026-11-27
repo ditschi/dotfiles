@@ -83,7 +83,8 @@ reload() {
 machine() {
     command machine "$@"
     local rc=$?
-    if [ "$rc" -eq 0 ] && [ "${1:-}" = update ] && [ -t 0 ] && [ -t 1 ]; then
+    [ "$rc" -eq 0 ] && [ "${1:-}" = update ] || return "$rc"
+    if [ -t 0 ] && [ -t 1 ]; then
         local arg
         for arg in "$@"; do
             case "$arg" in

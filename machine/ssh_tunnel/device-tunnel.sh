@@ -114,59 +114,65 @@ run_loop() {
     done
 }
 
-case "${1:-}" in
-    start)
-        load_config
-        # Boot task and watchdog may start at the same moment: one wins the lock.
-        lock="$PIDFILE.lock"
-        if ! mkdir "$lock" 2>/dev/null; then
-            # A lock older than a minute was left by a killed start.
-            if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-                rmdir "$lock" 2>/dev/null
-            fi
-            exit 0
+start_tunnel() {
+    # Boot task and watchdog may start at the same moment: one wins the lock.
+    lock="$PIDFILE.lock"
+    if ! mkdir "$lock" 2>/dev/null; then
+        # A lock older than a minute was left by a killed start.
+        if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+            rmdir "$lock" 2>/dev/null
         fi
-        if running; then
-            rmdir "$lock"
-            exit 0
-        fi
-        # The loop removes the lock once it runs, so a start in between does not
-        # take the not yet recognisable PID for a stale one and start a second loop.
-        nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
-        echo $! >"$PIDFILE"
-        log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
-        ;;
-    stop)
-        load_config
-        # A loop that start has just launched is recognisable once it removed the lock.
-        waited=0
-        while [ -d "$PIDFILE.lock" ] && [ "$waited" -lt 10 ]; do
-            sleep 1
-            waited=$((waited + 1))
-        done
-        if running; then
-            kill "$(cat "$PIDFILE")"
-            log "stopped"
-        fi
+        return 0
+    fi
+    if running; then
+        rmdir "$lock"
+        return 0
+    fi
+    # The loop removes the lock once it runs, so a start in between does not
+    # take the not yet recognisable PID for a stale one and start a second loop.
+    nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
+    echo $! >"$PIDFILE"
+    log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
+}
+
+stop_tunnel() {
+    # A loop that start has just launched is recognisable once it removed the lock.
+    waited=0
+    while [ -d "$PIDFILE.lock" ] && [ "$waited" -lt 10 ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if ! running; then
         rm -f "$PIDFILE"
-        ;;
-    status)
-        load_config
-        if running; then
-            echo "running (pid $(cat "$PIDFILE"))"
-        else
-            echo "not running"
-            exit 1
-        fi
-        ;;
-    run)
-        load_config
-        # Only now is this PID recognisable as the loop (during its exec chain
-        # /proc/PID/cmdline is the start script's or empty), so start's lock ends here.
-        echo $$ >"$PIDFILE"
-        rmdir "$PIDFILE.lock" 2>/dev/null
-        run_loop
-        ;;
+        return 0
+    fi
+    # The loop removes the PID file itself; removing it here too can fail
+    # (BusyBox rm -f) when both remove it at the same moment.
+    kill "$(cat "$PIDFILE")"
+    log "stopped"
+}
+
+show_status() {
+    if ! running; then
+        echo "not running"
+        return 1
+    fi
+    echo "running (pid $(cat "$PIDFILE"))"
+}
+
+loop_process() {
+    # Only now is this PID recognisable as the loop (during its exec chain
+    # /proc/PID/cmdline is the start script's or empty), so start's lock ends here.
+    echo $$ >"$PIDFILE"
+    rmdir "$PIDFILE.lock" 2>/dev/null
+    run_loop
+}
+
+case "${1:-}" in
+    start) load_config && start_tunnel ;;
+    stop) load_config && stop_tunnel ;;
+    status) load_config && show_status ;;
+    run) load_config && loop_process ;;
     *)
         echo "usage: $0 start|stop|status|run" >&2
         exit 2

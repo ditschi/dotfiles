@@ -397,6 +397,19 @@ def test_github_asks_the_credential_helper_before_netrc(git_home, url, expected)
     assert _proactive_auth(env, repo) == expected
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["https://github.com/ditschi/dotfiles.git", "https://github.com/bosch-foo/x.git"],
+)
+def test_github_without_token_stays_anonymous(git_home, url):
+    home, repo, env = git_home
+    (home / ".config/git/github-token.gitconfig").write_text(
+        render_github_token_config("work", proactive_auth=False)
+    )
+    _run(env, repo, "remote", "add", "origin", url)
+    assert _proactive_auth(env, repo) == ""
+
+
 def test_work_owner_keeps_the_work_helper_with_proactive_auth(git_home):
     _home, repo, env = git_home
     _run(env, repo, "remote", "add", "origin", "https://github.com/bosch-foo/x.git")

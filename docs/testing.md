@@ -15,6 +15,8 @@ pytest tests/integration -n auto -m apt # Pi Zero APT + tests/hosts/ci-rpi-zero.
 pytest tests/integration -m apt_gnome  # private desktop APT + ci-home-laptop.yml (slow on a cold cache)
 ansible-lint ansible/*.yml      # locally / in CI on changes under ansible/ or machine/hosts/
 ansible-galaxy collection install -r ansible/requirements.yml
+scripts/aihealth delta --config .aihealth.toml   # code health of the changed files (docs/code-health.md)
+uvx nox -s code-health            # ai-health scan and score per component
 ```
 
 Locally the APT tests download through a caching apt proxy (`dotfiles-test-apt-cache`, apt-cacher-ng on the Docker network `dotfiles-test`), so later runs fetch almost nothing. It is started on first use and kept running; `docker rm -f dotfiles-test-apt-cache` stops it (after a change to `tests/docker/apt-cache/` as well), `docker volume rm dotfiles-test-apt-cache` drops the cache. It is off in CI; `DOTFILES_TEST_APT_CACHE=0|1` overrides. The test image installs no recommended packages.
@@ -22,6 +24,7 @@ Locally the APT tests download through a caching apt proxy (`dotfiles-test-apt-c
 CI (`.github/workflows/verify.yml`):
 
 - Unit + Ansible syntax (amd64 + arm)
+- Code health with ai-health: delta against the merge base, component scores, report ([code-health.md](code-health.md))
 - Docker matrix of context/device combinations (without APT)
 - Clean install from `tests/hosts/ci-container.yml`
 - APT + Ansible from `tests/hosts/ci-rpi-zero.yml` and `ci-home-laptop.yml` (CI host configs, read through `MACHINE_HOSTS_DIR=tests/hosts`)

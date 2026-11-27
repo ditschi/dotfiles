@@ -21,6 +21,13 @@ Dotfiles + machine setup (mise dotfile groups, `machine` CLI, Ansible). Start wi
 - Run affected integration tests when behavior crosses deployment or system boundaries; for Ansible changes also run `ansible-lint ansible/*.yml`. See Readme "Tests" for Docker/APT tests.
 - Record commands, results and why the selection covers the change. Rerun after relevant edits, not merely because another workflow step started.
 
+## Code health
+
+- Before every commit run `scripts/aihealth delta --config .aihealth.toml` and, for changed tests, `scripts/aihealth delta --config .aihealth-tests.toml tests` (add `--format json` for machine-readable output): no changed file may get worse and a new file must have no finding. The target is score 10 (no finding) per file; details in [docs/code-health.md](docs/code-health.md).
+- Fix findings instead of suppressing them. Never remove or weaken type hints and never add type aliases only to silence a smell; the real fix is a parameter object or dataclass where it improves the code. Otherwise leave the finding or suppress it file-wide with `# aihealth: disable=<smell> -- <reason>`.
+- Refactor without changing behaviour: run the tests of the touched code before and after each small step, and keep refactoring and behaviour changes in separate commits.
+- Always call ai-health through `scripts/aihealth` (it holds the pin) and always pass `--config`.
+
 ## Design decisions
 
 - Before changing an area, read its spec in `openspec/specs/` and the rationale in the archived `design.md` under `openspec/changes/archive/`. If a change would contradict a requirement or a recorded decision, ask the owner.

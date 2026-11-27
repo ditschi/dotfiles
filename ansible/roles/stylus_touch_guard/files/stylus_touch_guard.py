@@ -4,6 +4,7 @@
 Ported from ditschi/helpers-and-automation (Yoga L13 Thinkpad).
 Device nodes are resolved by name so /dev/input/eventN renumbering is fine.
 """
+
 from __future__ import annotations
 
 import argparse

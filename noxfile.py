@@ -41,6 +41,23 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", "tests/unit", "-q", *session.posargs)
 
 
+@nox.session(name="code-health", python=False)
+def code_health(session: nox.Session) -> None:
+    """ai-health scan of each component and their scores (docs/code-health.md)."""
+    session.run(
+        "scripts/aihealth", "scan", ".", "--config", ".aihealth.toml", external=True
+    )
+    session.run(
+        "scripts/aihealth",
+        "scan",
+        "tests",
+        "--config",
+        ".aihealth-tests.toml",
+        external=True,
+    )
+    session.run("scripts/aihealth_components.py", external=True)
+
+
 @nox.session(python=PYTHON)
 def ansible(session: nox.Session) -> None:
     """Ansible syntax check and lint."""
@@ -72,7 +89,7 @@ def docker(session: nox.Session) -> None:
         "docker and not apt and not apt_gnome",
         "-n",
         "auto",
-        *session.posargs
+        *session.posargs,
     )
     session.log("Full apt profile: pytest tests/integration -m apt")
     session.log(

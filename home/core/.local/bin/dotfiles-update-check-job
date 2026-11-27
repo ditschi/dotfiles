@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -u
 
+# A dotfiles checkout: has home/ and .git (a file in a linked worktree).
+is_checkout() {
+    [ -n "$1" ] && [ -d "$1/home" ] && [ -e "$1/.git" ]
+}
+
 repo="${DOTFILES_REPO:-}"
 # The live checkout is the one ~/.local/bin/machine links into; ~/dotfiles only without it.
 if [ -z "$repo" ] && [ -L "$HOME/.local/bin/machine" ]; then
     live="$(readlink -f "$HOME/.local/bin/machine" 2>/dev/null || true)"
     live="${live%/machine_cli/machine}"
-    if [ -n "$live" ] && [ -d "$live/home" ] && [ -e "$live/.git" ]; then
+    if is_checkout "$live"; then
         repo="$live"
     fi
 fi

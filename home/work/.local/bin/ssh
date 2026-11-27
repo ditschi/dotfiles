@@ -22,18 +22,22 @@ techusers=${AZKV_TECHUSERS:-}
 techusers=${techusers//[\"\']/}
 extra=()
 unset AZKV_ASKPASS_USER
+# The target user is a technical user: Key Vault helper as askpass, unless one is set.
+use_azkv_askpass() {
+    export AZKV_ASKPASS_USER=$user
+    [ -z "${SSH_ASKPASS:-}" ] || return 0
+    export SSH_ASKPASS
+    SSH_ASKPASS="$(dirname "$self")/ssh-askpass-azkv"
+    export SSH_ASKPASS_REQUIRE=prefer
+    # a wrong Key Vault password must not be sent again and again
+    extra=(-o NumberOfPasswordPrompts=1)
+}
+
 if [ -n "$techusers" ]; then
     user=$("$real" -G "$@" 2>/dev/null | awk '$1 == "user" { print $2; exit }')
     for entry in $techusers; do
         if [ -n "$user" ] && [ "${entry%%=*}" = "$user" ]; then
-            export AZKV_ASKPASS_USER=$user
-            if [ -z "${SSH_ASKPASS:-}" ]; then
-                export SSH_ASKPASS
-                SSH_ASKPASS="$(dirname "$self")/ssh-askpass-azkv"
-                export SSH_ASKPASS_REQUIRE=prefer
-                # a wrong Key Vault password must not be sent again and again
-                extra=(-o NumberOfPasswordPrompts=1)
-            fi
+            use_azkv_askpass
         fi
     done
 fi

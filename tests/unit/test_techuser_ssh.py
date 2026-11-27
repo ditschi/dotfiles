@@ -15,8 +15,7 @@ WRAPPER = REPO / "home/work/.local/bin/ssh"
 HELPER = REPO / "home/work/.local/bin/ssh-askpass-azkv"
 USER_A, USER_B = "ci-user-a", "ci-user-b"
 TECHUSERS = (
-    f"{USER_A}=vault-a/technical-user-password "
-    f"{USER_B}=vault-b/technical-user-password"
+    f"{USER_A}=vault-a/technical-user-password {USER_B}=vault-b/technical-user-password"
 )
 SECRET = "s3cret-from-vault"  # pragma: allowlist secret
 

@@ -689,8 +689,7 @@ class UpdateMixin:
 
     def stash_conflicts(self, plan: dict) -> str:
         sha = self.stash_push(
-            f"conflicting with {plan['upstream']} "
-            f"{self._rev(plan['upstream'])[:8]}",
+            f"conflicting with {plan['upstream']} {self._rev(plan['upstream'])[:8]}",
             plan["conflicts"],
         )
         if not sha:

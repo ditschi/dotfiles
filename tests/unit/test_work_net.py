@@ -41,9 +41,7 @@ def _keyring(tmp_path: Path, locked: bool | None, secret: str = "") -> Path:
     _stub(
         bin_dir,
         "secret-tool",
-        f'echo "$@" >>"{calls}"\n'
-        f'[ "$1" = lookup ] && printf %s "{secret}"\n'
-        "exit 0\n",
+        f'echo "$@" >>"{calls}"\n[ "$1" = lookup ] && printf %s "{secret}"\nexit 0\n',
     )
     return calls
 

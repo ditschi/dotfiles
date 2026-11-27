@@ -1,561 +1,82 @@
-"""`machine update`: local-change resolvers, incoming-change plan, lock and execution."""
+"""`machine update`: lock and timers, and the execution of an update.
+
+The local-change resolvers, the incoming-change plan, the state file, the conflict
+handling and the handoff to new code live in the `update_*` modules; `UpdateMixin`
+combines them, so the `machine` CLI class has every method under its old name."""
 
 from __future__ import annotations
 
-import contextlib
-import difflib
-import fcntl
 import getpass
 import json
-import os
 import subprocess
-import sys
-import time
 import types
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from rich.console import Console
-from rich.text import Text
-
-from . import core, events, local_overrides, system
-from .core import die, log, parse_profile_file, parse_profile_text, warn
-from .local_changes import classify_paths
+from . import events, system
+from .core import die, log, warn
 from .steps import Steps
-from .system_relevance import (
-    FEATURE_TABLE_PATH,
-    ansible_view_of_feature_table,
-    relevant_system_paths,
-)
-from .profile import host_config_changes
+from .update_conflicts import UpdateConflictsMixin
+from .update_handoff import RESUME_PROTOCOL, UpdateHandoffMixin
+from .update_overrides import LocalOverridesMixin, Resolver
+from .update_plan import UpdatePlanMixin
+from .update_state import STATE_KEYS, UpdateStateMixin
 
-Resolver = tuple[str, str, Callable[[bool], None], Callable[[], bool]]
-
-# The handoff to the code of a new revision (`update --resume-*`); the new
-# checkout lists the versions it accepts in machine_cli/resume-protocol.
-RESUME_PROTOCOL = "1"
+__all__ = [
+    "OSD_VPN_CONNECT",
+    "RESUME_PROTOCOL",
+    "STATE_KEYS",
+    "Resolver",
+    "UpdateMixin",
+]
 
 # The OSD VPN tool of the managed work laptops; the VPN watcher needs it.
 OSD_VPN_CONNECT = Path("/usr/bin/osd-vpn-connect")
 
-
-STATE_KEYS = (
-    "state",
-    "reason",
-    "revision",
-    "pending",
-    "failed_revision",
-    "ansible_applied_rev",
-    "stash",
-)
+UPDATE_TIMERS = ("dotfiles-update-check.timer", "machine-disk-check.timer")
 
 
-class UpdateMixin:
-    # --- local overrides (host-local additions in shared files) -------------
+@dataclass
+class UpdateRun:
+    """What the steps after the checkout update share."""
 
-    def local_resolvers(self) -> list[Resolver]:
-        """(name, repo-relative path, run(interactive), pending) for shared files.
+    args: types.SimpleNamespace
+    steps: set[str]
+    runner: Steps
+    profile_backup: Optional[Path]
+    profile_changed: bool
+    ansible_reason: str
+    skip_ansible: bool
+    sudo_failed: bool = False
+    not_set_up: str = ""
+    zsh_failure: str = ""
 
-        `pending` is true when text can be taken out without asking (it is known
-        in the `.local` file); everything else needs the user's choice."""
-        git_shared = self.core_source / ".gitconfig"
-        git_local = self.home / ".gitconfig.local"
-        bash_shared = self.core_source / ".bashrc"
-        bash_local = self.home / ".bashrc-local"
-        return [
-            (
-                "host-only Git settings",
-                "home/core/.gitconfig",
-                self.move_git_overrides,
-                lambda: local_overrides.git_pending(git_shared, git_local),
-            ),
-            (
-                "host-local text in .bashrc",
-                "home/core/.bashrc",
-                self.move_bashrc_overrides,
-                lambda: local_overrides.text_pending(bash_shared, bash_local),
-            ),
-        ]
+    def restores_host_config(self) -> bool:
+        """True when the new host config must not count as applied (sudo failed)."""
+        if not self.sudo_failed:
+            return False
+        return bool(self.profile_changed and self.profile_backup)
 
-    def run_local_resolvers(self, interactive: bool = False) -> None:
-        interactive = interactive and system.is_tty()
-        for _name, _path, run, _pending in self.local_resolvers():
-            run(interactive)
 
-    def _overrides_backup(self):
-        return (
-            self.state_dir / "local-overrides-backup" / time.strftime("%Y%m%d-%H%M%S")
-        )
-
-    def _conflict_resolver(self, interactive: bool):
-        if not interactive:
-            return None
-
-        def resolve(kind: str, key: str, shared_text: str, local_text: str) -> str:
-            print(f"\nConflict in {key}:")
-            diff = difflib.unified_diff(
-                shared_text.strip().splitlines(),
-                local_text.strip().splitlines(),
-                "shared",
-                "local",
-                lineterm="",
-            )
-            console = Console(highlight=False, soft_wrap=True)
-            for line in diff:
-                style = {"-": "red", "+": "green", "@": "cyan"}.get(line[0])
-                console.print(Text(line, style=style))
-            return system.choose(
-                "Keep which value", ["local", "shared", "skip"], "skip"
-            )
-
-        return resolve
-
-    def _report_overrides(self, kind: str, local_name: str, report) -> None:
-        for key in report.moved:
-            log(f"moved to {local_name}: {key}")
-        if report.moved:
-            self.event("local-overrides", "moved", kind)
-        if report.removed:
-            self.event("local-overrides", "removed", kind)
-        if report.conflicts:
-            log(
-                f"WARNING: {', '.join(report.conflicts)} differs from {local_name}; "
-                "nothing changed (run `machine update` in a terminal to choose)"
-            )
-            self.event("local-overrides", "conflict", kind)
-
-    def move_git_overrides(self, interactive: bool = False) -> None:
-        shared = self.core_source / ".gitconfig"
-        if not shared.is_file():
-            return
-        report = local_overrides.relocate_git(
-            shared,
-            self.home / ".gitconfig.local",
-            self._overrides_backup(),
-            self._conflict_resolver(interactive),
-        )
-        self._report_overrides("gitconfig", "~/.gitconfig.local", report)
-
-    def move_bashrc_overrides(self, interactive: bool = False) -> None:
-        shared = self.core_source / ".bashrc"
-        if not shared.is_file():
-            return
-
-        def select(chunks):
-            system.run(
-                [
-                    "git",
-                    "--no-pager",
-                    "-C",
-                    str(self.repo),
-                    "diff",
-                    "--color=always",
-                    "--no-ext-diff",
-                    "--unified=3",
-                    "HEAD",
-                    "--",
-                    str(shared.relative_to(self.repo)),
-                ],
-                check=False,
-            )
-            labels = {c.key: f"{c.text.count(chr(10))} line(s)" for c in chunks}
-            picked = system.choose_many(
-                "Move text added to .bashrc into ~/.bashrc-local", labels, []
-            )
-            return [c for c in chunks if c.key in picked]
-
-        report = local_overrides.relocate_text(
-            shared,
-            self.home / ".bashrc-local",
-            self._overrides_backup(),
-            select if interactive else None,
-            self._conflict_resolver(interactive),
-        )
-        self._report_overrides("bashrc", "~/.bashrc-local", report)
-
-    # --- plan -------------------------------------------------------------
-
-    def local_changes(self) -> list[str]:
-        result = system.run(
-            [
-                "git",
-                "-C",
-                str(self.repo),
-                "status",
-                "--porcelain",
-                "-z",
-                "--untracked-files=all",
-            ],
-            capture=True,
-            check=False,
-        )
-        paths: list[str] = []
-        entries = (result.stdout or "").split("\0")
-        index = 0
-        while index < len(entries):
-            entry = entries[index]
-            index += 1
-            if len(entry) < 4:
-                continue
-            paths.append(entry[3:])
-            if entry[0] in "RC":  # the next entry is the original path
-                if index < len(entries) and entries[index]:
-                    paths.append(entries[index])
-                index += 1
-        return paths
-
-    def upstream_ref(self) -> str:
-        result = system.run(
-            [
-                "git",
-                "-C",
-                str(self.repo),
-                "rev-parse",
-                "--abbrev-ref",
-                "--symbolic-full-name",
-                "@{u}",
-            ],
-            capture=True,
-            check=False,
-        )
-        if result.returncode == 0 and (result.stdout or "").strip():
-            return result.stdout.strip()
-        branch = system.run(
-            ["git", "-C", str(self.repo), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture=True,
-            check=False,
-        )
-        return f"origin/{(branch.stdout or '').strip()}"
-
-    def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
-        return (
-            system.run(
-                [
-                    "git",
-                    "-C",
-                    str(self.repo),
-                    "merge-base",
-                    "--is-ancestor",
-                    ancestor,
-                    descendant,
-                ],
-                check=False,
-                capture=True,
-            ).returncode
-            == 0
-        )
-
-    def incoming_changes(
-        self, upstream: str, base: str = "HEAD"
-    ) -> list[tuple[str, str]]:
-        result = system.run(
-            [
-                "git",
-                "-C",
-                str(self.repo),
-                "diff",
-                "--name-status",
-                "--no-renames",
-                "-z",
-                base,
-                upstream,
-            ],
-            capture=True,
-            check=False,
-        )
-        parts = [part for part in (result.stdout or "").split("\0") if part]
-        return list(zip(parts[0::2], parts[1::2]))
-
-    def record_update_check(self) -> None:
-        """The time of the last successful fetch, shown by `machine status`."""
-        stamp = datetime.now().astimezone().isoformat(timespec="seconds")
-        try:
-            self.update_last_check.write_text(stamp + "\n", encoding="utf-8")
-        except OSError:
-            pass  # best effort, like the timer script
-
-    def record_ansible_applied(self) -> None:
-        values = self.read_update_state()
-        self.write_update_state(
-            values["state"], values["reason"], ansible_applied_rev=self.repo_revision()
-        )
-
-    def system_paths_relevant(
-        self, paths: Iterable[str], old: str = "", new: str = ""
-    ) -> list[str]:
-        """Changed paths that apply to this host's Ansible run.
-
-        With the revisions `old` and `new`, a feature table whose change touches
-        only keys the CLI reads (help, groups) does not count."""
-        if not self.saved_ansible():
-            return []
-        known = self.applied_host_path.is_file()
-        relevant = self._relevant_system_paths(paths, known)
-        if FEATURE_TABLE_PATH in relevant and old and new:
-            before, after = (
-                self._git("show", f"{rev}:{FEATURE_TABLE_PATH}") for rev in (old, new)
-            )
-            if (
-                before.returncode == 0
-                and after.returncode == 0
-                and ansible_view_of_feature_table(before.stdout)
-                == ansible_view_of_feature_table(after.stdout)
-            ):
-                relevant.remove(FEATURE_TABLE_PATH)
-        return relevant
-
-    def _relevant_system_paths(self, paths: Iterable[str], known: bool) -> list[str]:
-        return relevant_system_paths(
-            paths,
-            ansible_dir=self.ansible_dir,
-            features=self.saved_features() if known else [],
-            context=self.current_context() if known else "",
-            device=self.current_device() if known else "",
-            own_host_config=self.host_config_path().relative_to(self.repo).as_posix(),
-        )
-
-    def pending_system_paths(self, ref: str) -> list[str]:
-        """Changed files between the last successful Ansible run and `ref` that apply here.
-
-        Empty for a host that never ran Ansible (no root, or a container)."""
-        applied = self.read_update_state()["ansible_applied_rev"]
-        if not applied:
-            return []
-        result = self._git("diff", "--name-only", "--no-renames", applied, ref)
-        if result.returncode != 0:
-            return ["ansible/"]  # unknown revision: cannot evaluate, so it counts
-        return self.system_paths_relevant(
-            (result.stdout or "").splitlines(), applied, ref
-        )
-
-    def plan_steps(self, incoming: list[tuple[str, str]], ref: str) -> list[str]:
-        steps = {step for step in classify_paths(incoming) if step != "system"}
-        if self.pending_system_paths(ref):
-            steps.add("system")
-        return sorted(steps)
-
-    def update_plan(self, *, fetch: bool) -> dict:
-        if fetch:
-            result = system.run(
-                ["git", "-C", str(self.repo), "fetch", "--quiet"],
-                check=False,
-                capture=True,
-            )
-            if result.returncode != 0:
-                warn("git fetch failed; using the last known upstream state")
-            else:
-                self.record_update_check()
-        upstream = self.upstream_ref()
-        if (
-            not system.run(
-                ["git", "-C", str(self.repo), "rev-parse", "--verify", upstream],
-                check=False,
-                capture=True,
-            ).returncode
-            == 0
-        ):
-            return {
-                "upstream": upstream,
-                "state": "no-upstream",
-                "incoming": [],
-                "steps": [],
-                "local_changes": self.local_changes(),
-                "resolvable": [],
-                "overlap": [],
-                "merged": [],
-                "conflicts": [],
-                "rebase_blocker": "",
-                "incoming_commits": 0,
-                "local_commits": 0,
-                "host_config_changes": [],
-                "blockers": [f"upstream {upstream} not found"],
-            }
-        rebase_blocker, rebase_conflicts = "", []
-        if self._is_ancestor("HEAD", upstream):
-            incoming = self.incoming_changes(upstream)
-            state = "behind" if incoming else "up-to-date"
-        elif self._is_ancestor(upstream, "HEAD"):
-            incoming, state = [], "up-to-date"
-        else:
-            state = "diverged"
-            base = (self._git("merge-base", "HEAD", upstream).stdout or "").strip()
-            incoming = self.incoming_changes(upstream, base) if base else []
-            rebase_blocker, rebase_conflicts = self.rebase_blocker(upstream)
-        resolvable = [
-            path for _name, path, _run, pending in self.local_resolvers() if pending()
-        ]
-        local = self.local_changes()
-        remaining = [path for path in local if path not in resolvable]
-        overlap = sorted(set(remaining) & {path for _status, path in incoming})
-        conflicts = (
-            self.trial_conflicts(
-                upstream, overlap, {path for status, path in incoming if status == "A"}
-            )
-            if overlap and state == "behind"
-            else overlap
-        )
-        plan = {
-            "upstream": upstream,
-            "state": state,
-            "incoming_commits": self.commit_count(f"HEAD..{upstream}"),
-            "local_commits": self.commit_count(f"{upstream}..HEAD"),
-            "host_config_changes": self.incoming_host_config_changes(
-                incoming, upstream
-            ),
-            "incoming": [{"status": s, "path": p} for s, p in incoming],
-            "steps": self.plan_steps(incoming, upstream if incoming else "HEAD"),
-            "local_changes": remaining,
-            "resolvable": resolvable,
-            "overlap": overlap,
-            "merged": [path for path in overlap if path not in conflicts],
-            "conflicts": conflicts if state == "behind" else rebase_conflicts,
-            "rebase_blocker": rebase_blocker,
-        }
-        plan["blockers"] = (
-            [self.blocked_reason(plan)] if self.plan_blocked(plan) else []
-        )
-        return plan
-
-    @staticmethod
-    def plan_blocked(plan: dict) -> bool:
-        if plan["state"] == "diverged":
-            return bool(plan["rebase_blocker"])
-        return bool(plan["conflicts"])
-
-    @staticmethod
-    def blocked_reason(plan: dict) -> str:
-        """The needs-attention reason: what blocks, how much is waiting, what to run next."""
-        incoming = plan.get("incoming_commits", 0)
-        commits = f"{incoming} incoming commit{'s' if incoming != 1 else ''}"
-        if plan["state"] == "diverged":
-            local = plan.get("local_commits", 0)
-            if not plan["rebase_blocker"]:
-                return (
-                    f"history diverged: {local} local and {commits}; "
-                    "they rebase cleanly → run: machine update"
-                )
-            if plan["conflicts"]:
-                return (
-                    f"history diverged: {local} local and {commits}; uncommitted "
-                    f"changes in {', '.join(plan['conflicts'])} conflict with the "
-                    "incoming ones → commit, stash or discard them, then run: "
-                    "machine update"
-                )
-            return (
-                f"history diverged: {local} local and {commits} "
-                f"({plan['rebase_blocker']}) → run: git pull --rebase, then machine"
-            )
-        if plan["state"] == "no-upstream":
-            return f"upstream {plan['upstream']} not found"
-        return (
-            f"{commits} conflict with local changes in "
-            + ", ".join(plan["conflicts"])
-            + " → resolve them, then run: machine"
-        )
-
-    def incoming_host_config_changes(
-        self, incoming: list[tuple[str, str]], upstream: str
-    ) -> list[str]:
-        """What an incoming commit changes in this host's machine/hosts file."""
-        try:
-            rel = str(self.host_config_path().relative_to(self.repo))
-        except ValueError:  # host files outside this checkout
-            return []
-        if rel not in {path for _status, path in incoming}:
-            return []
-        shown = system.run(
-            ["git", "-C", str(self.repo), "show", f"{upstream}:{rel}"],
-            check=False,
-            capture=True,
-        )
-        new_text = shown.stdout if shown.returncode == 0 else ""
-        return host_config_changes(
-            parse_profile_file(self.applied_host_path), parse_profile_text(new_text)
-        )
-
-    def repo_revision(self) -> str:
-        result = system.run(
-            ["git", "-C", str(self.repo), "rev-parse", "HEAD"],
-            check=False,
-            capture=True,
-        )
-        return result.stdout.strip() if result.returncode == 0 else ""
-
-    def write_update_state(self, state: str, reason: str = "", **extra: str) -> None:
-        """Write the one state file (key=value lines); shells read state, reason, revision.
-
-        Other keys survive a write unless passed: pending (1 while upstream is ahead),
-        failed_revision (reverted automatic update) and ansible_applied_rev."""
-        values = self.read_update_state()
-        values.update(extra)
-        values.update(state=state, reason=reason, revision=self.repo_revision())
-        tmp = self.update_state.with_name(self.update_state.name + ".tmp")
-        tmp.write_text(
-            "".join(f"{key}={values.get(key, '')}\n" for key in STATE_KEYS),
-            encoding="utf-8",
-        )
-        tmp.replace(self.update_state)
-
-    def read_update_state(self) -> dict[str, str]:
-        values = {key: "" for key in STATE_KEYS}
-        values["state"] = "none"
-        if self.update_state.is_file():
-            for line in self.update_state.read_text(encoding="utf-8").splitlines():
-                key, _, value = line.partition("=")
-                if key in values:
-                    values[key] = value
-        return values
-
-    def set_pending(self, pending: bool) -> None:
-        values = self.read_update_state()
-        self.write_update_state(
-            values["state"], values["reason"], pending="1" if pending else ""
-        )
-
-    def print_update_plan(self, plan: dict) -> None:
-        print(f"upstream: {plan['upstream']} ({plan['state']})")
-        print(f"incoming files: {len(plan['incoming'])}")
-        print("steps: " + (", ".join(plan["steps"]) or "none"))
-        if plan.get("host_config_changes"):
-            print("host config changes: " + "; ".join(plan["host_config_changes"]))
-        if plan["resolvable"]:
-            print("resolved automatically: " + ", ".join(plan["resolvable"]))
-        if plan.get("merged"):
-            print("merge cleanly (kept): " + ", ".join(plan["merged"]))
-        if plan.get("conflicts"):
-            print("conflict: " + ", ".join(plan["conflicts"]))
-        if plan["local_changes"]:
-            print("local changes (kept): " + ", ".join(plan["local_changes"]))
-        if plan["blockers"]:
-            for blocker in plan["blockers"]:
-                print(f"needs attention: {blocker}")
-        else:
-            print("blockers: none")
-
-    # --- lock and timer ---------------------------------------------------
-
-    @contextlib.contextmanager
-    def update_lock(self) -> Iterator[None]:
-        self.state_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.state_dir / "update.lock", "w") as handle:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                die("another update is already running")
-            yield
+class UpdateMixin(
+    LocalOverridesMixin,
+    UpdatePlanMixin,
+    UpdateStateMixin,
+    UpdateConflictsMixin,
+    UpdateHandoffMixin,
+):
+    # --- timers -----------------------------------------------------------
 
     def ensure_update_timer(self) -> None:
         """Enable the update check and the low-disk check timers of the systemd group,
         and enable or disable the units that follow a feature."""
         units = self.home / ".config/systemd/user"
-        timers = [
-            name
-            for name in ("dotfiles-update-check.timer", "machine-disk-check.timer")
-            if (units / name).is_file()
-        ]
+        timers = [name for name in UPDATE_TIMERS if (units / name).is_file()]
         work_net = self.work_net_units(units) + self.ssh_tunnel_units(units)
-        if not (timers or work_net) or not system.have("systemctl"):
+        if not (timers or work_net):
+            return
+        if not system.have("systemctl"):
             return
         system.run(["systemctl", "--user", "daemon-reload"], check=False, capture=True)
         for timer in timers:
@@ -564,7 +85,12 @@ class UpdateMixin:
                 check=False,
                 capture=True,
             )
-        for unit, wanted in work_net:
+        self._apply_unit_states(units, work_net)
+        self.ensure_linger()
+
+    def _apply_unit_states(self, units: Path, wanted_units: List[Tuple[str, bool]]):
+        """Enable the wanted units and disable the others."""
+        for unit, wanted in wanted_units:
             system.run(
                 [
                     "systemctl",
@@ -577,11 +103,10 @@ class UpdateMixin:
                 capture=True,
             )
         # A unit whose group was unlinked leaves its enable link behind.
-        for unit, wanted in work_net:
+        for unit, wanted in wanted_units:
             link = units / "default.target.wants" / unit
             if not wanted and link.is_symlink():
                 link.unlink()
-        self.ensure_linger()
 
     def ssh_tunnel_units(self, units: Path) -> List[Tuple[str, bool]]:
         """The reverse tunnel unit (feature ssh-tunnel): present or still enabled."""
@@ -639,194 +164,6 @@ class UpdateMixin:
             self.print_update_plan(plan)
         return 0
 
-    # --- conflicts ----------------------------------------------------------
-
-    def show_conflict_diff(self, plan: dict) -> None:
-        """Colored diff of the conflicting local changes and the commits touching them."""
-        files = plan["conflicts"]
-        tracked = [path for path in files if path not in set(self.untracked_paths())]
-        print(f"\nLocal changes that conflict with {plan['upstream']}:")
-        if tracked:
-            system.run(["git", "-C", str(self.repo), "diff", "HEAD", "--", *tracked])
-        for path in sorted(set(files) - set(tracked)):
-            print(f"  untracked here, added upstream: {path}")
-        print("\nIncoming commits that touch them:")
-        system.run(
-            [
-                "git",
-                "-C",
-                str(self.repo),
-                "--no-pager",
-                "log",
-                "--oneline",
-                f"HEAD..{plan['upstream']}",
-                "--",
-                *files,
-            ]
-        )
-
-    def print_conflict_commands(self, plan: dict) -> None:
-        update = (
-            f"git rebase {plan['upstream']}"
-            if plan["state"] == "diverged"
-            else f"git merge --ff-only {plan['upstream']}"
-        )
-        print(
-            "\nResolve the conflict outside machine, for example:\n"
-            f"  git stash && {update} && git stash pop\n"
-            "  git mergetool            # or edit the conflict markers by hand\n"
-            "  git stash drop           # once the files are resolved\n"
-            "  machine\n"
-        )
-
-    def block_update(self, plan: dict) -> None:
-        """Record needs-attention for a blocked plan and stop; the reason is printed last."""
-        reason = plan["blockers"][0]
-        self.write_update_state(
-            "attention", reason, pending="1" if plan["incoming_commits"] else ""
-        )
-        die(reason)
-
-    def stash_conflicts(self, plan: dict) -> str:
-        sha = self.stash_push(
-            f"conflicting with {plan['upstream']} {self._rev(plan['upstream'])[:8]}",
-            plan["conflicts"],
-        )
-        if not sha:
-            die("could not put the conflicting local changes into the stash")
-        log(
-            f"conflicting local changes are in {self._stash_ref(sha)}; "
-            "restore them with: machine attention"
-        )
-        return sha
-
-    def resolve_conflicts(self, plan: dict, force: bool) -> dict:
-        """Ask (or follow --force) what to do with conflicting changes; returns the new plan."""
-        interactive = system.is_tty() and not force
-        if interactive:
-            self.show_conflict_diff(plan)
-        manual, stash = "resolve manually", "put them into the stash and update"
-        choice = stash if force else manual
-        if interactive:
-            choice = system.choose("Conflicting local changes", [manual, stash], manual)
-        if choice != stash:
-            if interactive:
-                self.print_conflict_commands(plan)
-            self.block_update(plan)
-        self.stash_conflicts(plan)
-        return self.update_plan(fetch=False)
-
-    def merge_upstream(self, plan: dict) -> None:
-        if plan["local_changes"]:
-            count = len(plan["local_changes"])
-            log(
-                f"keeping {count} local change{'s' if count != 1 else ''} "
-                "(machine status -v lists them)"
-            )
-        if plan["merged"]:
-            log(
-                "merging local changes with incoming ones: " + ", ".join(plan["merged"])
-            )
-        if plan["state"] == "behind" and not self.fast_forward_keeping_local(
-            plan["upstream"]
-        ):
-            plan = dict(
-                plan,
-                blockers=[
-                    "the update could not keep the local changes; nothing changed"
-                ],
-            )
-            self.block_update(plan)
-
-    # --- handoff to the machine code of the new revision ---------------------
-
-    def machine_code_changed(self, previous: str) -> bool:
-        """True when `machine_cli/` differs between `previous` and the checkout."""
-        result = self._git(
-            "diff", "--name-only", previous, "HEAD", "--", "machine_cli/"
-        )
-        return bool((result.stdout or "").strip())
-
-    def hand_over_to_new_code(self, previous: str) -> bool:
-        """True when `machine_cli/` changed and the new code accepts the handoff.
-
-        A revision without this handoff (for example after a rollback) would reject
-        the resume options; its steps run with the code that is running."""
-        if not self.machine_code_changed(previous):
-            return False
-        marker = self.repo / "machine_cli" / "resume-protocol"
-        try:
-            lines = marker.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            lines = []
-        words = [w for line in lines if not line.startswith("#") for w in line.split()]
-        if RESUME_PROTOCOL in words:
-            return True
-        log(
-            "machine_cli changed, but the new code does not accept the handoff; "
-            "running the remaining steps with the code that is running"
-        )
-        return False
-
-    def machine_entry_command(self) -> list[str]:
-        """Start the checkout's CLI; run directly, uv resolves its dependencies."""
-        script = self.repo / "machine_cli" / "machine"
-        command = (
-            [str(script)]
-            if os.access(script, os.X_OK)
-            else [sys.executable, str(script)]
-        )
-        return command + (["--debug"] if core.debug_enabled() else [])
-
-    def run_new_machine_code(
-        self, args: types.SimpleNamespace, previous: str
-    ) -> Optional[int]:
-        """Run the remaining update steps with the new code; None if it cannot start.
-
-        This process keeps the update lock while the child runs. Older revisions
-        call `update --resume-from`, so its meaning must stay the same."""
-        command = self.machine_entry_command() + ["update", "--resume-from", previous]
-        if getattr(args, "system", False):
-            command.append("--system")
-        if getattr(args, "skip_ansible", False):
-            command.append("--skip-ansible")
-        state_before = (
-            self.update_state.read_text(encoding="utf-8")
-            if self.update_state.is_file()
-            else ""
-        )
-        log("machine_cli changed; running the remaining steps with the new code")
-        try:
-            result = system.run(command, check=False)
-        except OSError as exc:
-            warn(
-                f"could not start the new machine code ({exc}); "
-                "running the remaining steps with the code that is running"
-            )
-            return None
-        state_after = (
-            self.update_state.read_text(encoding="utf-8")
-            if self.update_state.is_file()
-            else ""
-        )
-        if result.returncode != 0 and state_after == state_before:
-            # The child stopped before it recorded a result, e.g. on a traceback.
-            self.write_update_state(
-                "attention",
-                f"update failed: the new machine code stopped (exit "
-                f"{result.returncode}); run: machine update",
-                pending="",
-            )
-        return result.returncode
-
-    def resume_update(self, args: types.SimpleNamespace) -> int:
-        """The steps after the checkout update, for an older `machine` that holds the lock."""
-        previous = args.resume_from
-        if getattr(args, "auto", False):
-            return self.resume_auto(previous, args.resume_result)
-        incoming = self.incoming_changes("HEAD", previous)
-        return self._update_steps(args, set(self.plan_steps(incoming, "HEAD")))
-
     def cmd_update(self, args: types.SimpleNamespace) -> int:
         if getattr(args, "check", False):
             return self.update_check(getattr(args, "json", False))
@@ -864,19 +201,7 @@ class UpdateMixin:
             self.write_update_state("attention", plan["blockers"][0])
             die(plan["blockers"][0])
         if plan["state"] == "diverged":
-            if plan["conflicts"]:
-                # Only uncommitted changes block the rebase: same choices as when behind.
-                plan = self.resolve_conflicts(plan, args.force)
-            if plan["rebase_blocker"] or not self.rebase_keeping_local(
-                plan["upstream"]
-            ):
-                if not plan["rebase_blocker"]:
-                    plan = dict(
-                        plan, rebase_blocker="the rebase failed; nothing changed"
-                    )
-                    plan["blockers"] = [self.blocked_reason(plan)]
-                self.block_update(plan)
-            plan = dict(plan, state="up-to-date", local_changes=[], merged=[])
+            plan = self._rebase_diverged(plan, args.force)
         elif plan["conflicts"]:
             plan = self.resolve_conflicts(plan, args.force)
         self.merge_upstream(plan)
@@ -900,6 +225,8 @@ class UpdateMixin:
             return "system files changed"
         return ""
 
+    # --- the steps after the checkout update ------------------------------
+
     def _update_steps(self, args: types.SimpleNamespace, steps: set[str]) -> int:
         """Everything after the checkout update: host config, env, dotfiles, tools, Ansible."""
         profile_backup = self.backup_applied_host()
@@ -907,112 +234,153 @@ class UpdateMixin:
 
         # From here a failing step does not stop the steps that do not need it; the
         # env pull comes first so that its questions come before the tool install.
-        runner = Steps()
-        ansible_reason = self.ansible_reason(args, steps, profile_changed)
-        skip_ansible = getattr(args, "skip_ansible", False)
-        sudo_failed = False
-        if ansible_reason and not skip_ansible and self.current_device() != "container":
-            # First, so that no sudo prompt interrupts the run later. A failure only
-            # skips Ansible; the steps that need no root still run.
-            try:
-                self.authenticate_sudo_for_ansible(True)
-            except (subprocess.CalledProcessError, OSError) as exc:
-                reason = getattr(exc, "output", None) or str(exc)
-                runner.fail("ansible apply", reason or "sudo is not available")
-                sudo_failed = True
+        run = UpdateRun(
+            args=args,
+            steps=steps,
+            runner=Steps(),
+            profile_backup=profile_backup,
+            profile_changed=profile_changed,
+            ansible_reason=self.ansible_reason(args, steps, profile_changed),
+            skip_ansible=getattr(args, "skip_ansible", False),
+        )
+        self._authenticate_sudo_step(run)
         # Before the env pull, so that {{bw:<user>/password}} references resolve to
         # the passwords just copied from Key Vault.
-        runner.run("technical user passwords", self.sync_techuser_passwords_step)
-        runner.run("env pull", self.cmd_env_pull)
+        run.runner.run("technical user passwords", self.sync_techuser_passwords_step)
+        run.runner.run("env pull", self.cmd_env_pull)
 
         # Converge check: runs also when nothing was incoming; idempotent and cheap.
-        not_set_up = ""
-        if self.mise_local_config.is_file() and system.have("mise"):
-            runner.run("dotfile apply", self.run_dotfiles_apply)
-            runner.run("ssh host list", self.pull_ssh_host_list)
-            runner.run("tool install", self.run_tools_install, needs=["dotfile apply"])
-            runner.run("syncthing ignores", self.run_syncthing_ignores)
-        else:
-            reason = (
-                "mise is not installed"
-                if not system.have("mise")
-                else f"{self.mise_local_config} is missing"
-            )
-            message = (
-                f"this host is not set up: {reason}, so dotfiles and tools were "
-                f"not applied (run: {self.repo}/bootstrap)"
-            )
-            warn(message)
-            not_set_up = message
-            if system.is_tty() and self._confirm_bootstrap():
-                system.run([str(self.repo / "bootstrap")])
-                not_set_up = ""
-            runner.run("ssh host list", self.pull_ssh_host_list)
+        self._converge_step(run)
         self.check_ssh_key_backup()
-        runner.run("ssh key files", self.sync_repo_key_files)
-        zsh_failure = ""
-        if steps & {"dotfiles", "shell"} and not not_set_up:
-
-            def zsh_check() -> None:
-                nonlocal zsh_failure
-                zsh_failure = self.zsh_health_failure()
-
-            runner.run("zsh health check", zsh_check, needs=["dotfile apply"])
-            if zsh_failure:
-                runner.fail("zsh health check", "zsh does not start cleanly")
-                warn(f"zsh health check failed after the update:\n{zsh_failure}")
-
-        if not self.saved_ansible():
-            log("ansible: false in the host config; system changes are not applied")
-        elif ansible_reason:
-            if skip_ansible:
-                log(
-                    f"ansible skipped (--skip-ansible); system changes remain pending ({ansible_reason})"
-                )
-            elif runner.ok("ansible apply"):
-                apply_args = types.SimpleNamespace(
-                    limit="",
-                    playbook="workstation",
-                    no_become=False,
-                    skip_ansible=False,
-                    profile_backup=profile_backup,
-                    profile_changed=profile_changed,
-                    user_steps=False,
-                )
-                log(f"applying system changes ({ansible_reason})")
-                # cmd_apply restores the host config itself before it fails.
-                runner.run("ansible apply", lambda: self.cmd_apply(apply_args))
+        run.runner.run("ssh key files", self.sync_repo_key_files)
+        self._zsh_check_step(run)
+        self._ansible_step(run)
 
         # After Ansible, which installs niri and DMS.
-        if not not_set_up:
-            runner.run("niri config", self.run_niri_config)
+        if not run.not_set_up:
+            run.runner.run("niri config", self.run_niri_config)
 
         # Again after the dotfiles and the host config: the unit of a feature this
         # update added (ssh-tunnel) exists only now.
-        if not not_set_up and self.current_device() != "container":
-            runner.run("update timers", self.ensure_update_timer)
+        if not run.not_set_up and self.current_device() != "container":
+            run.runner.run("update timers", self.ensure_update_timer)
 
-        if sudo_failed and profile_changed and profile_backup:
+        if run.restores_host_config():
             # The steps above used the new host config. Like a failed apply, it only
             # counts as applied when Ansible ran with it; the next update retries.
-            self.restore_applied_host(profile_backup)
+            self.restore_applied_host(run.profile_backup)
+        return self._finish_update(run)
 
+    def _ansible_needs_sudo(self, run: UpdateRun) -> bool:
+        if not run.ansible_reason or run.skip_ansible:
+            return False
+        return self.current_device() != "container"
+
+    def _authenticate_sudo_step(self, run: UpdateRun) -> None:
+        """First, so that no sudo prompt interrupts the run later. A failure only
+        skips Ansible; the steps that need no root still run."""
+        if not self._ansible_needs_sudo(run):
+            return
+        try:
+            self.authenticate_sudo_for_ansible(True)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            reason = getattr(exc, "output", None) or str(exc)
+            run.runner.fail("ansible apply", reason or "sudo is not available")
+            run.sudo_failed = True
+
+    def _converge_step(self, run: UpdateRun) -> None:
+        """Apply the dotfiles and tools, or record that this host is not set up."""
+        if self.mise_local_config.is_file() and system.have("mise"):
+            run.runner.run("dotfile apply", self.run_dotfiles_apply)
+            run.runner.run("ssh host list", self.pull_ssh_host_list)
+            run.runner.run(
+                "tool install", self.run_tools_install, needs=["dotfile apply"]
+            )
+            run.runner.run("syncthing ignores", self.run_syncthing_ignores)
+            return
+        run.not_set_up = self._offer_bootstrap()
+        run.runner.run("ssh host list", self.pull_ssh_host_list)
+
+    def _offer_bootstrap(self) -> str:
+        """Warn that this host is not set up and offer bootstrap; returns what is still missing."""
+        reason = (
+            "mise is not installed"
+            if not system.have("mise")
+            else f"{self.mise_local_config} is missing"
+        )
+        message = (
+            f"this host is not set up: {reason}, so dotfiles and tools were "
+            f"not applied (run: {self.repo}/bootstrap)"
+        )
+        warn(message)
+        if system.is_tty() and self._confirm_bootstrap():
+            system.run([str(self.repo / "bootstrap")])
+            return ""
+        return message
+
+    def _zsh_check_step(self, run: UpdateRun) -> None:
+        if not (run.steps & {"dotfiles", "shell"}) or run.not_set_up:
+            return
+        run.runner.run(
+            "zsh health check",
+            lambda: self._record_zsh_failure(run),
+            needs=["dotfile apply"],
+        )
+        if run.zsh_failure:
+            run.runner.fail("zsh health check", "zsh does not start cleanly")
+            warn(f"zsh health check failed after the update:\n{run.zsh_failure}")
+
+    def _record_zsh_failure(self, run: UpdateRun) -> None:
+        run.zsh_failure = self.zsh_health_failure()
+
+    def _ansible_step(self, run: UpdateRun) -> None:
+        if not self.saved_ansible():
+            log("ansible: false in the host config; system changes are not applied")
+            return
+        if not run.ansible_reason:
+            return
+        if run.skip_ansible:
+            log(
+                f"ansible skipped (--skip-ansible); system changes remain pending ({run.ansible_reason})"
+            )
+            return
+        if not run.runner.ok("ansible apply"):
+            return
+        apply_args = types.SimpleNamespace(
+            limit="",
+            playbook="workstation",
+            no_become=False,
+            skip_ansible=False,
+            profile_backup=run.profile_backup,
+            profile_changed=run.profile_changed,
+            user_steps=False,
+        )
+        log(f"applying system changes ({run.ansible_reason})")
+        # cmd_apply restores the host config itself before it fails.
+        run.runner.run("ansible apply", lambda: self.cmd_apply(apply_args))
+
+    def _finish_update(self, run: UpdateRun) -> int:
+        """Record the result of the update in the state file; the exit code."""
         self.update_failure_file.unlink(missing_ok=True)
-        summary = runner.report("update")
+        summary = run.runner.report("update")
         if summary:
             self.state_dir.mkdir(parents=True, exist_ok=True)
-            details = summary + (f"\n\n{zsh_failure}" if zsh_failure else "")
+            details = summary + (f"\n\n{run.zsh_failure}" if run.zsh_failure else "")
             self.update_failure_file.write_text(details + "\n", encoding="utf-8")
             self.write_update_state(
                 "attention",
-                f"update failed: {', '.join(runner.failed_names())}; "
+                f"update failed: {', '.join(run.runner.failed_names())}; "
                 "see machine attention",
                 pending="",  # the checkout is current; only steps failed
             )
             return 1  # the shell wrapper only reloads after a successful update
-        if not_set_up:
-            self.write_update_state("attention", not_set_up)
+        if run.not_set_up:
+            self.write_update_state("attention", run.not_set_up)
         else:
             self.write_update_state("updated", pending="", failed_revision="")
-        log("update finished" if not not_set_up else "update finished, host not set up")
+        log(
+            "update finished"
+            if not run.not_set_up
+            else "update finished, host not set up"
+        )
         return 0

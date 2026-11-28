@@ -58,12 +58,47 @@ running() {
     tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q "$(basename "$0") run"
 }
 
+# Ends a child of the loop. A TERM in the first instant after the fork is lost: the
+# child still runs the shell's signal handler. So it is sent until the child is gone.
+end_child() {
+    n=0
+    while [ "$n" -lt 1000 ] && read -r stat <"/proc/$1/stat" 2>/dev/null; do
+        stat=${stat##*) }
+        [ "${stat%% *}" = Z ] && break
+        kill "$1" 2>/dev/null
+        n=$((n + 1))
+    done
+}
+
+end_loop() {
+    # The trap can run between the fork and child=$!; $! is then the new child.
+    if [ "$child" = starting ] && [ "$!" != "$last" ]; then
+        child=$!
+    fi
+    case $child in
+        '' | starting) ;;
+        *) end_child "$child" ;;
+    esac
+    rm -f "$PIDFILE"
+    exit 0
+}
+
+# Runs "$@" in the background as $child, so the trap does not wait for it.
+run_child() {
+    last=$! child=starting
+    "$@" &
+    child=$!
+    wait "$child"
+    status=$?
+    child=
+}
+
 run_loop() {
     child=
-    trap '[ -n "$child" ] && kill "$child" 2>/dev/null; rm -f "$PIDFILE"; exit 0' TERM INT
+    trap end_loop TERM INT
     while :; do
         # -F /dev/null: none of the device's own ssh settings (no connection sharing).
-        "$SSH" -F /dev/null -N \
+        run_child "$SSH" -F /dev/null -N \
             -o ControlMaster=no -o ControlPath=none \
             -o ExitOnForwardFailure=yes \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
@@ -73,61 +108,71 @@ run_loop() {
             -o HostKeyAlias="$HOST_KEY_ALIAS" \
             -p "$JUMP_PORT" \
             -R "127.0.0.1:$PORT:localhost:$LOCAL_PORT" \
-            "$JUMP_USER@$JUMP_HOST" &
-        child=$!
-        wait "$child"
-        status=$?
-        child=
+            "$JUMP_USER@$JUMP_HOST"
         log "ssh ended with status $status; next attempt in ${RETRY}s"
-        sleep "$RETRY" &
-        child=$!
-        wait "$child"
-        child=
+        run_child sleep "$RETRY"
     done
 }
 
-case "${1:-}" in
-    start)
-        load_config
-        # Boot task and watchdog may start at the same moment: one wins the lock.
-        lock="$PIDFILE.lock"
-        if ! mkdir "$lock" 2>/dev/null; then
-            # A lock older than a minute was left by a killed start.
-            if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-                rmdir "$lock" 2>/dev/null
-            fi
-            exit 0
+start_tunnel() {
+    # Boot task and watchdog may start at the same moment: one wins the lock.
+    lock="$PIDFILE.lock"
+    if ! mkdir "$lock" 2>/dev/null; then
+        # A lock older than a minute was left by a killed start.
+        if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+            rmdir "$lock" 2>/dev/null
         fi
-        if running; then
-            rmdir "$lock"
-            exit 0
-        fi
-        nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
-        echo $! >"$PIDFILE"
+        return 0
+    fi
+    if running; then
         rmdir "$lock"
-        log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
-        ;;
-    stop)
-        load_config
-        if running; then
-            kill "$(cat "$PIDFILE")"
-            log "stopped"
-        fi
+        return 0
+    fi
+    # The loop removes the lock once it runs, so a start in between does not
+    # take the not yet recognisable PID for a stale one and start a second loop.
+    nohup "${TUNNEL_SHELL:-/bin/sh}" "$0" run >/dev/null 2>&1 &
+    echo $! >"$PIDFILE"
+    log "started (127.0.0.1:$PORT on $JUMP_HOST -> localhost:$LOCAL_PORT)"
+}
+
+stop_tunnel() {
+    # A loop that start has just launched is recognisable once it removed the lock.
+    waited=0
+    while [ -d "$PIDFILE.lock" ] && [ "$waited" -lt 10 ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if ! running; then
         rm -f "$PIDFILE"
-        ;;
-    status)
-        load_config
-        if running; then
-            echo "running (pid $(cat "$PIDFILE"))"
-        else
-            echo "not running"
-            exit 1
-        fi
-        ;;
-    run)
-        load_config
-        run_loop
-        ;;
+        return 0
+    fi
+    # The loop removes the PID file itself; removing it here too can fail
+    # (BusyBox rm -f) when both remove it at the same moment.
+    kill "$(cat "$PIDFILE")"
+    log "stopped"
+}
+
+show_status() {
+    if ! running; then
+        echo "not running"
+        return 1
+    fi
+    echo "running (pid $(cat "$PIDFILE"))"
+}
+
+loop_process() {
+    # Only now is this PID recognisable as the loop (during its exec chain
+    # /proc/PID/cmdline is the start script's or empty), so start's lock ends here.
+    echo $$ >"$PIDFILE"
+    rmdir "$PIDFILE.lock" 2>/dev/null
+    run_loop
+}
+
+case "${1:-}" in
+    start) load_config && start_tunnel ;;
+    stop) load_config && stop_tunnel ;;
+    status) load_config && show_status ;;
+    run) load_config && loop_process ;;
     *)
         echo "usage: $0 start|stop|status|run" >&2
         exit 2

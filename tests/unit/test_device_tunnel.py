@@ -49,22 +49,29 @@ def device(tmp_path):
 
     yield run, calls, tmp_path
     run("stop")
+    time.sleep(0.5)
+    # A loop that outlives stop keeps running after the test, without its config.
+    assert loops(tmp_path) == []
 
 
 def loops(tmp_path):
-    """Loop processes, without their children: BusyBox runs a backgrounded applet
-    (sleep) in a fork that keeps the loop's command line."""
+    """Loop processes of this test's config, without their children: BusyBox runs
+    a backgrounded applet (sleep) in a fork that keeps the loop's command line.
+    Loops of other tests or test runs do not count."""
     out = subprocess.run(
         ["pgrep", "-f", f"sh {SCRIPT} run"], capture_output=True, text=True
     )
-    pids = set(out.stdout.split())
+    conf = f"TUNNEL_CONF={tmp_path / 'tunnel.conf'}".encode()
     parents = {}
-    for pid in pids:
+    for pid in out.stdout.split():
         try:
             stat = open(f"/proc/{pid}/stat").read()
+            environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
         except OSError:
             continue
-        parents[pid] = stat.rsplit(")", 1)[1].split()[1]
+        if conf in environ:
+            parents[pid] = stat.rsplit(")", 1)[1].split()[1]
+    pids = set(parents)
     return sorted(pid for pid, parent in parents.items() if parent not in pids)
 
 
@@ -130,6 +137,20 @@ def test_parallel_starts_run_one_loop(device):
         start.wait(timeout=10)
     time.sleep(1)
     assert len(loops(tmp_path)) == 1
+
+
+def test_start_right_after_start_runs_one_loop(device):
+    """The second start must not take the first loop's PID, still in its exec chain
+    (empty or start's command line), for a stale one."""
+    run, _calls, tmp_path = device
+    for _ in range(15):
+        run("start")
+        run("start")
+        time.sleep(0.2)
+        assert len(loops(tmp_path)) == 1
+        run("stop")
+        time.sleep(0.2)
+        assert loops(tmp_path) == []
 
 
 def test_stale_pid_of_another_program_is_not_the_loop(device):

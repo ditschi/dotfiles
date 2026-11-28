@@ -30,10 +30,12 @@
     - name: Refresh the apt cache for the InfluxData source
       ansible.builtin.apt:
         update_cache: true
-      when: >-
-        monitoring_key_file is changed or monitoring_source_file is changed
-        or 'Candidate:' not in monitoring_candidate.stdout
-        or 'Candidate: (none)' in monitoring_candidate.stdout
+      when: monitoring_source_changed | bool or monitoring_no_candidate | bool
+      vars:
+        monitoring_source_changed: "{{ monitoring_key_file is changed or monitoring_source_file is changed }}"
+        monitoring_no_candidate: >-
+          {{ 'Candidate:' not in monitoring_candidate.stdout
+             or 'Candidate: (none)' in monitoring_candidate.stdout }}
 
     - name: Install telegraf
       ansible.builtin.apt:
@@ -159,23 +161,24 @@
   notify: Restart telegraf
 
 # inputs.docker reads /var/run/docker.sock; the docker group grants that (root-equivalent).
-- name: Check for the docker group
-  ansible.builtin.getent:
-    database: group
-    key: docker
-    fail_key: false
+- name: Give the local Docker input access to the socket
   when: "'machine/docker' in _monitoring_names and not _monitoring_remote"
+  block:
+    - name: Check for the docker group
+      ansible.builtin.getent:
+        database: group
+        key: docker
+        fail_key: false
 
-- name: Let telegraf read the Docker socket
-  ansible.builtin.user:
-    name: telegraf
-    groups: docker
-    append: true
-  when:
-    - ansible_facts.os_family == "Debian"
-    - "'machine/docker' in _monitoring_names and not _monitoring_remote"
-    - (ansible_facts.getent_group | default({})).docker | default(none) is not none
-  notify: Restart telegraf
+    - name: Let telegraf read the Docker socket
+      ansible.builtin.user:
+        name: telegraf
+        groups: docker
+        append: true
+      when:
+        - ansible_facts.os_family == "Debian"
+        - (ansible_facts.getent_group | default({})).docker | default(none) is not none
+      notify: Restart telegraf
 
 # Read by the upstream telegraf.service: $TELEGRAF_OPTS and INFLUX_TOKEN for the remote configs.
 - name: Write the telegraf service environment
@@ -186,43 +189,43 @@
   when: not _monitoring_remote or influx_token | default('') | length > 0
   notify: Restart telegraf
 
-- name: Write InfluxDB 1.x output when credentials present
-  ansible.builtin.copy:
-    dest: "{{ monitoring_conf_dir }}/99_output_influx1.conf"
-    group: "{{ monitoring_service_group }}"
-    mode: "0640"
-    content: |
-      [[outputs.influxdb]]
-        urls = [{{ influx_url | to_json }}]
-        database = {{ influx_database | to_json }}
-        skip_database_creation = true
-        username = {{ influx_username | to_json }}
-        password = {{ influx_password | to_json }}
-        timeout = "5s"
-  when:
-    - influx_url | default('') | length > 0
-    - influx_username | default('') | length > 0
-    - influx_token | default('') | length == 0
-  register: monitoring_output_influx1
-  notify: Restart telegraf
+- name: Write the InfluxDB output for the given credentials
+  when: influx_url | default('') | length > 0
+  block:
+    - name: Write InfluxDB 1.x output when credentials present
+      ansible.builtin.copy:
+        dest: "{{ monitoring_conf_dir }}/99_output_influx1.conf"
+        group: "{{ monitoring_service_group }}"
+        mode: "0640"
+        content: |
+          [[outputs.influxdb]]
+            urls = [{{ influx_url | to_json }}]
+            database = {{ influx_database | to_json }}
+            skip_database_creation = true
+            username = {{ influx_username | to_json }}
+            password = {{ influx_password | to_json }}
+            timeout = "5s"
+      when:
+        - influx_username | default('') | length > 0
+        - influx_token | default('') | length == 0
+      register: monitoring_output_influx1
+      notify: Restart telegraf
 
-- name: Write InfluxDB 2.x output when token present
-  ansible.builtin.copy:
-    dest: "{{ monitoring_conf_dir }}/99_output_influx2.conf"
-    group: "{{ monitoring_service_group }}"
-    mode: "0640"
-    content: |
-      [[outputs.influxdb_v2]]
-        urls = [{{ influx_url | to_json }}]
-        token = {{ influx_token | to_json }}
-        organization = {{ influx_org | to_json }}
-        bucket = {{ influx_bucket | to_json }}
-        timeout = "5s"
-  when:
-    - influx_url | default('') | length > 0
-    - influx_token | default('') | length > 0
-  register: monitoring_output_influx2
-  notify: Restart telegraf
+    - name: Write InfluxDB 2.x output when token present
+      ansible.builtin.copy:
+        dest: "{{ monitoring_conf_dir }}/99_output_influx2.conf"
+        group: "{{ monitoring_service_group }}"
+        mode: "0640"
+        content: |
+          [[outputs.influxdb_v2]]
+            urls = [{{ influx_url | to_json }}]
+            token = {{ influx_token | to_json }}
+            organization = {{ influx_org | to_json }}
+            bucket = {{ influx_bucket | to_json }}
+            timeout = "5s"
+      when: influx_token | default('') | length > 0
+      register: monitoring_output_influx2
+      notify: Restart telegraf
 
 - name: Remove the output of the other InfluxDB version
   ansible.builtin.file:
@@ -263,46 +266,42 @@
 - name: Apply pending telegraf restarts
   ansible.builtin.meta: flush_handlers
 
-- name: Start telegraf with an output
-  ansible.builtin.service:
-    name: telegraf
-    state: started
-    enabled: true
+- name: Run telegraf only with an output
   when:
     - machine_manage_services | bool
     - ansible_facts.os_family == "Debian"
-    - monitoring_has_output | bool
+  block:
+    - name: Start telegraf with an output
+      ansible.builtin.service:
+        name: telegraf
+        state: started
+        enabled: true
+      when: monitoring_has_output | bool
 
-# telegraf exits right after a successful start when a config or input fails.
-- name: Check that telegraf keeps running
-  ansible.builtin.command: systemctl is-active telegraf
-  register: monitoring_active
-  changed_when: false
-  failed_when: false
-  until: monitoring_active.stdout == "active"
-  retries: 3
-  delay: 5
-  when:
-    - machine_manage_services | bool
-    - ansible_facts.os_family == "Debian"
-    - monitoring_has_output | bool
+    # telegraf exits right after a successful start when a config or input fails.
+    - name: Check that telegraf keeps running
+      ansible.builtin.command: systemctl is-active telegraf
+      register: monitoring_active
+      changed_when: false
+      failed_when: false
+      until: monitoring_active.stdout == "active"
+      retries: 3
+      delay: 5
+      when: monitoring_has_output | bool
 
-- name: Fail when telegraf does not keep running
-  ansible.builtin.fail:
-    msg: >-
-      telegraf stopped right after the start ({{ monitoring_active.stdout }});
-      see `journalctl -u telegraf -n 20`.
-  when:
-    - monitoring_active is not skipped
-    - monitoring_active.stdout != "active"
+    - name: Fail when telegraf does not keep running
+      ansible.builtin.fail:
+        msg: >-
+          telegraf stopped right after the start ({{ monitoring_active.stdout }});
+          see `journalctl -u telegraf -n 20`.
+      when:
+        - monitoring_active is not skipped
+        - monitoring_active.stdout != "active"
 
-# Without an output telegraf exits at once and would restart in a loop.
-- name: Stop telegraf without an output
-  ansible.builtin.service:
-    name: telegraf
-    state: stopped
-    enabled: false
-  when:
-    - machine_manage_services | bool
-    - ansible_facts.os_family == "Debian"
-    - not monitoring_has_output | bool
+    # Without an output telegraf exits at once and would restart in a loop.
+    - name: Stop telegraf without an output
+      ansible.builtin.service:
+        name: telegraf
+        state: stopped
+        enabled: false
+      when: not monitoring_has_output | bool

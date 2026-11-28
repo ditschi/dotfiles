@@ -7,12 +7,17 @@ set -euo pipefail
 
 REPO_URL="${DOTFILES_REPO_URL:-https://github.com/ditschi/dotfiles.git}"
 
-script="${BASH_SOURCE[0]:-}"
-if [[ -n $script && -f $script ]] &&
-    ROOT="$(cd "$(dirname "$script")" && pwd)" &&
-    [[ -f $ROOT/machine_cli/machine ]]; then
-    :
-else
+# Prints the checkout that holds script $1, or fails when the script does not run from one.
+checkout_of_script() {
+    local root
+    [[ -n $1 && -f $1 ]] || return 1
+    root="$(cd "$(dirname "$1")" && pwd)" || return 1
+    [[ -f $root/machine_cli/machine ]] || return 1
+    printf '%s\n' "$root"
+}
+
+# Sets ROOT to $DOTFILES_DIR (default ~/dotfiles) and clones the repository there if missing.
+use_clone() {
     ROOT="${DOTFILES_DIR:-$HOME/dotfiles}"
     if [[ ! -e $ROOT ]]; then
         if ! command -v git >/dev/null 2>&1; then
@@ -26,6 +31,11 @@ else
         echo "bootstrap: $ROOT is not a dotfiles checkout" >&2
         exit 1
     fi
+}
+
+script="${BASH_SOURCE[0]:-}"
+if ! ROOT="$(checkout_of_script "$script")"; then
+    use_clone
 fi
 
 MACHINE="$ROOT/machine_cli/machine"

@@ -77,24 +77,29 @@ docker_compose_build_new_image() {
     rebuild=true
 }
 
+ask_use_existing_image_or_rebuild() {
+    local choice
+    select choice in "Use existing image" "Pull/Rebuild latest image"; do
+        case "$choice" in
+            "Use existing image") return ;;
+            "Pull/Rebuild latest image")
+                docker_compose_build_new_image
+                return
+                ;;
+            *) echo "[SDE] Invalid selection." ;;
+        esac
+    done
+    return 1
+}
+
 check_if_docker_image_exists_or_compose_build() {
-    local image_id choice
+    local image_id
     image_id="$(docker compose images -q "$SDE_SELECTED_SERVICE")"
     if "$rebuild" || [[ -z $image_id ]]; then
         docker_compose_build_new_image
     elif "$interactive"; then
         echo "[SDE] Found existing image for $SDE_SELECTED_SERVICE ($image_id)."
-        select choice in "Use existing image" "Pull/Rebuild latest image"; do
-            case "$choice" in
-                "Use existing image") return ;;
-                "Pull/Rebuild latest image")
-                    docker_compose_build_new_image
-                    return
-                    ;;
-                *) echo "[SDE] Invalid selection." ;;
-            esac
-        done
-        return 1
+        ask_use_existing_image_or_rebuild
     fi
 }
 
@@ -120,13 +125,9 @@ docker_compose_run_new_container() {
     ' sde "$mode" "$dotfiles_mount" "$@"
 }
 
-check_if_container_exists_or_start_new_container() {
-    if ! "$interactive" || "$rebuild"; then
-        docker_compose_run_new_container "$@"
-        return
-    fi
-    local containers container container_id status label selection
-    local -a choices=()
+# Fills the caller's `choices` with the service's containers (in extended mode only extended ones).
+collect_container_choices() {
+    local containers container container_id label
     containers="$(docker compose ps -a --format '{{.ID}}:{{.Names}}:STATUS:{{.Status}}' "$SDE_SELECTED_SERVICE")"
     while IFS= read -r container; do
         [[ -n $container ]] || continue
@@ -137,6 +138,31 @@ check_if_container_exists_or_start_new_container() {
         fi
         choices+=("${container// /_}")
     done <<<"$containers"
+}
+
+attach_container() {
+    local container_id status
+    container_id="${1%%:*}"
+    status="$(docker inspect --format '{{.State.Status}}' "$container_id")"
+    case "$status" in
+        exited | created) docker start "$container_id" >/dev/null ;;
+        running) ;;
+        *)
+            echo "[SDE] Cannot attach to container in state $status." >&2
+            return 1
+            ;;
+    esac
+    docker attach "$container_id"
+}
+
+check_if_container_exists_or_start_new_container() {
+    if ! "$interactive" || "$rebuild"; then
+        docker_compose_run_new_container "$@"
+        return
+    fi
+    local selection
+    local -a choices=()
+    collect_container_choices
     if [[ ${#choices[@]} -eq 0 ]]; then
         docker_compose_run_new_container
         return
@@ -147,17 +173,7 @@ check_if_container_exists_or_start_new_container() {
             docker_compose_run_new_container
             return
         elif [[ -n $selection ]]; then
-            container_id="${selection%%:*}"
-            status="$(docker inspect --format '{{.State.Status}}' "$container_id")"
-            case "$status" in
-                exited | created) docker start "$container_id" >/dev/null ;;
-                running) ;;
-                *)
-                    echo "[SDE] Cannot attach to container in state $status." >&2
-                    return 1
-                    ;;
-            esac
-            docker attach "$container_id"
+            attach_container "$selection"
             return
         fi
         echo "[SDE] Invalid selection."

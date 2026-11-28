@@ -39,12 +39,12 @@
 
 ## 4b. Pull request 1
 
-- [ ] 4b.1 Open PR 1 (gate, profiles, ruff, docs, skills) without the refactorings; run an independent review (`/code-review` high or a fresh reviewer subagent with only the diff, the repo and AGENTS.md), fix or justify findings, wait for green CI (`gh pr checks`), and merge only after the owner's go in this session
+- [x] 4b.1 Open PR 1 (gate, profiles, ruff, docs, skills) without the refactorings; run an independent review (`/code-review` high or a fresh reviewer subagent with only the diff, the repo and AGENTS.md), fix or justify findings, wait for green CI (`gh pr checks`), and merge only after the owner's go in this session
 
 ## 5. Refactoring toward 10 (pull request 2)
 
-- [ ] 5.1 Land the running refactorings (`machine_cli/updates.py`, `machine_cli/commands.py`, shell scripts, Ansible task files), each reviewed and committed per file with its tests green; verify per file with its tests and `scripts/aihealth delta`
-- [ ] 5.2 Present the ai-health hotspots (strict) to the owner and get approval for the further refactorings
+- [x] 5.1 Land the running refactorings (`machine_cli/updates.py`, `machine_cli/commands.py`, shell scripts, Ansible task files), each reviewed and committed per file with its tests green; verify per file with its tests and `scripts/aihealth delta`
+- [x] 5.2 Present the ai-health hotspots (strict) to the owner and get approval for the further refactorings (owner decision 2026-11-27: all 61 files with findings, in pull requests of about ten files ordered by change frequency; each PR gets an independent review and is merged once CI is green)
 - [ ] 5.3 Refactor the approved files toward 10, ordered by change frequency, one file or topic per commit; verify per file with its tests and `scripts/aihealth delta`, until every component scores at least 9.5
 
 ## 6. Removal of the own checker

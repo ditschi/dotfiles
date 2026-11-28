@@ -56,6 +56,8 @@ For the own checker the owner had first chosen 50 % for primitive obsession; the
 
 **Type hints stay.** Type hints are never removed or weakened and no type aliases are added only to silence a smell; a finding is fixed with a parameter object or dataclass where that improves the code, otherwise it stays or gets a file-wide suppression with a reason (owner rule, 2026-11-24). Primitive obsession is off in test code and stays at 30 % in production code (owner decision Q18, 2026-11-24).
 
+**Refactoring scope.** All 61 files with ai-health findings after the first two pull requests are refactored toward 10, in pull requests of about ten files ordered by change frequency; each gets an independent review and is merged once CI is green (owner decision, 2026-11-27).
+
 **Refactorings.** Behaviour-preserving, in small steps with the tests of the touched code green before and after, one file or one topic per commit, ordered by change frequency. The first four (updates, commands, shell scripts, Ansible task files) started against the own checker and fix findings ai-health reports as well; further refactorings toward 10 start after the owner approved the ai-health hotspots.
 
 ## Risks / Trade-offs

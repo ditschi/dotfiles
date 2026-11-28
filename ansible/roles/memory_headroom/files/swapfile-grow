@@ -24,72 +24,75 @@ min_free=$(($3 * GIB))
 reserve=$((${4:-2} * GIB))
 
 # Active swap files: name, used KiB and priority. Exactly one wins over the
-# configured path.
-mapfile -t files < <(awk 'NR > 1 && $2 == "file" { print $1 }' "$PROC_SWAPS")
-[ ${#files[@]} -eq 1 ] && path=${files[0]}
-echo "path=$path"
+# configured path. Sets path, active, used_kib and priority.
+read_active_swap() {
+    mapfile -t files < <(awk 'NR > 1 && $2 == "file" { print $1 }' "$PROC_SWAPS")
+    [ ${#files[@]} -eq 1 ] && path=${files[0]}
+    echo "path=$path"
+    read -r active used_kib priority < <(
+        P=$path awk 'NR > 1 && $1 == ENVIRON["P"] { print "yes", $4, $5 }' "$PROC_SWAPS"
+    ) || true
+}
 is_active() {
     P=$path awk 'NR > 1 && $1 == ENVIRON["P"] { found = 1 } END { exit !found }' "$PROC_SWAPS"
 }
-read -r active used_kib priority < <(
-    P=$path awk 'NR > 1 && $1 == ENVIRON["P"] { print "yes", $4, $5 }' "$PROC_SWAPS"
-) || true
 
-current=0
-[ -e "$path" ] && current=$(stat -c %s "$path")
-if [ "$current" -ge "$target" ]; then
-    # A large enough file without a swap signature is left over from a failed run:
-    # format and activate it, so that the /etc/fstab entry works at boot.
-    if [ "${active:-}" != yes ] && [ "$(blkid -p -s TYPE -o value "$path" 2>/dev/null)" != swap ]; then
-        if ! { mkswap "$path" >/dev/null && swapon -p -1 "$path"; }; then
-            echo "swapfile-grow: $path is no valid swap file and could not be formatted" >&2
-            exit 1
-        fi
-        echo "swap file $path formatted and turned on"
-        exit $CHANGED
+# A large enough file without a swap signature is left over from a failed run:
+# format and activate it, so that the /etc/fstab entry works at boot.
+finish_large_enough() {
+    [ "${active:-}" != yes ] || exit 0
+    [ "$(blkid -p -s TYPE -o value "$path" 2>/dev/null)" != swap ] || exit 0
+    if ! { mkswap "$path" >/dev/null && swapon -p -1 "$path"; }; then
+        echo "swapfile-grow: $path is no valid swap file and could not be formatted" >&2
+        exit 1
     fi
-    exit 0
-fi
+    echo "swap file $path formatted and turned on"
+    exit $CHANGED
+}
 
-how_to="Grow it by hand when less is going on: sudo swapoff $path && sudo rm $path && sudo fallocate -l $(($2))G $path && sudo chmod 600 $path && sudo mkswap $path && sudo swapon $path (or run machine apply again)."
+# Sets dir; exits with a warning unless it is on ext4 or xfs.
+check_filesystem() {
+    dir=$(dirname "$path")
+    fstype=$(findmnt -n -o FSTYPE --target "$dir")
+    case "$fstype" in
+        ext4 | xfs) ;;
+        *)
+            echo "WARNING: swap file not grown: $dir is on $fstype (only ext4 and xfs are supported)"
+            exit 0
+            ;;
+    esac
+}
 
-dir=$(dirname "$path")
-fstype=$(findmnt -n -o FSTYPE --target "$dir")
-case "$fstype" in
-    ext4 | xfs) ;;
-    *)
-        echo "WARNING: swap file not grown: $dir is on $fstype (only ext4 and xfs are supported)"
+check_disk_space() {
+    read -r avail size < <(df -B1 --output=avail,size "$dir" | awk 'END { print $1, $2 }')
+    left=$((avail - (target - current)))
+    if [ "$left" -lt "$min_free" ]; then
+        echo "WARNING: swap file not grown: only $((left / GIB)) GiB would remain free on $dir (minimum $((min_free / GIB)) GiB)"
         exit 0
-        ;;
-esac
+    fi
+    if [ $((left * 100)) -lt $((size * 5)) ]; then
+        echo "WARNING: swap file not grown: less than 5 % of $dir would remain free ($((left / GIB)) GiB)"
+        exit 0
+    fi
+}
 
-read -r avail size < <(df -B1 --output=avail,size "$dir" | awk 'END { print $1, $2 }')
-left=$((avail - (target - current)))
-if [ "$left" -lt "$min_free" ]; then
-    echo "WARNING: swap file not grown: only $((left / GIB)) GiB would remain free on $dir (minimum $((min_free / GIB)) GiB)"
-    exit 0
-fi
-if [ $((left * 100)) -lt $((size * 5)) ]; then
-    echo "WARNING: swap file not grown: less than 5 % of $dir would remain free ($((left / GIB)) GiB)"
-    exit 0
-fi
-
-if [ "${active:-}" = yes ]; then
+check_free_ram() {
+    [ "${active:-}" = yes ] || return 0
     available=$(($(awk '$1 == "MemAvailable:" { print $2 }' "$PROC_MEMINFO") * 1024))
     needed=$((used_kib * 1024 + reserve))
     if [ "$available" -lt "$needed" ]; then
         echo "WARNING: swap file not grown: turning $path off needs $((needed / GIB)) GiB of free RAM, $((available / GIB)) GiB available. $how_to"
         exit 0
     fi
-fi
+}
 
 # swapon -p takes -1 to 32767; a lower, kernel-assigned priority is left to the kernel.
-prio_args=()
-[ "${active:-}" = yes ] && [ "$priority" -ge -1 ] && prio_args=(-p "$priority")
-[ "${active:-}" = yes ] || prio_args=(-p -1)
+set_prio_args() {
+    prio_args=()
+    [ "${active:-}" = yes ] && [ "$priority" -ge -1 ] && prio_args=(-p "$priority")
+    [ "${active:-}" = yes ] || prio_args=(-p -1)
+}
 
-was_off=false
-created=false
 restore() {
     local failed=$1
     trap - INT TERM HUP
@@ -105,25 +108,52 @@ restore() {
     fi
     exit 1
 }
-trap 'restore "interrupted run"' INT TERM HUP
 
-if [ "${active:-}" = yes ]; then
+turn_off_active() {
+    [ "${active:-}" = yes ] || return 0
     # Set first: a signal right after swapoff must still turn the file on again.
     was_off=true
     swapoff "$path" || restore "swapoff of $path"
-fi
-if [ ! -e "$path" ]; then
+}
+
+create_missing() {
+    [ ! -e "$path" ] || return 0
     created=true
     (umask 077 && : >"$path") || restore "creating $path"
-fi
-chmod 600 "$path" || restore "chmod of $path"
+}
+
 # Extend in place; the blocks already there and the old header stay as they are.
-if ! fallocate -l "$target" "$path" 2>/dev/null; then
+allocate() {
+    fallocate -l "$target" "$path" 2>/dev/null && return 0
     mib=$((1024 * 1024))
     dd if=/dev/zero of="$path" bs=1M seek=$((current / mib)) \
         count=$(((target - current / mib * mib + mib - 1) / mib)) conv=notrunc status=none ||
         restore "allocating $path"
+}
+
+read_active_swap
+
+current=0
+[ -e "$path" ] && current=$(stat -c %s "$path")
+if [ "$current" -ge "$target" ]; then
+    finish_large_enough
 fi
+
+how_to="Grow it by hand when less is going on: sudo swapoff $path && sudo rm $path && sudo fallocate -l $(($2))G $path && sudo chmod 600 $path && sudo mkswap $path && sudo swapon $path (or run machine apply again)."
+
+check_filesystem
+check_disk_space
+check_free_ram
+set_prio_args
+
+was_off=false
+created=false
+trap 'restore "interrupted run"' INT TERM HUP
+
+turn_off_active
+create_missing
+chmod 600 "$path" || restore "chmod of $path"
+allocate
 mkswap "$path" >/dev/null || restore "mkswap of $path"
 swapon "${prio_args[@]}" "$path" || restore "swapon of $path"
 trap - INT TERM HUP

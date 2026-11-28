@@ -148,7 +148,10 @@
         exclusive: false
       when:
         - homelab_node_ci_key | length > 0
-        - homelab_node_ci_lines | length == 0 or homelab_node_settings.ci_restrict | bool
+        - ci_entry_wanted | bool
+      vars:
+        # No CI entry yet, or `ci_restrict` allows replacing the existing one.
+        ci_entry_wanted: "{{ homelab_node_ci_lines | length == 0 or homelab_node_settings.ci_restrict | bool }}"
 
     - name: Record an unrestricted CI key entry
       ansible.builtin.set_fact:
@@ -270,6 +273,11 @@
         ssh_command: >-
           ssh -i {{ deploy_key }} -o UserKnownHostsFile={{ homelab_node_known_hosts }}
           -o StrictHostKeyChecking=yes
+        # No checkout yet and GitHub accepted the deploy key (evaluated when used).
+        clone_now: >-
+          {{ not homelab_node_git.stat.exists
+             and homelab_node_ls_remote.rc | default(1) == 0
+             and homelab_node_ls_remote.stdout | default('') | length > 0 }}
       block:
         - name: Create the deploy key once
           ansible.builtin.command:
@@ -322,10 +330,7 @@
             mode: "0755"
             owner: "{{ homelab_node_settings.user }}"
             group: "{{ homelab_node_group }}"
-          when:
-            - not homelab_node_git.stat.exists
-            - homelab_node_ls_remote.rc | default(1) == 0
-            - homelab_node_ls_remote.stdout | default('') | length > 0
+          when: clone_now | bool
 
         - name: Clone the homelab repository
           ansible.builtin.command:
@@ -336,10 +341,7 @@
           become_user: "{{ homelab_node_settings.user }}"
           register: homelab_node_cloned
           failed_when: false
-          when:
-            - not homelab_node_git.stat.exists
-            - homelab_node_ls_remote.rc | default(1) == 0
-            - homelab_node_ls_remote.stdout | default('') | length > 0
+          when: clone_now | bool
 
         - name: Check the clone again
           ansible.builtin.stat:

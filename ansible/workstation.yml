@@ -10,6 +10,13 @@
 
     - name: Preserve the installed Docker provider
       when: "'docker' in machine_features"
+      # Evaluated when a task uses them, after the checks below have registered their results.
+      vars:
+        machine_docker_packaged: >-
+          {{ machine_docker_packages.stdout_lines | intersect(['docker-ce', 'docker.io', 'moby-engine']) | length > 0 }}
+        machine_docker_compose_provider: >-
+          {{ 'docker-ce' in machine_docker_packages.stdout_lines or 'docker.io' in machine_docker_packages.stdout_lines }}
+        machine_docker_cli_lacks_compose: "{{ machine_docker.rc == 0 and machine_compose.rc != 0 }}"
       block:
         # dpkg-query instead of package_facts: the uv-installed Ansible has no apt bindings.
         - name: Inspect installed Docker packages
@@ -46,30 +53,30 @@
         - name: Avoid replacing existing Docker packages or custom executables
           ansible.builtin.set_fact:
             install_packages: "{{ install_packages | difference(packages_by_feature.docker) }}"
-          when: >-
-            machine_docker.rc == 0 or 'docker-ce' in machine_docker_packages.stdout_lines
-            or 'docker.io' in machine_docker_packages.stdout_lines or 'moby-engine' in machine_docker_packages.stdout_lines
+          when: machine_docker.rc == 0 or machine_docker_packaged | bool
 
         - name: Add only a missing provider-compatible Compose package
           ansible.builtin.set_fact:
             install_packages: "{{ install_packages + ['docker-compose-plugin' if 'docker-ce' in machine_docker_packages.stdout_lines else 'docker-compose-v2'] }}"
           when:
             - machine_compose.rc != 0
-            - "'docker-ce' in machine_docker_packages.stdout_lines or 'docker.io' in machine_docker_packages.stdout_lines"
+            - machine_docker_compose_provider | bool
 
         - name: Report unmanaged Docker installations lacking Compose
           ansible.builtin.debug:
             msg: "Existing Docker preserved; install Compose from its provider manually. No engine, context or group changes made."
           when:
-            - machine_docker.rc == 0
-            - machine_compose.rc != 0
-            - "'docker-ce' not in machine_docker_packages.stdout_lines and 'docker.io' not in machine_docker_packages.stdout_lines"
+            - machine_docker_cli_lacks_compose | bool
+            - not (machine_docker_compose_provider | bool)
 
     - name: Install Docker only where a package exists for this architecture
       when:
         - "'docker' in machine_features"
-        - ansible_facts.os_family == "Debian"
-        - (packages_by_feature.docker | intersect(install_packages)) | length > 0
+        - machine_docker_wanted_on_debian | bool
+      vars:
+        machine_docker_wanted_on_debian: >-
+          {{ ansible_facts.os_family == "Debian"
+             and (packages_by_feature.docker | intersect(install_packages)) | length > 0 }}
       block:
         - name: Refresh the apt cache
           ansible.builtin.apt:
@@ -163,8 +170,7 @@
   tags: [laptop]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: lid_switch
       when:
@@ -178,8 +184,7 @@
   tags: [laptop]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: power_profile_switch
       when:
@@ -193,8 +198,7 @@
   tags: [laptop]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: battery_charge_limit
       when:
@@ -208,8 +212,7 @@
   tags: [zram]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: zram_swap
       when:
@@ -223,8 +226,7 @@
   tags: [memory]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: memory_headroom
       when:
@@ -238,8 +240,7 @@
   tags: [model]
   pre_tasks:
     - name: Detect hardware facts
-      ansible.builtin.include_tasks: tasks/detect_hardware.yml
-      when: hw_model_l13_yoga_gen2 is not defined
+      ansible.builtin.import_tasks: tasks/detect_hardware_once.yml
   roles:
     - role: thinkpad_l13_yoga_gen2
       when:
